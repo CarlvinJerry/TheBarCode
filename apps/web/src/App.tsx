@@ -1,122 +1,21 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useEffect, useMemo, useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { bootstrap, login, session, syncOutbox } from './api';
+import { db, queueSale, type Product, type Staff } from './db';
+import './App.css';
 
-function App() {
-  const [count, setCount] = useState(0)
-
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+type CartLine=Product&{quantity:number}; const money=(n:number)=>`KES ${n.toLocaleString()}`;
+export default function App(){
+ const products=useLiveQuery(()=>db.products.where('active').equals(1).toArray(),[])??[]; const staff=useLiveQuery(()=>db.staff.toArray(),[])??[]; const queued=useLiveQuery(()=>db.outbox.count(),[])??0;
+ const [user,setUser]=useState(session.user),[view,setView]=useState('Sell'),[cart,setCart]=useState<CartLine[]>([]),[query,setQuery]=useState(''),[category,setCategory]=useState('All'),[message,setMessage]=useState(''),[online,setOnline]=useState(navigator.onLine),[receipt,setReceipt]=useState<string>();
+ useEffect(()=>{bootstrap().catch(()=>setMessage('Offline mode · using saved catalogue'));const change=()=>setOnline(navigator.onLine);addEventListener('online',change);addEventListener('offline',change);const timer=setInterval(()=>syncOutbox().catch(()=>0),15000);return()=>{removeEventListener('online',change);removeEventListener('offline',change);clearInterval(timer)}},[]);
+ const filtered=products.filter(p=>p.sellable&&(category==='All'||p.category===category)&&`${p.name} ${p.barcode??''}`.toLowerCase().includes(query.toLowerCase())); const total=useMemo(()=>cart.reduce((s,x)=>s+x.quantity*x.sellingPrice,0),[cart]);
+ if(!user)return <Login staff={staff} onLogin={setUser} message={message}/>;
+ const add=(p:Product)=>setCart(c=>c.some(x=>x.id===p.id)?c.map(x=>x.id===p.id?{...x,quantity:x.quantity+1}:x):[...c,{...p,quantity:1}]);
+ const qty=(id:string,d:number)=>setCart(c=>c.map(x=>x.id===id?{...x,quantity:x.quantity+d}:x).filter(x=>x.quantity>0));
+ async function checkout(method:string){if(!cart.length)return;const id=crypto.randomUUID();await queueSale({deviceTransactionId:id,staffId:user.id,status:'Paid',discount:0,occurredAt:new Date().toISOString(),deviceId:localStorage.getItem('device_id')??'windows-pos-01',items:cart.map(x=>({productId:x.id,productName:x.name,quantity:x.quantity,unitPrice:x.sellingPrice,unitCost:x.costPrice,discount:0})),payments:[{method,amount:total}],total,synced:false});setReceipt(`THE BARCODE\nReceipt ${id.slice(0,8).toUpperCase()}\n${cart.map(x=>`${x.quantity} x ${x.name}  ${money(x.quantity*x.sellingPrice)}`).join('\n')}\n----------------------------\nTOTAL  ${money(total)}\n${method.toUpperCase()}\nThank you. Drink responsibly.`);setCart([]);setMessage('Sale saved safely on this device');syncOutbox().catch(()=>0)}
+ return <div className="shell"><aside><div className="brand"><i>B</i><span><b>The BarCode</b><small>Café & bar operations</small></span></div><nav>{['Sell','Dashboard','Inventory','Customers','Expenses','Reports','Audit','Item setup','Settings'].map(x=><button className={view===x?'active':''} onClick={()=>setView(x)} key={x}>{x}</button>)}</nav><div className="user"><span>{user.name[0]}</span><p><b>{user.name}</b><small>{user.role}</small></p><button onClick={()=>{session.clear();setUser(null)}}>Sign out</button></div></aside><main><header><div><small>THEBARCODE · WINDOWS POS</small><h1>{view}</h1></div><div className="status"><span className={online?'online':'offline'}>{online?'● Online':'● Offline ready'}</span><span>{queued} queued</span></div></header>
+ {view==='Sell'?<div className="sell"><section className="catalogue"><div className="search"><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search or scan barcode…" autoFocus/><button>Scan</button></div><div className="categories">{['All',...new Set(products.filter(x=>x.sellable).map(x=>x.category))].map(x=><button className={category===x?'selected':''} onClick={()=>setCategory(x)} key={x}>{x}</button>)}</div><div className="products">{filtered.map(p=><button onClick={()=>add(p)} key={p.id}><span className={`tile ${p.stock<=p.minStock?'low':''}`}>{p.name.slice(0,2).toUpperCase()}</span><b>{p.name}</b><small>{p.unit} · {p.stock} available</small><strong>{money(p.sellingPrice)}</strong></button>)}</div></section><section className="bill"><div className="bill-title"><span><small>CURRENT BILL</small><h2>New order</h2></span><button onClick={()=>setCart([])}>Clear</button></div><div className="lines">{!cart.length&&<p className="empty">Tap a product to begin.</p>}{cart.map(x=><div className="line" key={x.id}><span><b>{x.name}</b><small>{money(x.sellingPrice)} each</small><i><button onClick={()=>qty(x.id,-1)}>−</button>{x.quantity}<button onClick={()=>qty(x.id,1)}>+</button></i></span><strong>{money(x.quantity*x.sellingPrice)}</strong></div>)}</div><div className="total"><span>Total</span><b>{money(total)}</b></div><div className="pay"><button onClick={()=>checkout('Cash')}>Cash</button><button onClick={()=>checkout('M-Pesa')}>M-Pesa</button><button className="credit" onClick={()=>checkout('Credit')}>Credit</button></div></section></div>:<Placeholder view={view} products={products}/>} </main>{message&&<div className="toast" onClick={()=>setMessage('')}>{message}</div>}{receipt&&<div className="modal"><section><button className="close" onClick={()=>setReceipt(undefined)}>×</button><pre id="receipt">{receipt}</pre><button className="print" onClick={()=>window.print()}>Print receipt</button></section></div>}</div>
 }
-
-export default App
+function Login({staff,onLogin,message}:{staff:Staff[];onLogin:(u:any)=>void;message:string}){const [staffId,setStaffId]=useState(''),[pin,setPin]=useState(''),[error,setError]=useState('');useEffect(()=>{if(staff.length&&!staffId)setStaffId(staff[0].id)},[staff,staffId]);async function submit(e:React.FormEvent){e.preventDefault();try{onLogin(await login(staffId,pin))}catch{setError('Unable to sign in. Check the PIN and server connection.')}}return <div className="login"><form onSubmit={submit}><div className="login-brand">B</div><h1>The BarCode</h1><p>Windows point of sale</p><label>Staff<select value={staffId} onChange={e=>setStaffId(e.target.value)}>{staff.map(x=><option key={x.id} value={x.id}>{x.name} · {x.role}</option>)}</select></label><label>PIN<input type="password" inputMode="numeric" value={pin} onChange={e=>setPin(e.target.value)} minLength={6} required/></label><button>Sign in</button>{(error||message)&&<small>{error||message}</small>}</form></div>}
+function Placeholder({view,products}:{view:string;products:Product[]}){return <div className="placeholder"><div className="metrics"><article><small>Stock value</small><b>{money(products.reduce((s,x)=>s+x.stock*x.costPrice,0))}</b></article><article><small>Low stock</small><b>{products.filter(x=>x.stock<=x.minStock).length} items</b></article><article><small>Sellable catalogue</small><b>{products.filter(x=>x.sellable).length} items</b></article></div><section><h2>{view} module</h2><p>The production data foundation is connected. This module is part of the next committed management milestone.</p></section></div>}
