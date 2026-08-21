@@ -9,31 +9,25 @@ Windows-first, offline-capable point of sale and inventory system for a bar, caf
 - `tests`: automated API and domain tests.
 - PostgreSQL is the central source of truth. Each POS device continues operating from its local browser database when disconnected.
 
-## Local prerequisites
+## Windows prerequisites
 
 - Windows 10/11
 - Docker Desktop
-- .NET 10 SDK
-- Node.js 22+
+
+.NET and Node.js are only required for development; the packaged installation runs them inside containers.
 
 ## Secure configuration
 
 Copy `.env.example` to `.env` and replace every value. Never commit `.env`. The first owner account is created using `BOOTSTRAP_ADMIN_PIN`; individual staff accounts and PINs are added after login.
 
-## Start PostgreSQL and API
+## Install the complete app
 
 ```powershell
-docker compose up -d --build
+.\scripts\setup-windows.ps1
 ```
 
-The API is available at `http://localhost:8080/api/health`.
+The touchscreen app opens at `http://localhost:8088`. See `docs/WINDOWS_INSTALLATION.md` and `docs/P510_PRINTER_TEST.md` for installation, offline use and receipt acceptance testing.
 
-## Start the touchscreen app
+## Development
 
-```powershell
-cd apps/web
-npm install
-npm run dev
-```
-
-Open `http://localhost:5173`. Installation and P510 testing instructions will be finalized after the product workflows are accepted.
+Run PostgreSQL and the API with Docker Compose, then run `npm install` and `npm run dev` inside `apps/web`. Vite proxies `/api` to the local API.

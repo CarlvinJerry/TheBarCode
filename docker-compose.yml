@@ -19,9 +19,13 @@ services:
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       Jwt__Key: ${JWT_KEY}
       Bootstrap__AdminPin: ${BOOTSTRAP_ADMIN_PIN}
-      AllowedOrigins__0: http://localhost:5173
-    ports: ["8080:8080"]
+      AllowedOrigins__0: http://localhost:${APP_PORT:-8088}
+    expose: ["8080"]
     depends_on:
       postgres: { condition: service_healthy }
+  web:
+    build: ./apps/web
+    ports: ["${APP_PORT:-8088}:80"]
+    depends_on: [api]
 volumes:
   thebarcode-postgres:

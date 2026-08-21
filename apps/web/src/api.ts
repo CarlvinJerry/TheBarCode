@@ -1,5 +1,5 @@
 import { db, saveBootstrap, type LocalSale } from './db';
-const base=import.meta.env.VITE_API_URL??'http://localhost:8080/api';
+const base=import.meta.env.VITE_API_URL??'/api';
 export const session={get token(){return localStorage.getItem('barcode_token')??''},get user(){try{return JSON.parse(localStorage.getItem('barcode_user')??'null')}catch{return null}},set(token:string,user:unknown){localStorage.setItem('barcode_token',token);localStorage.setItem('barcode_user',JSON.stringify(user))},clear(){localStorage.removeItem('barcode_token');localStorage.removeItem('barcode_user')}};
 async function request(path:string,init?:RequestInit){const response=await fetch(base+path,{...init,headers:{'Content-Type':'application/json',...(session.token?{Authorization:`Bearer ${session.token}`}:{}) ,...init?.headers}});if(!response.ok)throw new Error(`${response.status} ${await response.text()}`);return response.json();}
 export async function bootstrap(){const data=await request('/bootstrap');await saveBootstrap(data);return data;}
