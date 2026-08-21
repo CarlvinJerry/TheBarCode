@@ -11,4 +11,6 @@ export async function createExpense(expense:Record<string,unknown>){return reque
 export async function getAudit(){return request('/audit?take=200');}
 export async function getStaff(){return request('/staff');}
 export async function createStaff(staff:Record<string,unknown>){return request('/staff',{method:'POST',body:JSON.stringify(staff)});}
+export async function resetDemo(){return request('/demo/reset',{method:'POST'});}
+export async function removeDemo(){return request('/demo',{method:'DELETE'});}
 export type { LocalSale };
