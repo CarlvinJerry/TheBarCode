@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/apps/" />
+  <Folder Name="/apps/api/">
+    <Project Path="apps/api/TheBarcode.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TheBarcode.Api.Tests/TheBarcode.Api.Tests.csproj" />
+  </Folder>
+</Solution>
