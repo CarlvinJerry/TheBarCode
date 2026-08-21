@@ -14,9 +14,18 @@ if (-not (Test-Path -LiteralPath $envFile)) {
   $pin = Read-Host 'Choose the private owner PIN (at least 6 characters)' -AsSecureString
   $pinText = [System.Net.NetworkCredential]::new('', $pin).Password
   if ($pinText.Length -lt 6) { throw 'The owner PIN must have at least 6 characters.' }
-  $random = [System.Security.Cryptography.RandomNumberGenerator]
-  $dbPassword = [Convert]::ToHexString($random::GetBytes(24)).ToLowerInvariant()
-  $jwtKey = [Convert]::ToBase64String($random::GetBytes(48))
+  $random = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+  try {
+    $dbPasswordBytes = New-Object byte[] 24
+    $jwtKeyBytes = New-Object byte[] 48
+    $random.GetBytes($dbPasswordBytes)
+    $random.GetBytes($jwtKeyBytes)
+    $dbPassword = -join ($dbPasswordBytes | ForEach-Object { $_.ToString('x2') })
+    $jwtKey = [Convert]::ToBase64String($jwtKeyBytes)
+  }
+  finally {
+    $random.Dispose()
+  }
   @(
     'POSTGRES_DB=thebarcode'
     'POSTGRES_USER=thebarcode'
