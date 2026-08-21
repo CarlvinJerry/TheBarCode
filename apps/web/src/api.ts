@@ -9,4 +9,6 @@ export async function createProduct(product:Record<string,unknown>){return reque
 export async function getSummary(from:string,to:string){return request(`/reports/summary?from=${from}&to=${to}`);}
 export async function createExpense(expense:Record<string,unknown>){return request('/expenses',{method:'POST',body:JSON.stringify(expense)});}
 export async function getAudit(){return request('/audit?take=200');}
+export async function getStaff(){return request('/staff');}
+export async function createStaff(staff:Record<string,unknown>){return request('/staff',{method:'POST',body:JSON.stringify(staff)});}
 export type { LocalSale };
