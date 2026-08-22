@@ -3,7 +3,7 @@
   "channel": "local-windows",
   "summary": "Native Windows installer, XP-80 printing, multi-terminal readiness and interface controls.",
   "downloadUrl": "",
-  "sha256": "1FB6623043A3B98C0D61DF0EB8B7A2219151113B38E989EE2950D7369EECCC40",
+  "sha256": "B2C298CD6D6E36A006481DB7F0A071FEC265D73A9CA25D317DA71F5ED33C713C",
   "publishedAt": "2026-08-22T00:00:00+03:00",
   "notes": [
     "Added native Windows installation profile while preserving Docker deployment.",

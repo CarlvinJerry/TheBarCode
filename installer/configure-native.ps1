@@ -60,6 +60,8 @@ $api = Join-Path $InstallRoot 'server\TheBarcode.Api.exe'
 & sc.exe create TheBarcodeApi binPath= "`"$api`" --urls http://0.0.0.0:8088" start= auto DisplayName= "TheBarcode Local Server" | Out-Null
 & sc.exe description TheBarcodeApi 'Local API and shared outlet data service for TheBarcode' | Out-Null
 & sc.exe start TheBarcodeApi | Out-Null
+& netsh.exe advfirewall firewall delete rule name='TheBarcode Local Server' 2>$null | Out-Null
+& netsh.exe advfirewall firewall add rule name='TheBarcode Local Server' dir=in action=allow protocol=TCP localport=8088 profile=private | Out-Null
 
 $bridge = Join-Path $InstallRoot 'print-bridge\TheBarcode.PrintBridge.exe'
 $startup = Join-Path ([Environment]::GetFolderPath('Startup')) 'TheBarcode Print Bridge.cmd'

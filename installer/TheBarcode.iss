@@ -43,6 +43,7 @@ Filename: "http://localhost:8088"; Description: "Open TheBarcode"; Flags: postin
 Filename: "sc.exe"; Parameters: "stop TheBarcodeApi"; Flags: runhidden; RunOnceId: "StopApi"
 Filename: "sc.exe"; Parameters: "delete TheBarcodeApi"; Flags: runhidden; RunOnceId: "DeleteApi"
 Filename: "taskkill.exe"; Parameters: "/IM TheBarcode.PrintBridge.exe /F"; Flags: runhidden; RunOnceId: "StopPrintBridge"
+Filename: "netsh.exe"; Parameters: "advfirewall firewall delete rule name=""TheBarcode Local Server"""; Flags: runhidden; RunOnceId: "RemoveFirewallRule"
 
 [Code]
 function InitializeSetup(): Boolean;

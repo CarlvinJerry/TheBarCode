@@ -28,6 +28,8 @@ Copy `.env.example` to `.env` and replace every value. Never commit `.env`. The 
 
 The touchscreen app opens at `http://localhost:8088`. See `docs/WINDOWS_INSTALLATION.md`, `docs/INSTALL_ON_ANOTHER_WINDOWS_PC.md` and `docs/P510_PRINTER_TEST.md` for installation, transfer to another computer, offline use and receipt acceptance testing.
 
+For the self-contained non-Docker Windows installer, shared outlet terminals, versioning and future cloud endpoint configuration, see `docs/NATIVE_WINDOWS_EDITION.md`.
+
 ## Development
 
 Run PostgreSQL and the API with Docker Compose, then run `npm install` and `npm run dev` inside `apps/web`. Vite proxies `/api` to the local API.
