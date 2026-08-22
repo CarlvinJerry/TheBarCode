@@ -25,6 +25,7 @@ public record ReceiptConfigurationRequest(int PaperWidthMm,bool ShowBusinessDeta
 public record BillLineRequest(Guid ProductId,decimal Quantity,decimal UnitPrice,decimal Discount);
 public record HoldBillRequest(string DeviceTransactionId,Guid? CustomerId,Guid StaffId,decimal Discount,string? Notes,string? DeviceId,List<BillLineRequest> Items);
 public record UpdateBillRequest(Guid? CustomerId,decimal Discount,string? Notes,string Reason,string? DeviceId,int ExpectedRevision,List<BillLineRequest> Items);
+public record ResolveBillApprovalRequest(bool Approve,string Reason,string? DeviceId);
 public record PostBillRequest(string Status,string Method,decimal AmountPaid,DateTimeOffset? DueAt,string? Notes,string? DeviceId);
 public record BillPaymentRequest(string Method,decimal Amount,string? Reference,string? DeviceId);
 public record ProductUpdateRequest(string Name,string Category,string? Barcode,string Unit,decimal CostPrice,decimal SellingPrice,decimal MinStock,bool Sellable,bool Active,string Reason,string? Brand=null,decimal PackageQuantity=1,string? PackageUnit=null,string TrackingMode="Discrete",string? Supplier=null,decimal TaxRate=0);

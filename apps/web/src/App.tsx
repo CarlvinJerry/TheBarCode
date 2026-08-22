@@ -35,6 +35,7 @@ export default function App() {
     [customerOpen, setCustomerOpen] = useState(false),
     [activeBill, setActiveBill] = useState<any>(),
     [notifications, setNotifications] = useState<Record<string, number>>({}),
+    [alertsOpen,setAlertsOpen]=useState(false),
     [expandedGroups,setExpandedGroups]=useState<Record<string,boolean>>({Operations:false,"Data & Setup":false}),
     [collapsed, setCollapsed] = useState(
       localStorage.getItem("sidebar_collapsed") === "true",
@@ -245,7 +246,9 @@ export default function App() {
             <span className={online ? "online" : "offline"}>
               {online ? "● Online" : "● Offline ready"} · {queued} queued
             </span>
+            <button className="notification-bell" onClick={()=>setAlertsOpen(x=>!x)} aria-label="Open notifications">♢<em>{Object.values(notifications).reduce((a,b)=>a+b,0)}</em></button>
             <button className="held-status" onClick={()=>setView("Bills")}>◫ {notifications.Sell||0} held</button>
+            {alertsOpen&&<div className="notification-panel"><h3>Needs attention</h3><button onClick={()=>{setView("Inventory");setAlertsOpen(false)}}><b>{notifications.Inventory||0} stock alerts</b><small>Low or projected to run low</small></button><button onClick={()=>{setView("Bills");setAlertsOpen(false)}}><b>{notifications.Bills||0} pending bills</b><small>Held, credit or partly paid</small></button>{(notifications.Approvals||0)>0&&<button onClick={()=>{setView("Bills");setAlertsOpen(false)}}><b>{notifications.Approvals} approval requests</b><small>Held-bill changes need review</small></button>}</div>}
           </div>
         </header>
         {view === "Sell" ? (

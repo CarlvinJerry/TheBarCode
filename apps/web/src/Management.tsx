@@ -46,12 +46,15 @@ import {
   getStaff,
   getSettings,
   getBills,
+  getBillApprovals,
   payBill,
   postBill,
   cancelBill,
   refundBill,
   reverseProductImport,
   updateBill,
+  requestBillApproval,
+  resolveBillApproval,
   updateProduct,
   updateCustomer,
   updateStaff,
@@ -184,10 +187,11 @@ function Dashboard({ products,navigate }: { products: Product[]; navigate:(x:str
 }
 function Bills({products,user,notify}:{products:Product[];user:{id:string;name:string;role:string};notify:(x:string)=>void}){
   const customers=useLiveQuery(()=>db.customers.toArray(),[])??[];
-  const [status,setStatus]=useState(localStorage.getItem("bill_filter")||"Pending"),[rows,setRows]=useState<any[]>([]),[selected,setSelected]=useState<any>(),[lines,setLines]=useState<any[]>([]),[payment,setPayment]=useState({method:"Cash",amount:0,reference:""}),[addProductId,setAddProductId]=useState(""),[creditOpen,setCreditOpen]=useState(false),[newCustomer,setNewCustomer]=useState({name:"",phone:"",creditLimit:0});
-  const load=()=>getBills(status).then(setRows).catch(()=>setRows([]));useEffect(()=>{localStorage.removeItem("bill_filter");void load()},[status]);
+  const [status,setStatus]=useState(localStorage.getItem("bill_filter")||"Pending"),[rows,setRows]=useState<any[]>([]),[selected,setSelected]=useState<any>(),[lines,setLines]=useState<any[]>([]),[payment,setPayment]=useState({method:"Cash",amount:0,reference:""}),[addProductId,setAddProductId]=useState(""),[creditOpen,setCreditOpen]=useState(false),[newCustomer,setNewCustomer]=useState({name:"",phone:"",creditLimit:0}),[approvals,setApprovals]=useState<any[]>([]);
+  const canApprove=["Owner","Manager"].includes(user.role);const load=()=>Promise.all([getBills(status).then(setRows),canApprove?getBillApprovals().then(setApprovals):Promise.resolve()]).catch(()=>setRows([]));useEffect(()=>{localStorage.removeItem("bill_filter");void load()},[status]);
   const open=(x:any)=>{setSelected(x);setLines(x.items.map((i:any)=>({productId:i.productId,productName:i.productName,quantity:Number(i.quantity),unitPrice:Number(i.unitPrice),discount:Number(i.discount||0)})));setPayment({method:"Cash",amount:Number(x.balance||0),reference:""})};
-  const saveHeld=async()=>{try{const saved=await updateBill(selected.id,{customerId:selected.customerId,discount:selected.discount||0,notes:selected.notes,reason:"Bill revision approved in bill workspace",deviceId:localStorage.getItem("device_id"),expectedRevision:selected.revision,items:lines.map(x=>({productId:x.productId,quantity:x.quantity,unitPrice:x.unitPrice,discount:x.discount}))});setSelected(saved);notify(`Bill #${saved.receiptNumber} revision ${saved.revision} saved`);await load()}catch(e){notify(e instanceof Error?e.message:"Owner or manager approval is required")}};
+  const saveHeld=async()=>{const payload={customerId:selected.customerId,discount:selected.discount||0,notes:selected.notes,reason:"Held bill change requested from bill workspace",deviceId:localStorage.getItem("device_id"),expectedRevision:selected.revision,items:lines.map(x=>({productId:x.productId,quantity:x.quantity,unitPrice:x.unitPrice,discount:x.discount}))};const lowers=lines.reduce((s,x)=>s+x.quantity*x.unitPrice-x.discount,0)<Number(selected.total);try{if(lowers&&!canApprove){await requestBillApproval(selected.id,payload);notify(`Bill #${selected.receiptNumber} change sent to owner/manager for approval`);dispatchEvent(new Event("dukora:attention"));return}const saved=await updateBill(selected.id,payload);setSelected(saved);notify(`Bill #${saved.receiptNumber} revision ${saved.revision} saved`);await load()}catch(e){notify(e instanceof Error?e.message:"Owner or manager approval is required")}};
+  const resolveApproval=async(item:any,approve:boolean)=>{const reason=prompt(`${approve?"Approve":"Reject"} change to bill #${item.receiptNumber}: reason`);if(!reason)return;try{await resolveBillApproval(item.id,{approve,reason,deviceId:localStorage.getItem("device_id")});notify(`Bill #${item.receiptNumber} change ${approve?"approved":"rejected"}`);dispatchEvent(new Event("dukora:attention"));await load()}catch(e){notify(e instanceof Error?e.message:"Approval could not be completed")}};
   const post=async(kind:"Paid"|"Credit",customerId?:string,customerName?:string)=>{if(kind==="Credit"&&!customerId&&!selected.customerId){setCreditOpen(true);return}try{const revised=await updateBill(selected.id,{customerId:customerId||selected.customerId,discount:selected.discount||0,notes:selected.notes,reason:"Final bill revision before posting",deviceId:localStorage.getItem("device_id"),expectedRevision:selected.revision,items:lines.map(x=>({productId:x.productId,quantity:x.quantity,unitPrice:x.unitPrice,discount:x.discount||0}))});const saved=await postBill(selected.id,{status:kind,method:"Cash",amountPaid:kind==="Paid"?revised.total:0,dueAt:kind==="Credit"?new Date(Date.now()+7*86400000).toISOString():undefined,notes:"Posted from bill workspace",deviceId:localStorage.getItem("device_id")});setSelected({...saved,customerName:customerName||selected.customerName});notify(`${kind} bill posted; stock, counters and reports updated`);dispatchEvent(new Event("dukora:attention"));await load()}catch(e){notify(e instanceof Error?e.message:"Bill could not be posted")}};
   const addLine=()=>{const p=products.find(x=>x.id===addProductId);if(!p)return;setLines(current=>current.some(x=>x.productId===p.id)?current.map(x=>x.productId===p.id?{...x,quantity:x.quantity+1}:x):[...current,{productId:p.id,productName:p.name,quantity:1,unitPrice:p.sellingPrice,discount:0}]);setAddProductId("")};
   const chooseCreditCustomer=(customer:any)=>{setCreditOpen(false);void post("Credit",customer.id,customer.name)};
@@ -199,7 +203,8 @@ function Bills({products,user,notify}:{products:Product[];user:{id:string;name:s
   const totals={held:rows.filter(x=>x.status==="Held").length,credit:rows.filter(x=>x.status==="Credit"||x.status==="PartiallyPaid").reduce((s,x)=>s+Number(x.balance),0),overdue:rows.filter(x=>x.dueAt&&new Date(x.dueAt)<new Date()&&x.balance>0).length};
   return <Page><Intro title="Bills & payment follow-up" text="Open, revise, post and collect against the complete live bill register."/>
     <Filter>{["All","Pending","Held","Credit","PartiallyPaid","Paid","Cancelled"].map(x=><button className={status===x?"active":""} onClick={()=>setStatus(x)} key={x}>{x}</button>)}</Filter>
-    <Kpis items={[["Held bills",String(totals.held),"Editable unpaid orders"],["Outstanding",money(totals.credit),"Credit and partial balances"],["Overdue",String(totals.overdue),"Past due date"],["Visible bills",String(rows.length),`Filter: ${status}`]]}/>
+    <Kpis onSelect={label=>setStatus(label==="Held bills"?"Held":label==="Outstanding"?"Credit":label==="Overdue"?"Pending":"All")} items={[["Held bills",String(totals.held),"Editable unpaid orders"],["Outstanding",money(totals.credit),"Credit and partial balances"],["Overdue",String(totals.overdue),"Past due date"],["Visible bills",String(rows.length),`Filter: ${status}`]]}/>
+    {canApprove&&approvals.length>0&&<Panel title={`Held-bill approvals (${approvals.length})`}><Table heads={["Bill","Requested by","Reason","Time","Decision"]} rows={approvals.map(x=>[`#${x.receiptNumber}`,x.requestedBy,x.reason,new Date(x.createdAt).toLocaleString(),<span className="button-row"><button onClick={()=>resolveApproval(x,true)}>Approve</button><button className="danger-button" onClick={()=>resolveApproval(x,false)}>Reject</button></span>])}/></Panel>}
     <Panel title="Bill register"><div className="spec-table-wrap"><table className="spec-table"><thead><tr>{["Bill","Date","Customer","Status","Total","Paid","Balance","Action"].map(x=><th key={x}>{x}</th>)}</tr></thead><tbody>{rows.map(x=><tr key={x.id}><td>#{x.receiptNumber} · r{x.revision}</td><td>{new Date(x.occurredAt).toLocaleString()}</td><td>{x.customerName||"Walk-in"}</td><td><span className={`badge ${String(x.status).toLowerCase()}`}>{x.status}</span></td><td>{money(x.total)}</td><td>{money(x.paid)}</td><td>{money(x.balance)}</td><td><button className="table-action" onClick={()=>open(x)}>Open</button></td></tr>)}</tbody></table></div></Panel>
     {selected&&<div className="modal bill-workspace"><section><button className="close" onClick={()=>setSelected(undefined)}>×</button><h2>Bill #{selected.receiptNumber}</h2><p className="muted">{selected.status} · Revision {selected.revision} · {selected.customerName||"Walk-in customer"}</p>
       {selected.status==="Held"&&<div className="payment-box"><h3>Add another item to this held bill</h3><Field label="Item"><select value={addProductId} onChange={e=>setAddProductId(e.target.value)}><option value="">Choose item…</option>{products.filter(x=>x.active&&x.sellable).map(x=><option value={x.id} key={x.id}>{x.name} · {x.packageQuantity||1} {x.packageUnit||x.unit}</option>)}</select></Field><button disabled={!addProductId} onClick={addLine}>＋ Add item</button></div>}
@@ -221,6 +226,8 @@ function Inventory({
   notify: (x: string) => void;
 }) {
   const [open, setOpen] = useState(false),
+    [riskOpen,setRiskOpen]=useState(false),
+    [overview,setOverview]=useState<any>(null),
     [form, setForm] = useState({
       productId: products[0]?.id ?? "",
       type: "Restock",
@@ -231,6 +238,8 @@ function Inventory({
     if (!form.productId && products[0])
       setForm((x) => ({ ...x, productId: products[0].id }));
   }, [products, form.productId]);
+  useEffect(()=>{const end=new Date(),start=new Date();start.setDate(start.getDate()-29);getOperationalOverview(start.toISOString().slice(0,10),end.toISOString().slice(0,10)).then(setOverview).catch(()=>setOverview(null))},[products]);
+  const stockRisks:any[]=overview?.lowStock??products.filter(x=>x.stock<=x.minStock*1.5).map(x=>({...x,belowMinimum:x.stock<=x.minStock,daysRemaining:null,dailyUse:0}));
   const chart = Object.values(products.reduce((a:any,x)=>{a[x.category]??={name:x.category,value:0};a[x.category].value+=x.stock*x.costPrice;return a},{})).map((x:any)=>({...x,label:money(x.value)}));
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -317,7 +326,9 @@ function Inventory({
           </section>
         </div>
       )}
+      {riskOpen&&<div className="modal"><section><button className="close" onClick={()=>setRiskOpen(false)}>×</button><h2>Low & projected stock</h2><p className="muted">Projection uses the last 30 days of posted sales and highlights items likely to run low within seven days.</p><Table heads={["Item","Category","Stock","Minimum","Daily use","Days left","Action"]} rows={stockRisks.map(x=>[x.name,x.category,String(x.stock),String(x.minStock),Number(x.dailyUse||0).toFixed(1),x.daysRemaining==null?"No recent sales":Number(x.daysRemaining).toFixed(1),x.belowMinimum?"Restock now":"Plan restock"])}/></section></div>}
       <Kpis
+        onSelect={(label)=>{if(label==="Low / projected")setRiskOpen(true)}}
         items={[
           [
             "Stock value",
@@ -325,9 +336,9 @@ function Inventory({
             "At cost",
           ],
           [
-            "Low stock",
-            `${products.filter((x) => x.stock <= x.minStock).length} items`,
-            "Reorder today",
+            "Low / projected",
+            `${stockRisks.length} items`,
+            "Click for restock list",
           ],
           ["Food & café items", `${products.length} SKUs`, "Kitchen included"],
         ]}
@@ -376,7 +387,7 @@ function Inventory({
                   (x) => x.stock > x.minStock && x.stock <= x.minStock * 1.5,
                 ).length,
               ],
-              ["Low", products.filter((x) => x.stock <= x.minStock).length],
+              ["Low", stockRisks.length],
             ]}
             colors={["#25815f", "#efb45a", "#d7674e"]}
             center={`${Math.round((products.filter((x) => x.stock > x.minStock).length / Math.max(products.length, 1)) * 100)}%`}
@@ -402,7 +413,7 @@ function Inventory({
             String(x.minStock),
             money(x.costPrice),
             money(x.sellingPrice),
-            x.stock <= x.minStock ? "Low" : "Healthy",
+            stockRisks.some(r=>r.id===x.id) ? (x.stock<=x.minStock?"Low":"Projected low") : "Healthy",
           ])}
         />
       </Panel>
@@ -1294,7 +1305,7 @@ function Kpis({ items,onSelect }: { items: string[][];onSelect?:(label:string)=>
   return (
     <div className={`spec-kpis count-${items.length}`}>
       {items.map((x) => (
-        <article key={x[0]} className={onSelect?"interactive-kpi":""} onClick={()=>onSelect?.(x[0])} role={onSelect?"button":undefined} tabIndex={onSelect?0:undefined}>
+        <article key={x[0]} className={onSelect?"interactive-kpi":""} onClick={()=>onSelect?.(x[0])} onKeyDown={e=>{if(onSelect&&(e.key==="Enter"||e.key===" ")){e.preventDefault();onSelect(x[0])}}} role={onSelect?"button":undefined} tabIndex={onSelect?0:undefined}>
           <small>{x[0]}</small>
           <b>{x[1]}</b>
           <em>{x[2]}</em>

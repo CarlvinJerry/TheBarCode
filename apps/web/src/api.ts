@@ -29,6 +29,9 @@ export async function saveTerminalConfiguration(value:Record<string,unknown>){re
 export async function getBills(status='All'){return request(`/bills?status=${encodeURIComponent(status)}`);}
 export async function holdBill(value:Record<string,unknown>){return request('/bills/hold',{method:'POST',body:JSON.stringify(value)});}
 export async function updateBill(id:string,value:Record<string,unknown>){return request(`/bills/${id}`,{method:'PUT',body:JSON.stringify(value)});}
+export async function requestBillApproval(id:string,value:Record<string,unknown>){return request(`/bills/${id}/approval-requests`,{method:'POST',body:JSON.stringify(value)});}
+export async function getBillApprovals(){return request('/bill-approvals');}
+export async function resolveBillApproval(id:string,value:Record<string,unknown>){return request(`/bill-approvals/${id}/resolve`,{method:'POST',body:JSON.stringify(value)});}
 export async function postBill(id:string,value:Record<string,unknown>){return request(`/bills/${id}/post`,{method:'POST',body:JSON.stringify(value)});}
 export async function payBill(id:string,value:Record<string,unknown>){return request(`/bills/${id}/payments`,{method:'POST',body:JSON.stringify(value)});}
 export async function cancelBill(id:string,reason:string,deviceId?:string){return request(`/bills/${id}/cancel?reason=${encodeURIComponent(reason)}&deviceId=${encodeURIComponent(deviceId||'')}`,{method:'POST'});}

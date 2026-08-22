@@ -47,3 +47,4 @@ This document is for Beyond Raw Data development planning. It is not copied into
 - KRA/eTIMS integration.
 - Signed automatic updates with staged channels and rollback.
 - Digital receipts, QR verification and optional email/WhatsApp delivery.
+- Opt-in WhatsApp daily summaries and stock alerts through Meta Cloud API or an approved BSP: encrypted credentials, approved templates, designated recipients, retry/outbox delivery, rate limiting, consent audit and delivery-status tracking. Never automate through WhatsApp Web or an unofficial personal-account bot.
