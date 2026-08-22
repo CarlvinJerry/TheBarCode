@@ -21,6 +21,7 @@ import {
   testReceiptText,
   defaultOrganizationSettings,
   defaultReceiptSettings,
+  buildSaleReceipt,
   type OrganizationSettings,
   type ReceiptSettings,
 } from "./receiptPrinter";
@@ -38,6 +39,14 @@ import {
   getSummary,
   getStaff,
   getSettings,
+  getBills,
+  payBill,
+  postBill,
+  cancelBill,
+  updateBill,
+  updateProduct,
+  updateCustomer,
+  updateStaff,
   removeDemo,
   resetDemo,
   saveBranch,
@@ -59,9 +68,11 @@ type Props = {
   products: Product[];
   user: { id: string; name: string; role: string };
   notify: (x: string) => void;
+  navigate: (x: string) => void;
 };
-export function Management({ view, products, user, notify }: Props) {
-  if (view === "Dashboard") return <Dashboard products={products} />;
+export function Management({ view, products, user, notify, navigate }: Props) {
+  if (view === "Dashboard") return <Dashboard products={products} navigate={navigate} />;
+  if (view === "Bills") return <Bills user={user} notify={notify} />;
   if (view === "Inventory")
     return <Inventory products={products} user={user} notify={notify} />;
   if (view === "Customers") return <Customers />;
@@ -71,21 +82,21 @@ export function Management({ view, products, user, notify }: Props) {
   if (view === "Audit" || view === "Audit trail") return <Audit />;
   if (["Staff", "Users & roles", "Staff & roles"].includes(view))
     return <Staff notify={notify} />;
-  if (view === "Item setup") return <ItemSetup notify={notify} />;
+  if (view === "Item setup") return <ItemSetup products={products} notify={notify} />;
   return <Settings user={user} notify={notify} />;
 }
-function Dashboard({ products }: { products: Product[] }) {
+function Dashboard({ products,navigate }: { products: Product[]; navigate:(x:string)=>void }) {
   const [overview, setOverview] = useState<any>(null);
   useEffect(() => {
     const to = new Date(),
       from = new Date(Date.now() - 6 * 86400000);
-    getOperationalOverview(from.toISOString().slice(0,10),to.toISOString().slice(0,10)).then(setOverview).catch(() => 0);
+    const load=()=>getOperationalOverview(from.toISOString().slice(0,10),to.toISOString().slice(0,10)).then(setOverview).catch(() => 0);void load();const timer=setInterval(load,15000);return()=>clearInterval(timer);
   }, []);
   const daily = (overview?.daily ?? []).map((d:any)=>({day:new Date(d.date).toLocaleDateString("en",{weekday:"short"}),revenue:d.revenue,profit:d.profit}));
   const margin=overview?.revenue ? overview.grossProfit/overview.revenue*100 : 0;
   return (
     <Page>
-      <Kpis
+      <Kpis onSelect={(label)=>{localStorage.setItem("bill_filter",label.includes("credit")?"Pending":label.includes("sales")?"All":"Held");navigate(label.includes("stock")?"Inventory":label.includes("credit")?"Bills":label.includes("sales")?"Bills":"Inventory")}}
         items={[
           ["Today’s sales", money(overview?.todayRevenue ?? 0), `${overview?.salesCount ?? 0} sales in range`],
           ["Gross profit", money(overview?.grossProfit ?? 0), `${margin.toFixed(1)}% margin`],
@@ -161,6 +172,28 @@ function Dashboard({ products }: { products: Product[] }) {
       </Two>
     </Page>
   );
+}
+function Bills({user,notify}:{user:{id:string;name:string;role:string};notify:(x:string)=>void}){
+  const [status,setStatus]=useState(localStorage.getItem("bill_filter")||"Pending"),[rows,setRows]=useState<any[]>([]),[selected,setSelected]=useState<any>(),[lines,setLines]=useState<any[]>([]),[payment,setPayment]=useState({method:"Cash",amount:0,reference:""});
+  const load=()=>getBills(status).then(setRows).catch(()=>setRows([]));useEffect(()=>{localStorage.removeItem("bill_filter");void load()},[status]);
+  const open=(x:any)=>{setSelected(x);setLines(x.items.map((i:any)=>({productId:i.productId,productName:i.productName,quantity:Number(i.quantity),unitPrice:Number(i.unitPrice),discount:Number(i.discount||0)})));setPayment({method:"Cash",amount:Number(x.balance||0),reference:""})};
+  const saveHeld=async()=>{try{const saved=await updateBill(selected.id,{customerId:selected.customerId,discount:selected.discount||0,notes:selected.notes,reason:"Bill revision approved in bill workspace",deviceId:localStorage.getItem("device_id"),items:lines.map(x=>({productId:x.productId,quantity:x.quantity,unitPrice:x.unitPrice,discount:x.discount}))});setSelected(saved);notify(`Bill #${saved.receiptNumber} revision ${saved.revision} saved`);await load()}catch(e){notify(e instanceof Error?e.message:"Owner or manager approval is required")}};
+  const post=async(kind:"Paid"|"Credit")=>{try{const saved=await postBill(selected.id,{status:kind,method:"Cash",amountPaid:kind==="Paid"?selected.total:0,dueAt:kind==="Credit"?new Date(Date.now()+7*86400000).toISOString():undefined,notes:"Posted from bill workspace",deviceId:localStorage.getItem("device_id")});setSelected(saved);notify(`${kind} bill posted; stock and reports updated`);await load()}catch(e){notify(e instanceof Error?e.message:"Bill could not be posted")}};
+  const recordPayment=async()=>{try{const saved=await payBill(selected.id,{...payment,deviceId:localStorage.getItem("device_id")});setSelected(saved);notify(`Payment recorded; balance ${money(saved.balance)}`);await load()}catch(e){notify(e instanceof Error?e.message:"Payment could not be recorded")}};
+  const cancel=async()=>{const reason=prompt("Owner/manager cancellation reason");if(!reason)return;try{await cancelBill(selected.id,reason,localStorage.getItem("device_id")||undefined);setSelected(undefined);notify("Held bill cancelled with audit record");await load()}catch{notify("Owner or manager authorization is required")}};
+  const print=async()=>{const credit=selected.status!=="Paid";const text=buildSaleReceipt({id:String(selected.receiptNumber),customerName:selected.customerName||"Walk-in customer",cashierName:selected.cashierName||user.name,method:selected.payments?.at(-1)?.method||"Unpaid",credit,items:lines.map(x=>({name:x.productName,quantity:x.quantity,unitPrice:x.unitPrice})),total:selected.total});await printReceiptText(selected.status==="Held"?text.replace("CREDIT SALE","UNPAID BILL").replace("STATUS: UNPAID / CREDIT",`STATUS: HELD / UNPAID\nREVISION: ${selected.revision}\nNOT A PAYMENT RECEIPT`):text)};
+  const totals={held:rows.filter(x=>x.status==="Held").length,credit:rows.filter(x=>x.status==="Credit"||x.status==="PartiallyPaid").reduce((s,x)=>s+Number(x.balance),0),overdue:rows.filter(x=>x.dueAt&&new Date(x.dueAt)<new Date()&&x.balance>0).length};
+  return <Page><Intro title="Bills & payment follow-up" text="Open, revise, post and collect against the complete live bill register."/>
+    <Filter>{["All","Pending","Held","Credit","PartiallyPaid","Paid","Cancelled"].map(x=><button className={status===x?"active":""} onClick={()=>setStatus(x)} key={x}>{x}</button>)}</Filter>
+    <Kpis items={[["Held bills",String(totals.held),"Editable unpaid orders"],["Outstanding",money(totals.credit),"Credit and partial balances"],["Overdue",String(totals.overdue),"Past due date"],["Visible bills",String(rows.length),`Filter: ${status}`]]}/>
+    <Panel title="Bill register"><div className="spec-table-wrap"><table className="spec-table"><thead><tr>{["Bill","Date","Customer","Status","Total","Paid","Balance","Action"].map(x=><th key={x}>{x}</th>)}</tr></thead><tbody>{rows.map(x=><tr key={x.id}><td>#{x.receiptNumber} · r{x.revision}</td><td>{new Date(x.occurredAt).toLocaleString()}</td><td>{x.customerName||"Walk-in"}</td><td><span className={`badge ${String(x.status).toLowerCase()}`}>{x.status}</span></td><td>{money(x.total)}</td><td>{money(x.paid)}</td><td>{money(x.balance)}</td><td><button className="table-action" onClick={()=>open(x)}>Open</button></td></tr>)}</tbody></table></div></Panel>
+    {selected&&<div className="modal bill-workspace"><section><button className="close" onClick={()=>setSelected(undefined)}>×</button><h2>Bill #{selected.receiptNumber}</h2><p className="muted">{selected.status} · Revision {selected.revision} · {selected.customerName||"Walk-in customer"}</p>
+      <div className="bill-edit-lines">{lines.map((x,i)=><div key={x.productId}><b>{x.productName}</b><Field label="Quantity"><input type="number" min=".01" step=".01" disabled={selected.status!=="Held"} value={x.quantity} onChange={e=>setLines(lines.map((v,j)=>j===i?{...v,quantity:+e.target.value}:v))}/></Field><Field label="Price"><input type="number" min="0" disabled={selected.status!=="Held"} value={x.unitPrice} onChange={e=>setLines(lines.map((v,j)=>j===i?{...v,unitPrice:+e.target.value}:v))}/></Field><strong>{money(x.quantity*x.unitPrice)}</strong></div>)}</div>
+      <div className="button-row">{selected.status==="Held"&&<><button onClick={saveHeld}>Save revision</button><button onClick={()=>post("Paid")}>Post paid</button><button onClick={()=>post("Credit")} disabled={!selected.customerId}>Post credit</button><button className="danger-button" onClick={cancel}>Cancel</button></>}<button onClick={print}>Print current document</button></div>
+      {(selected.status==="Credit"||selected.status==="PartiallyPaid")&&<div className="payment-box"><h3>Record later payment</h3><Field label="Method"><select value={payment.method} onChange={e=>setPayment({...payment,method:e.target.value})}><option>Cash</option><option>M-Pesa</option><option>Card</option><option>Bank</option></select></Field><Field label="Amount"><input type="number" min=".01" max={selected.balance} value={payment.amount} onChange={e=>setPayment({...payment,amount:+e.target.value})}/></Field><Field label="Reference"><input value={payment.reference} onChange={e=>setPayment({...payment,reference:e.target.value})}/></Field><button onClick={recordPayment}>Record payment</button></div>}
+      <Panel title="Immutable revision history"><Table heads={["Revision","Action","Reason","Time"]} rows={(selected.revisions||[]).map((x:any)=>[String(x.revision),x.action,x.reason,new Date(x.createdAt).toLocaleString()])}/></Panel>
+    </section></div>}
+  </Page>
 }
 function Inventory({
   products,
@@ -365,7 +398,7 @@ function Customers() {
   const sales = useLiveQuery(() => db.sales.toArray(), []) ?? [];
   const [remote, setRemote] = useState<any[]>([]),
     [open, setOpen] = useState(false),
-    [form, setForm] = useState({ name: "", phone: "", creditLimit: 0 });
+    [form, setForm] = useState({ name: "", phone: "", creditLimit: 0 }),[editing,setEditing]=useState<any>();
   useEffect(() => {
     getCustomerSummary()
       .then(setRemote)
@@ -406,14 +439,7 @@ function Customers() {
     syncOutbox().catch(() => 0);
     setOpen(false);
   }
-  const rows = ranked.map((x) => [
-        x.name,
-        x.phone || "—",
-        money(x.totalSpent),
-        money(x.debt),
-        x.lastVisit ? new Date(x.lastVisit).toLocaleDateString() : "—",
-        x.debt > 0 ? "Debt" : "Clear",
-      ]);
+  async function saveEdit(e:FormEvent){e.preventDefault();try{await updateCustomer(editing.id,{name:editing.name,phone:editing.phone,creditLimit:editing.creditLimit,notes:editing.notes,active:editing.active!==false,reason:editing.reason});setEditing(undefined);setRemote(await getCustomerSummary())}catch{alert("A reason and authorized session are required")}}
   return (
     <Page>
       <Intro
@@ -480,19 +506,8 @@ function Customers() {
         <span className="watch">Watch</span>
         <span className="clear">Clear</span>
       </div>
-      <Panel title="Customer directory">
-        <Table
-          heads={[
-            "Customer",
-            "Phone",
-            "Money spent",
-            "Debt",
-            "Last visit",
-            "Risk",
-          ]}
-          rows={rows}
-        />
-      </Panel>
+      <Panel title="Customer directory"><div className="spec-table-wrap"><table className="spec-table"><thead><tr>{["Customer","Phone","Money spent","Debt","Last visit","Risk","Action"].map(x=><th key={x}>{x}</th>)}</tr></thead><tbody>{ranked.map(x=><tr className={x.debt>0?"row-debt":""} key={x.id||x.name}><td>{x.name}</td><td>{x.phone||"—"}</td><td>{money(x.totalSpent)}</td><td>{money(x.debt)}</td><td>{x.lastVisit?new Date(x.lastVisit).toLocaleDateString():"—"}</td><td><span className={`badge ${x.debt>0?"debt":"clear"}`}>{x.debt>0?"Debt":"Clear"}</span></td><td><button className="table-action" onClick={()=>setEditing({...x,active:x.active!==false,reason:""})}>Edit</button></td></tr>)}</tbody></table></div></Panel>
+      {editing&&<div className="modal record-editor"><section><button className="close" onClick={()=>setEditing(undefined)}>×</button><h2>Edit customer</h2><form className="customer-form" onSubmit={saveEdit}><Field label="Name"><input required value={editing.name} onChange={e=>setEditing({...editing,name:e.target.value})}/></Field><Field label="Phone"><input value={editing.phone||""} onChange={e=>setEditing({...editing,phone:e.target.value})}/></Field><Field label="Credit limit"><input type="number" min="0" value={editing.creditLimit} onChange={e=>setEditing({...editing,creditLimit:+e.target.value})}/></Field><Field label="Notes"><input value={editing.notes||""} onChange={e=>setEditing({...editing,notes:e.target.value})}/></Field><Field label="Reason"><input required value={editing.reason} onChange={e=>setEditing({...editing,reason:e.target.value})}/></Field><label><input type="checkbox" checked={editing.active} onChange={e=>setEditing({...editing,active:e.target.checked})}/> Active (clear to archive)</label><button>Save controlled change</button></form></section></div>}
     </Page>
   );
 }
@@ -651,13 +666,14 @@ function SmartInsights(){
   </Page>
 }
 function Audit() {
-  const [remote, setRemote] = useState<any[]>([]);
+  const [remote, setRemote] = useState<any[]>([]),[action,setAction]=useState("All actions"),[actor,setActor]=useState("All users"),[date,setDate]=useState("");
   useEffect(() => {
     getAudit()
       .then(setRemote)
       .catch(() => setRemote([]));
   }, []);
-  const rows = remote.map(x=>[new Date(x.occurredAt).toLocaleString(),x.actor,`${x.action} ${x.entityType}`,x.details,x.deviceId||"Server","Synced"]);
+  const filtered=remote.filter(x=>(action==="All actions"||x.entityType===action)&&(actor==="All users"||x.actor===actor)&&(!date||String(x.occurredAt).startsWith(date)));
+  const rows = filtered.map(x=>[new Date(x.occurredAt).toLocaleString(),x.actor,`${x.action} ${x.entityType}`,x.details,x.deviceId||"Server","Synced"]);
   return (
     <Page>
       <Intro
@@ -665,19 +681,18 @@ function Audit() {
         text="Every sensitive action is timestamped with user, device and sync status."
       />
       <Filter>
-        <select>
+        <select value={action} onChange={e=>setAction(e.target.value)}>
           <option>All actions</option>
-          <option>Sales</option>
-          <option>Stock</option>
+          <option value="Sale">Sale</option><option value="Product">Product</option><option value="Customer">Customer</option><option value="Staff">Staff</option><option value="Expense">Expense</option>
         </select>
-        <select>
+        <select value={actor} onChange={e=>setActor(e.target.value)}>
           <option>All users</option>
           {Array.from(new Set(remote.map(x=>x.actor))).map(x=><option key={String(x)}>{String(x)}</option>)}
         </select>
-        <input type="date" defaultValue={new Date().toISOString().slice(0,10)} />
-        <button>Filter log</button>
+        <input type="date" value={date} onChange={e=>setDate(e.target.value)} />
+        <button onClick={()=>{setAction("All actions");setActor("All users");setDate("")}}>Reset filters</button>
       </Filter>
-      <Panel title="Recent activity">
+      <Panel title={`Activity · ${rows.length} records`}>
         <Table
           heads={["Time", "User", "Action", "Record", "Device", "Sync"]}
           rows={rows}
@@ -689,7 +704,7 @@ function Audit() {
 function Staff({ notify }: { notify: (x: string) => void }) {
   const [rows, setRows] = useState<any[]>([]),
     [open, setOpen] = useState(false),
-    [form, setForm] = useState({ name: "", pin: "", role: "Cashier" });
+    [form, setForm] = useState({ name: "", pin: "", role: "Cashier" }),[editing,setEditing]=useState<any>();
   const load = () =>
     getStaff()
       .then(setRows)
@@ -708,15 +723,7 @@ function Staff({ notify }: { notify: (x: string) => void }) {
       notify("Owner authorization is required");
     }
   }
-  const display = rows.map((x) => [
-        x.name,
-        x.role,
-        x.role === "Owner" || x.role === "Manager" ? "Yes" : "No",
-        x.role === "Owner" || x.role === "Storekeeper" ? "Yes" : "No",
-        x.role === "Owner" || x.role === "Manager" ? "Yes" : "No",
-        "—",
-        x.active?"Active":"Inactive",
-      ]);
+  async function saveEdit(e:FormEvent){e.preventDefault();try{await updateStaff(editing.id,{name:editing.name,role:editing.role,active:editing.active,newPin:editing.newPin||null,reason:editing.reason});setEditing(undefined);await load();notify("Staff access updated and audited")}catch{notify("Owner authorization, reason and valid PIN are required")}}
   return (
     <Page>
       <Intro
@@ -773,24 +780,13 @@ function Staff({ notify }: { notify: (x: string) => void }) {
           </article>
         ))}
       </div>
-      <Panel title="Team & access">
-        <Table
-          heads={[
-            "Name",
-            "Role",
-            "Discount",
-            "Stock",
-            "Reports",
-            "Revenue",
-            "Status",
-          ]}
-          rows={display}
-        />
-      </Panel>
+      <Panel title="Team & access"><div className="spec-table-wrap"><table className="spec-table"><thead><tr>{["Name","Role","Discount","Stock","Reports","Status","Action"].map(x=><th key={x}>{x}</th>)}</tr></thead><tbody>{rows.map(x=><tr key={x.id}><td>{x.name}</td><td>{x.role}</td><td>{x.role==="Owner"||x.role==="Manager"?"Yes":"No"}</td><td>{x.role==="Owner"||x.role==="Storekeeper"?"Yes":"No"}</td><td>{x.role==="Owner"||x.role==="Manager"?"Yes":"No"}</td><td>{x.active?"Active":"Inactive"}</td><td><button className="table-action" onClick={()=>setEditing({...x,newPin:"",reason:""})}>Edit</button></td></tr>)}</tbody></table></div></Panel>
+      {editing&&<div className="modal record-editor"><section><button className="close" onClick={()=>setEditing(undefined)}>×</button><h2>Edit staff access</h2><form className="customer-form" onSubmit={saveEdit}><Field label="Name"><input required value={editing.name} onChange={e=>setEditing({...editing,name:e.target.value})}/></Field><Field label="Role"><select value={editing.role} onChange={e=>setEditing({...editing,role:e.target.value})}>{["Cashier","Storekeeper","Manager","Auditor","Owner"].map(x=><option key={x}>{x}</option>)}</select></Field><Field label="New PIN (optional)"><input type="password" minLength={6} value={editing.newPin} onChange={e=>setEditing({...editing,newPin:e.target.value})}/></Field><Field label="Reason"><input required value={editing.reason} onChange={e=>setEditing({...editing,reason:e.target.value})}/></Field><label><input type="checkbox" checked={editing.active} onChange={e=>setEditing({...editing,active:e.target.checked})}/> Active (clear to deactivate)</label><button>Save access change</button></form></section></div>}
     </Page>
   );
 }
-function ItemSetup({ notify }: { notify: (x: string) => void }) {
+function ItemSetup({ products,notify }: {products:Product[]; notify: (x: string) => void }) {
+  const [editing,setEditing]=useState<any>();
   const [form, setForm] = useState({
     name: "",
     category: "Beer",
@@ -812,6 +808,7 @@ function ItemSetup({ notify }: { notify: (x: string) => void }) {
       notify("Manager connection required");
     }
   }
+  async function saveEdit(e:FormEvent){e.preventDefault();try{const saved=await updateProduct(editing.id,{...editing,reason:"Item details updated from setup"});await db.products.put(saved);setEditing(undefined);notify("Item updated with audit history")}catch(e){notify(e instanceof Error?e.message:"Inventory permission required")}}
   return (
     <Page>
       <Intro
@@ -935,6 +932,10 @@ function ItemSetup({ notify }: { notify: (x: string) => void }) {
           </div>
         </Panel>
       </Two>
+      <Panel title="All items · edit or archive">
+        <div className="spec-table-wrap"><table className="spec-table"><thead><tr>{["Item","Category","Stock","Cost","Price","POS","Status","Action"].map(x=><th key={x}>{x}</th>)}</tr></thead><tbody>{products.map(x=><tr key={x.id}><td>{x.name}</td><td>{x.category}</td><td>{x.stock}</td><td>{money(x.costPrice)}</td><td>{money(x.sellingPrice)}</td><td>{x.sellable?"Yes":"No"}</td><td>{x.active?"Active":"Archived"}</td><td><button className="table-action" onClick={()=>setEditing({...x,reason:""})}>Edit</button></td></tr>)}</tbody></table></div>
+      </Panel>
+      {editing&&<div className="modal record-editor"><section><button className="close" onClick={()=>setEditing(undefined)}>×</button><h2>Edit item</h2><form className="item-form" onSubmit={saveEdit}><Field label="Name"><input required value={editing.name} onChange={e=>setEditing({...editing,name:e.target.value})}/></Field><Field label="Category"><input required value={editing.category} onChange={e=>setEditing({...editing,category:e.target.value})}/></Field><Field label="Barcode / SKU"><input value={editing.barcode||""} onChange={e=>setEditing({...editing,barcode:e.target.value})}/></Field><Field label="Unit"><input required value={editing.unit} onChange={e=>setEditing({...editing,unit:e.target.value})}/></Field><Field label="Cost price"><input type="number" min="0" value={editing.costPrice} onChange={e=>setEditing({...editing,costPrice:+e.target.value})}/></Field><Field label="Selling price"><input type="number" min="0" value={editing.sellingPrice} onChange={e=>setEditing({...editing,sellingPrice:+e.target.value})}/></Field><Field label="Minimum stock"><input type="number" min="0" value={editing.minStock} onChange={e=>setEditing({...editing,minStock:+e.target.value})}/></Field><Field label="Reason"><input required value={editing.reason} onChange={e=>setEditing({...editing,reason:e.target.value})}/></Field><div className="checks"><label><input type="checkbox" checked={editing.sellable} onChange={e=>setEditing({...editing,sellable:e.target.checked})}/> Sellable</label><label><input type="checkbox" checked={editing.active} onChange={e=>setEditing({...editing,active:e.target.checked})}/> Active (clear to archive)</label></div><button>Save controlled change</button></form></section></div>}
     </Page>
   );
 }
@@ -1237,11 +1238,11 @@ function Intro({
     </div>
   );
 }
-function Kpis({ items }: { items: string[][] }) {
+function Kpis({ items,onSelect }: { items: string[][];onSelect?:(label:string)=>void }) {
   return (
     <div className={`spec-kpis count-${items.length}`}>
       {items.map((x) => (
-        <article key={x[0]}>
+        <article key={x[0]} className={onSelect?"interactive-kpi":""} onClick={()=>onSelect?.(x[0])} role={onSelect?"button":undefined} tabIndex={onSelect?0:undefined}>
           <small>{x[0]}</small>
           <b>{x[1]}</b>
           <em>{x[2]}</em>

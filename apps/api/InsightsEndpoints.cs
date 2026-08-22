@@ -41,10 +41,10 @@ public static class InsightsEndpoints
         if (to < from) (from, to) = (to, from);
         var start = from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var end = to.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-        var sales = await db.Sales.AsNoTracking().Where(x => x.OccurredAt >= start && x.OccurredAt < end).Include(x => x.Items).Include(x => x.Payments).ToListAsync();
+        var sales = await db.Sales.AsNoTracking().Where(x => (x.Status == "Paid" || x.Status == "Credit" || x.Status == "PartiallyPaid") && x.OccurredAt >= start && x.OccurredAt < end).Include(x => x.Items).Include(x => x.Payments).ToListAsync();
         var expenses = await db.Expenses.AsNoTracking().Where(x => x.Date >= from && x.Date <= to).ToListAsync();
         var products = await db.Products.AsNoTracking().Where(x => x.Active).ToListAsync();
-        var customerSales = await db.Sales.AsNoTracking().Where(x => x.CustomerId != null).Include(x => x.Payments).ToListAsync();
+        var customerSales = await db.Sales.AsNoTracking().Where(x => x.CustomerId != null && (x.Status == "Paid" || x.Status == "Credit" || x.Status == "PartiallyPaid")).Include(x => x.Payments).ToListAsync();
         var activity = await db.AuditEvents.AsNoTracking().OrderByDescending(x => x.OccurredAt).Take(12).ToListAsync();
         var revenue = sales.Sum(x => x.Total);
         var cost = sales.SelectMany(x => x.Items).Sum(x => x.UnitCost * x.Quantity);

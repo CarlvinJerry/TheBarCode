@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { bootstrap, login, session, syncOutbox } from "./api";
+import { bootstrap, getNotifications, holdBill, login, postBill, session, syncOutbox, updateBill } from "./api";
 import {
   db,
   queueCustomer,
@@ -10,7 +10,7 @@ import {
   type Staff,
 } from "./db";
 import { Management } from "./Management";
-import { buildSaleReceipt, cachedOrganizationSettings, cachedReceiptSettings, printReceiptText } from "./receiptPrinter";
+import { buildSaleReceipt, cachedReceiptSettings, printReceiptText } from "./receiptPrinter";
 import { APP_VERSION } from "./version";
 import "./App.css";
 
@@ -18,7 +18,7 @@ type CartLine = Product & { quantity: number };
 const money = (n: number) => `KES ${n.toLocaleString()}`;
 export default function App() {
   const products =
-    useLiveQuery(() => db.products.filter((x) => x.active).toArray(), []) ?? [];
+    useLiveQuery(() => db.products.toArray(), []) ?? [];
   const staff = useLiveQuery(() => db.staff.toArray(), []) ?? [];
   const customers = useLiveQuery(() => db.customers.toArray(), []) ?? [];
   const queued = useLiveQuery(() => db.outbox.count(), []) ?? 0;
@@ -32,6 +32,8 @@ export default function App() {
     [receipt, setReceipt] = useState<string>(),
     [selectedCustomer, setSelectedCustomer] = useState<Customer>(),
     [customerOpen, setCustomerOpen] = useState(false),
+    [activeBill, setActiveBill] = useState<any>(),
+    [notifications, setNotifications] = useState<Record<string, number>>({}),
     [collapsed, setCollapsed] = useState(
       localStorage.getItem("sidebar_collapsed") === "true",
     );
@@ -43,7 +45,9 @@ export default function App() {
     const change = () => setOnline(navigator.onLine);
     addEventListener("online", change);
     addEventListener("offline", change);
-    const timer = setInterval(() => syncOutbox().catch(() => 0), 15000);
+    const refreshNotifications=()=>getNotifications().then(setNotifications).catch(()=>0);
+    void refreshNotifications();
+    const timer = setInterval(() => {syncOutbox().catch(() => 0);refreshNotifications()}, 15000);
     return () => {
       removeEventListener("online", change);
       removeEventListener("offline", change);
@@ -55,7 +59,7 @@ export default function App() {
   );
   const filtered = visibleProducts.filter(
     (p) =>
-      p.sellable &&
+      p.active && p.sellable &&
       (category === "All" || p.category === category) &&
       `${p.name} ${p.barcode ?? ""}`
         .toLowerCase()
@@ -78,6 +82,17 @@ export default function App() {
         .map((x) => (x.id === id ? { ...x, quantity: x.quantity + d } : x))
         .filter((x) => x.quantity > 0),
     );
+  const billPayload=()=>({deviceTransactionId:activeBill?.deviceTransactionId||crypto.randomUUID(),customerId:selectedCustomer?.id,staffId:user.id,discount:0,notes:"POS order",deviceId:localStorage.getItem("device_id")??"windows-pos-01",items:cart.map(x=>({productId:x.id,quantity:x.quantity,unitPrice:x.sellingPrice,discount:0}))});
+  async function ensureHeld(print=false){
+    if(!cart.length)return;
+    try{
+      const saved=activeBill?await updateBill(activeBill.id,{...billPayload(),reason:"Updated from active POS order"}):await holdBill(billPayload());setActiveBill(saved);setNotifications(x=>({...x,Sell:(x.Sell||0)+(activeBill?0:1),Bills:(x.Bills||0)+(activeBill?0:1)}));
+      const unpaid=buildSaleReceipt({id:String(saved.receiptNumber||saved.deviceTransactionId),customerName:selectedCustomer?.name||"Walk-in customer",cashierName:user.name,method:"Unpaid",credit:true,items:cart.map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
+      setReceipt(unpaid.replace("CREDIT SALE","UNPAID BILL").replace("STATUS: UNPAID / CREDIT",`STATUS: HELD / UNPAID\nREVISION: ${saved.revision||1}\nNOT A PAYMENT RECEIPT`));
+      if(print)await printReceiptText(unpaid.replace("CREDIT SALE","UNPAID BILL").replace("STATUS: UNPAID / CREDIT",`STATUS: HELD / UNPAID\nREVISION: ${saved.revision||1}\nNOT A PAYMENT RECEIPT`));
+      setMessage(`Bill #${saved.receiptNumber} held safely${print?" and unpaid copy printed":""}`);return saved;
+    }catch{setMessage("Could not hold bill on the shared server · check connection");}
+  }
   async function checkout(method: string) {
     if (!cart.length) return;
     if (method === "Credit" && !selectedCustomer) {
@@ -85,9 +100,16 @@ export default function App() {
       setMessage("Choose or register a customer before recording credit");
       return;
     }
-    const id = crypto.randomUUID(),
-      credit = method === "Credit",
+    const id = crypto.randomUUID(), credit = method === "Credit",
       customerName = selectedCustomer?.name || "Walk-in customer";
+    try{
+      const held=activeBill||await holdBill({...billPayload(),deviceTransactionId:id});
+      const dueAt=credit?new Date(Date.now()+7*86400000).toISOString():undefined;
+      const posted=await postBill(held.id,{status:credit?"Credit":"Paid",method,amountPaid:credit?0:total,dueAt,notes:credit?"Credit approved at POS":"Paid at POS",deviceId:localStorage.getItem("device_id")??"windows-pos-01"});
+      const receiptText=buildSaleReceipt({id:String(posted.receiptNumber||id),customerName,cashierName:user.name,method,credit,items:cart.map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
+      const receiptConfig=cachedReceiptSettings();setReceipt(receiptText);if((!credit&&receiptConfig.autoPrintPaidSale)||(credit&&receiptConfig.creditSalePrintMode==="Automatic"))for(let copy=0;copy<receiptConfig.copies;copy++)await printReceiptText(receiptText);
+      setCart([]);setSelectedCustomer(undefined);setActiveBill(undefined);setMessage(credit?"Credit invoice posted and added to follow-up":"Sale, payment and stock posted together");getNotifications().then(setNotifications).catch(()=>0);bootstrap().catch(()=>0);return;
+    }catch(error){if(navigator.onLine){setMessage(error instanceof Error?error.message:"Sale could not be posted");return;}}
     await queueSale({
       deviceTransactionId: id,
       customerId: selectedCustomer?.id,
@@ -114,12 +136,14 @@ export default function App() {
     if((!credit&&receiptConfig.autoPrintPaidSale)||(credit&&receiptConfig.creditSalePrintMode==="Automatic"))for(let copy=0;copy<receiptConfig.copies;copy++)await printReceiptText(receiptText);
     setCart([]);
     setSelectedCustomer(undefined);
+    setActiveBill(undefined);
     setMessage("Sale saved safely on this device");
     syncOutbox().catch(() => 0);
   }
   const views = [
     "Sell",
     "Dashboard",
+    "Bills",
     "Inventory",
     "Customers",
     "Expenses",
@@ -133,6 +157,7 @@ export default function App() {
   const icons: Record<string, string> = {
     Sell: "▦",
     Dashboard: "◫",
+    Bills: "▥",
     Inventory: "▤",
     Customers: "♙",
     Expenses: "▧",
@@ -143,6 +168,7 @@ export default function App() {
     "Item setup": "＋",
     Settings: "⚙",
   };
+  const alertKeys:Record<string,string>={Sell:"Sell",Bills:"Bills",Inventory:"Inventory",Customers:"Customers",Expenses:"Expenses","Audit trail":"AuditTrail",Settings:"Settings"};
   const today = new Intl.DateTimeFormat("en-GB", {
     weekday: "long",
     day: "numeric",
@@ -162,6 +188,7 @@ export default function App() {
     setCollapsed(next);
     localStorage.setItem("sidebar_collapsed", String(next));
   }
+  async function toggleFullscreen(){if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();}
   return (
     <div className={`shell ${collapsed ? "sidebar-collapsed" : ""}`}>
       <aside>
@@ -184,7 +211,7 @@ export default function App() {
               key={x}
             >
               <i>{icons[x]}</i>
-              {x}
+              <span>{x}</span>{(notifications[alertKeys[x]]||0)>0&&<em className="menu-alert" title={`${notifications[alertKeys[x]]} items need attention`}>{notifications[alertKeys[x]]}</em>}
             </button>
           ))}
         </nav>
@@ -211,6 +238,7 @@ export default function App() {
           <span>Built by</span>
           <b>Beyond Raw Data</b>
           <small>v{APP_VERSION}</small>
+          <button className="fullscreen-button" onClick={toggleFullscreen}>⛶ Full screen</button>
         </div>
       </aside>
       <main>
@@ -223,7 +251,7 @@ export default function App() {
             <span className={online ? "online" : "offline"}>
               {online ? "● Online" : "● Offline ready"} · {queued} queued
             </span>
-            <span>◫ 0 held</span>
+            <button className="held-status" onClick={()=>setView("Bills")}>◫ {notifications.Sell||0} held</button>
           </div>
         </header>
         {view === "Sell" ? (
@@ -243,7 +271,7 @@ export default function App() {
                   "All",
                   ...new Set(
                     visibleProducts
-                      .filter((x) => x.sellable)
+                      .filter((x) => x.active && x.sellable)
                       .map((x) => x.category),
                   ),
                 ].map((x) => (
@@ -255,9 +283,9 @@ export default function App() {
                     {x}{" "}
                     <small>
                       {x === "All"
-                        ? visibleProducts.filter((p) => p.sellable).length
+                        ? visibleProducts.filter((p) => p.active && p.sellable).length
                         : visibleProducts.filter(
-                            (p) => p.sellable && p.category === x,
+                            (p) => p.active && p.sellable && p.category === x,
                           ).length}
                     </small>
                   </button>
@@ -354,14 +382,9 @@ export default function App() {
                 Charge {money(total)} →
               </button>
               <div className="bill-actions">
-                <button>▧ Hold bill</button>
+                <button onClick={()=>ensureHeld(false)}>▧ Hold bill</button>
                 <button
-                  onClick={() =>
-                    cart.length &&
-                    printReceiptText(
-                      `${cachedOrganizationSettings().name.toUpperCase()}\nCustomer: ${selectedCustomer?.name || "Walk-in customer"}\nCURRENT BILL\n${cart.map((x) => `${x.quantity} x ${x.name}  ${money(x.quantity * x.sellingPrice)}`).join("\n")}\n----------------------------\nTOTAL  ${money(total)}`,
-                    )
-                  }
+                  onClick={() => ensureHeld(true)}
                 >
                   ▤ Print bill
                 </button>
@@ -374,6 +397,7 @@ export default function App() {
             products={visibleProducts}
             user={user}
             notify={setMessage}
+            navigate={setView}
           />
         )}{" "}
       </main>

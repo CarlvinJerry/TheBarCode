@@ -23,4 +23,14 @@ export async function saveOrganization(value:Record<string,unknown>){return requ
 export async function saveReceiptConfiguration(value:Record<string,unknown>){return request('/settings/receipt',{method:'PUT',body:JSON.stringify(value)});}
 export async function saveBranch(value:Record<string,unknown>){return request('/settings/branches',{method:'PUT',body:JSON.stringify(value)});}
 export async function saveTerminalConfiguration(value:Record<string,unknown>){return request('/settings/terminals',{method:'PUT',body:JSON.stringify(value)});}
+export async function getBills(status='All'){return request(`/bills?status=${encodeURIComponent(status)}`);}
+export async function holdBill(value:Record<string,unknown>){return request('/bills/hold',{method:'POST',body:JSON.stringify(value)});}
+export async function updateBill(id:string,value:Record<string,unknown>){return request(`/bills/${id}`,{method:'PUT',body:JSON.stringify(value)});}
+export async function postBill(id:string,value:Record<string,unknown>){return request(`/bills/${id}/post`,{method:'POST',body:JSON.stringify(value)});}
+export async function payBill(id:string,value:Record<string,unknown>){return request(`/bills/${id}/payments`,{method:'POST',body:JSON.stringify(value)});}
+export async function cancelBill(id:string,reason:string,deviceId?:string){return request(`/bills/${id}/cancel?reason=${encodeURIComponent(reason)}&deviceId=${encodeURIComponent(deviceId||'')}`,{method:'POST'});}
+export async function getNotifications(){return request('/notifications');}
+export async function updateProduct(id:string,value:Record<string,unknown>){return request(`/products/${id}`,{method:'PUT',body:JSON.stringify(value)});}
+export async function updateCustomer(id:string,value:Record<string,unknown>){return request(`/customers/${id}`,{method:'PUT',body:JSON.stringify(value)});}
+export async function updateStaff(id:string,value:Record<string,unknown>){return request(`/staff/${id}`,{method:'PUT',body:JSON.stringify(value)});}
 export type { LocalSale };
