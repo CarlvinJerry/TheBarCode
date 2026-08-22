@@ -9,4 +9,5 @@
 .vscode/
 *.user
 *.log
-
+installer/stage/
+installer/output/

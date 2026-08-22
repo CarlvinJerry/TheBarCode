@@ -1,0 +1,14 @@
+{
+  "version": "1.1.0",
+  "channel": "local-windows",
+  "summary": "Native Windows installer, XP-80 printing, multi-terminal readiness and interface controls.",
+  "downloadUrl": "",
+  "sha256": "1FB6623043A3B98C0D61DF0EB8B7A2219151113B38E989EE2950D7369EECCC40",
+  "publishedAt": "2026-08-22T00:00:00+03:00",
+  "notes": [
+    "Added native Windows installation profile while preserving Docker deployment.",
+    "Added version display, update checks, logout, themes and collapsible navigation.",
+    "Added institution, outlet, terminal and shared API configuration.",
+    "Bundled the verified Xprinter receipt-driver installer."
+  ]
+}
