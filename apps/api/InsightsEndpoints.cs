@@ -11,40 +11,40 @@ public static class InsightsEndpoints
     {
         var secured = app.MapGroup("/api").RequireAuthorization();
 
-        secured.MapGet("/operations/overview", async (DateOnly? from, DateOnly? to, AppDbContext db) =>
+        secured.MapGet("/operations/overview", async (DateOnly? from, DateOnly? to, AppDbContext db,System.Security.Claims.ClaimsPrincipal principal) =>
         {
             var endDate = to ?? DateOnly.FromDateTime(DateTime.UtcNow);
             var startDate = from ?? endDate.AddDays(-29);
-            return Results.Ok(await BuildSnapshot(db, startDate, endDate));
+            return Results.Ok(await BuildSnapshot(db, startDate, endDate,Security.IsDemo(principal)));
         });
 
-        secured.MapGet("/expenses", async (DateOnly? from, DateOnly? to, string? category, AppDbContext db) =>
+        secured.MapGet("/expenses", async (DateOnly? from, DateOnly? to, string? category, AppDbContext db,System.Security.Claims.ClaimsPrincipal principal) =>
         {
-            var query = db.Expenses.AsNoTracking().AsQueryable();
+            var demo=Security.IsDemo(principal);var query = db.Expenses.AsNoTracking().Where(x=>x.IsDemo==demo).AsQueryable();
             if (from is not null) query = query.Where(x => x.Date >= from);
             if (to is not null) query = query.Where(x => x.Date <= to);
             if (!string.IsNullOrWhiteSpace(category) && category != "All") query = query.Where(x => x.Category == category);
             return await query.OrderByDescending(x => x.Date).ThenByDescending(x => x.CreatedAt).ToListAsync();
         });
 
-        secured.MapGet("/insights", async (DateOnly? from, DateOnly? to, AppDbContext db, SmartInsightsService service, CancellationToken ct) =>
+        secured.MapGet("/insights", async (DateOnly? from, DateOnly? to, AppDbContext db, SmartInsightsService service,System.Security.Claims.ClaimsPrincipal principal,CancellationToken ct) =>
         {
             var endDate = to ?? DateOnly.FromDateTime(DateTime.UtcNow);
             var startDate = from ?? endDate.AddDays(-29);
-            var snapshot = await BuildSnapshot(db, startDate, endDate);
+            var snapshot = await BuildSnapshot(db, startDate, endDate,Security.IsDemo(principal));
             return Results.Ok(await service.Generate(snapshot, ct));
         }).RequireAuthorization(p => p.RequireRole("Owner", "Manager", "Auditor"));
     }
 
-    public static async Task<OperationalSnapshot> BuildSnapshot(AppDbContext db, DateOnly from, DateOnly to)
+    public static async Task<OperationalSnapshot> BuildSnapshot(AppDbContext db, DateOnly from, DateOnly to,bool demo=false)
     {
         if (to < from) (from, to) = (to, from);
         var start = from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var end = to.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-        var allSales=await db.Sales.AsNoTracking().Where(x=>x.Status=="Paid"||x.Status=="Credit"||x.Status=="PartiallyPaid").Include(x=>x.Items).Include(x=>x.Payments).ToListAsync();
+        var allSales=await db.Sales.AsNoTracking().Where(x=>x.IsDemo==demo&&(x.Status=="Paid"||x.Status=="Credit"||x.Status=="PartiallyPaid")).Include(x=>x.Items).Include(x=>x.Payments).ToListAsync();
         var sales=allSales.Where(x=>x.OccurredAt>=start&&x.OccurredAt<end).ToList();
-        var expenses = await db.Expenses.AsNoTracking().Where(x => x.Date >= from && x.Date <= to).ToListAsync();
-        var products = await db.Products.AsNoTracking().Where(x => x.Active).ToListAsync();
+        var expenses = await db.Expenses.AsNoTracking().Where(x =>x.IsDemo==demo&&x.Date >= from && x.Date <= to).ToListAsync();
+        var products = await db.Products.AsNoTracking().Where(x => x.Active&&x.IsDemo==demo).ToListAsync();
         var velocityStart=DateTimeOffset.UtcNow.AddDays(-30);var recentSales=allSales.Where(x=>(x.PostedAt??x.OccurredAt)>=velocityStart).ToList();var recentLines=recentSales.SelectMany(x=>x.Items).GroupBy(x=>x.ProductId).ToDictionary(x=>x.Key,x=>x.Sum(line=>line.Quantity)/30m);
         var customerSales=allSales.Where(x=>x.CustomerId!=null).ToList();
         var rangePayments=allSales.SelectMany(x=>x.Payments).Where(x=>x.PaidAt>=start&&x.PaidAt<end).ToList();

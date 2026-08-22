@@ -1,4 +1,4 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.4";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.5";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
   "Verified role-aware item CRUD with readable authorization and validation reasons",

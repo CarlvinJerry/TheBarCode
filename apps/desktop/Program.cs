@@ -70,6 +70,7 @@ internal static class Program
         info.Environment["Bootstrap__AdminPin"] = config.OwnerPin();
         info.Environment["AllowedOrigins__0"] = AppUrl;
         info.Environment["Release__Channel"] = "lite-windows";
+        info.Environment["Maintenance__BackupDirectory"] = paths.BackupDir;
         api = Process.Start(info) ?? throw new InvalidOperationException("The local API process could not be started.");
         _ = Pump(api.StandardOutput, paths.ApiLog);
         _ = Pump(api.StandardError, paths.ApiLog);
@@ -109,6 +110,13 @@ internal static class Program
         while (await reader.ReadLineAsync() is { } line) await File.AppendAllTextAsync(file, $"{DateTimeOffset.Now:O} {line}{Environment.NewLine}");
     }
 
+    internal static async Task RestoreBackup(AppPaths paths,string fileName)
+    {
+        var safeName=Path.GetFileName(fileName);var source=Path.GetFullPath(Path.Combine(paths.BackupDir,safeName));var root=Path.GetFullPath(paths.BackupDir)+Path.DirectorySeparatorChar;
+        if(string.IsNullOrWhiteSpace(safeName)||!source.StartsWith(root,StringComparison.OrdinalIgnoreCase)||!File.Exists(source))throw new FileNotFoundException("The selected backup no longer exists.");
+        Stop(api);Stop(bridge);File.Copy(source,paths.DatabaseFile,true);foreach(var suffix in new[]{"-wal","-shm"})if(File.Exists(paths.DatabaseFile+suffix))File.Delete(paths.DatabaseFile+suffix);
+        var configuration=LiteConfiguration.Load(paths.ConfigFile)??throw new InvalidOperationException("Dukora configuration could not be loaded.");await EnsureApi(paths,configuration);StartPrintBridge(paths);
+    }
     static void Stop(Process? process) { try { if (process is { HasExited: false }) process.Kill(true); } catch { } process?.Dispose(); }
     sealed record Health(string Status);
 }
@@ -155,14 +163,18 @@ internal sealed class DukoraWindow : Form
     async void HandleWebMessage(object? sender,CoreWebView2WebMessageReceivedEventArgs e)
     {
         if(!Uri.TryCreate(e.Source,UriKind.Absolute,out var source)||source.Host!="127.0.0.1"||source.Port!=8090)return;
-        UpdateCommand? command;try{command=JsonSerializer.Deserialize<UpdateCommand>(e.WebMessageAsJson,new JsonSerializerOptions{PropertyNameCaseInsensitive=true});}catch{return;}
+        DesktopCommand? command;try{command=JsonSerializer.Deserialize<DesktopCommand>(e.WebMessageAsJson,new JsonSerializerOptions{PropertyNameCaseInsensitive=true});}catch{return;}
+        if(command?.Command=="restoreBackup")
+        {
+            try{if(MessageBox.Show($"Restore {command.FileName}?\n\nCurrent records will be replaced by this backup and Dukora will reload.","Restore Dukora backup",MessageBoxButtons.YesNo,MessageBoxIcon.Warning)!=DialogResult.Yes){Reply(false,"Restore cancelled","dukoraRestore");return;}await Dukora.Desktop.Program.RestoreBackup(paths,command.FileName??"");Reply(true,"Backup restored. Dukora is reloading.","dukoraRestore");browser.CoreWebView2.Navigate(url);}catch(Exception ex){Reply(false,ex.Message,"dukoraRestore");}return;
+        }
         if(command?.Command!="installUpdate")return;
         try
         {
             if(MessageBox.Show($"Install Dukora {command.Version}?\n\nDukora will verify the download, back up your database, close, install the update and reopen.","Dukora update",MessageBoxButtons.YesNo,MessageBoxIcon.Information)!=DialogResult.Yes){Reply(false,"Update cancelled");return;}
             if(!Uri.TryCreate(command.DownloadUrl,UriKind.Absolute,out var download)||download.Scheme!="https"||!TrustedReleaseHost(download.Host))throw new InvalidOperationException("The release URL is not an approved Beyond Raw Data HTTPS address.");
             if(string.IsNullOrWhiteSpace(command.Sha256)||command.Sha256.Length!=64)throw new InvalidOperationException("The release manifest does not contain a valid SHA-256 checksum.");
-            var updates=Path.Combine(paths.Root,"Updates");Directory.CreateDirectory(updates);var installer=Path.Combine(updates,$"Dukora-Lite-Setup-{SafeVersion(command.Version)}-x64.exe");
+            var updates=Path.Combine(paths.Root,"Updates");Directory.CreateDirectory(updates);var installer=Path.Combine(updates,$"Dukora-Lite-Setup-{SafeVersion(command.Version??"update")}-x64.exe");
             using(var client=new HttpClient{Timeout=TimeSpan.FromMinutes(15)})await using(var input=await client.GetStreamAsync(download))await using(var output=File.Create(installer)){await input.CopyToAsync(output);}
             await using(var stream=File.OpenRead(installer)){var actual=Convert.ToHexString(await SHA256.HashDataAsync(stream));if(!actual.Equals(command.Sha256,StringComparison.OrdinalIgnoreCase)){File.Delete(installer);throw new InvalidOperationException("The downloaded installer failed checksum verification and was deleted.");}}
             if(File.Exists(paths.DatabaseFile)){Directory.CreateDirectory(paths.BackupDir);File.Copy(paths.DatabaseFile,Path.Combine(paths.BackupDir,$"dukora-before-update-{DateTime.Now:yyyyMMdd-HHmmss}.db"),true);}
@@ -172,10 +184,10 @@ internal sealed class DukoraWindow : Form
         }
         catch(Exception ex){await File.AppendAllTextAsync(paths.DesktopLog,$"{DateTimeOffset.Now:O} Update failed: {ex}{Environment.NewLine}");Reply(false,ex.Message);}
     }
-    void Reply(bool ok,string message)=>browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new{type="dukoraUpdate",ok,message}));
+    void Reply(bool ok,string message,string type="dukoraUpdate")=>browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new{type,ok,message}));
     static bool TrustedReleaseHost(string host)=>host.Equals("beyondrawdata.com",StringComparison.OrdinalIgnoreCase)||host.EndsWith(".beyondrawdata.com",StringComparison.OrdinalIgnoreCase)||host.Equals("beyondrawdata.co.ke",StringComparison.OrdinalIgnoreCase)||host.EndsWith(".beyondrawdata.co.ke",StringComparison.OrdinalIgnoreCase);
     static string SafeVersion(string value)=>string.Concat(value.Where(x=>char.IsAsciiLetterOrDigit(x)||x is '.' or '-' or '_'));
-    sealed record UpdateCommand(string Command,string Version,string DownloadUrl,string Sha256);
+    sealed record DesktopCommand(string Command,string? Version,string? DownloadUrl,string? Sha256,string? FileName);
 }
 
 internal sealed class PinDialog : Form

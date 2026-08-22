@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { bootstrap, getNotifications, holdBill, login, postBill, session, syncOutbox, updateBill } from "./api";
+import { bootstrap, getLoginStaff, getNotifications, holdBill, login, postBill, session, syncOutbox, updateBill } from "./api";
 import {
   db,
   queueCustomer,
@@ -46,7 +46,7 @@ export default function App() {
     document.documentElement.dataset.theme = (
       localStorage.getItem("theme") || "Forest"
     ).toLowerCase();
-    bootstrap().catch(() => setMessage("Offline mode · using saved catalogue"));
+    (user?bootstrap():getLoginStaff()).catch(() => setMessage("Offline mode · using saved sign-in data"));
     const change = () => setOnline(navigator.onLine);
     addEventListener("online", change);
     addEventListener("offline", change);
@@ -63,7 +63,7 @@ export default function App() {
   useEffect(()=>{if(!message)return;const timer=setTimeout(()=>setMessage(""),5000);return()=>clearTimeout(timer)},[message]);
   const messageIsError=/unable|failed|failure|could not|cannot|invalid|error|required|permission|expired|unavailable|refused|correction/i.test(message);
   const visibleProducts = products.filter((p) =>
-    user?.name === "Demo User" ? p.isDemo : !p.isDemo,
+    user?.isDemo ? p.isDemo : !p.isDemo,
   );
   const filtered = visibleProducts.filter(
     (p) =>
@@ -129,6 +129,7 @@ export default function App() {
       discount: 0,
       occurredAt: new Date().toISOString(),
       deviceId: localStorage.getItem("device_id") ?? "windows-pos-01",
+      isDemo:Boolean(user.isDemo),
       items: cart.map((x) => ({
         productId: x.id,
         productName: x.name,
@@ -182,6 +183,7 @@ export default function App() {
     setCart([]);
     setSelectedCustomer(undefined);
     setUser(null);
+    void getLoginStaff();
   }
   function toggleSidebar() {
     const next = !collapsed;
@@ -451,7 +453,7 @@ function Login({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     try {
-      onLogin(await login(staffId, pin));
+      const signedIn=await login(staffId,pin);await bootstrap();onLogin(signedIn);
     } catch {
       setError("Unable to sign in. Check the PIN and server connection.");
     }

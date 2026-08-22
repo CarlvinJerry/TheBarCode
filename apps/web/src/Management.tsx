@@ -40,6 +40,9 @@ import {
   getExpenses,
   getInsights,
   getInsightsSettings,
+  getMaintenanceBackups,
+  createMaintenanceBackup,
+  purgeLiveData,
   getOperationalOverview,
   getProductImportBatches,
   getStaff,
@@ -71,6 +74,7 @@ import {
   queueCustomer,
   queueStockMovement,
   removeLocalDemo,
+  purgeLocalLiveData,
   type Product,
 } from "./db";
 const money = (n: number) => `KES ${Number(n || 0).toLocaleString()}`;
@@ -1023,9 +1027,11 @@ function Settings({
   const [availableUpdate, setAvailableUpdate] = useState<{ version: string; downloadUrl: string; sha256:string; summary?: string }>();
   const [updateBusy,setUpdateBusy]=useState(false);
   const [insightsConfig,setInsightsConfig]=useState({enabled:false,endpoint:"https://api.openai.com/v1/chat/completions",model:"gpt-5-mini",apiKey:"",apiKeyConfigured:false,clearApiKey:false,allowUserNames:false});
+  const [backups,setBackups]=useState<any[]>([]),[purgeConfirmation,setPurgeConfirmation]=useState(""),[purgeReason,setPurgeReason]=useState(""),[maintenanceBusy,setMaintenanceBusy]=useState(false);
   useEffect(() => {
     getSettings().then((data)=>{setOrganization(data.organization);setReceiptConfig(data.receipt);setBranches(data.branches);setTerminals(data.terminals);localStorage.setItem("organization_profile",JSON.stringify(data.organization));localStorage.setItem("receipt_configuration",JSON.stringify(data.receipt));if(!branchId&&data.branches.length)setBranchId(data.branches[0].id)}).catch(()=>notify("Shared settings unavailable · using saved terminal configuration"));
     if(["Owner","Manager"].includes(user.role))getInsightsSettings().then(x=>setInsightsConfig(current=>({...current,...x,apiKey:"",clearApiKey:false}))).catch(()=>0);
+    if(user.role==="Owner")getMaintenanceBackups().then(setBackups).catch(()=>0);
     listSilentPrinters()
       .then((items) => {
         setPrinters(items);
@@ -1087,6 +1093,9 @@ function Settings({
     await removeLocalDemo();
     notify("Demo records removed");
   }
+  async function backupNow(){setMaintenanceBusy(true);try{const saved=await createMaintenanceBackup();setBackups(await getMaintenanceBackups());notify(`Backup saved locally: ${saved.fileName}`)}catch(e){notify(e instanceof Error?e.message:"Backup could not be created")}finally{setMaintenanceBusy(false)}}
+  async function purgeNow(){if(purgeConfirmation!=="PURGE LIVE DATA")return;setMaintenanceBusy(true);try{const result=await purgeLiveData(purgeConfirmation,purgeReason);await purgeLocalLiveData();await bootstrap();setBackups(await getMaintenanceBackups());setPurgeConfirmation("");setPurgeReason("");notify(`Live records purged after backup ${result.backup.fileName}`);dispatchEvent(new CustomEvent("dukora:attention-refresh"))}catch(e){notify(e instanceof Error?e.message:"Live data could not be purged")}finally{setMaintenanceBusy(false)}}
+  function restoreBackup(fileName:string){const desktop=(window as any).chrome?.webview;if(!desktop){notify("Restore is available from the installed Dukora desktop app");return}desktop.postMessage({command:"restoreBackup",fileName})}
   return (
     <Page>
       <Intro
@@ -1256,6 +1265,14 @@ function Settings({
         <div className="receipt-config-grid"><Field label="HTTPS chat-completions endpoint"><input value={insightsConfig.endpoint} onChange={e=>setInsightsConfig({...insightsConfig,endpoint:e.target.value})}/></Field><Field label="Model"><input value={insightsConfig.model} onChange={e=>setInsightsConfig({...insightsConfig,model:e.target.value})}/></Field><Field label={insightsConfig.apiKeyConfigured?"Replace API key (configured)":"API key"}><input type="password" autoComplete="new-password" value={insightsConfig.apiKey} onChange={e=>setInsightsConfig({...insightsConfig,apiKey:e.target.value})}/></Field></div>
         <div className="receipt-toggles"><label><input type="checkbox" checked={insightsConfig.enabled} onChange={e=>setInsightsConfig({...insightsConfig,enabled:e.target.checked})}/> Enable configured AI provider</label><label><input type="checkbox" checked={insightsConfig.allowUserNames} onChange={e=>setInsightsConfig({...insightsConfig,allowUserNames:e.target.checked})}/> Allow staff names in operational activity summaries</label><label><input type="checkbox" checked={insightsConfig.clearApiKey} onChange={e=>setInsightsConfig({...insightsConfig,clearApiKey:e.target.checked})}/> Remove saved API key</label></div><button className="outline-button" onClick={persistInsights}>Save Smart Insights configuration</button>
       </Panel>}
+      {user.role === "Owner" && (
+        <Panel title="Data protection & purge">
+          <p className="muted">Create local database backups, restore an earlier snapshot, or remove live business records before handover. Purge always creates and verifies a backup first. Staff accounts, business settings, terminals, receipt settings and the separate Demo environment are preserved.</p>
+          <div className="button-row"><button disabled={maintenanceBusy} onClick={backupNow}>{maintenanceBusy?"Working…":"Back up now"}</button></div>
+          <div className="setting-list">{backups.length===0?<span><small>No manual backups yet</small></span>:backups.slice(0,10).map(x=><span key={x.fileName}><b>{new Date(x.createdAt).toLocaleString()}</b><small>{x.fileName} · {(Number(x.sizeBytes)/1048576).toFixed(1)} MB</small><button className="table-action" disabled={maintenanceBusy} onClick={()=>restoreBackup(x.fileName)}>Restore</button></span>)}</div>
+          <div className="settings-fields purge-controls"><Field label="Reason for purge"><input value={purgeReason} onChange={e=>setPurgeReason(e.target.value)} placeholder="For example: remove pre-launch test entries"/></Field><Field label="Type PURGE LIVE DATA to confirm"><input value={purgeConfirmation} onChange={e=>setPurgeConfirmation(e.target.value)} autoComplete="off"/></Field><button className="danger-button" disabled={maintenanceBusy||purgeConfirmation!=="PURGE LIVE DATA"} onClick={purgeNow}>{maintenanceBusy?"Backing up and purging…":"Back up, then purge live records"}</button></div>
+        </Panel>
+      )}
       {user.role === "Owner" && (
         <Panel title="Demo environment">
           <p className="muted">
