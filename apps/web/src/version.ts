@@ -1,6 +1,9 @@
 export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.5";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Owner-only verified local backup, purge and desktop restore controls",
+  "Strict Demo and live institution data isolation across devices and analytics",
+  "Authoritative approval and notification reconciliation with faster reports and insights",
   "Verified role-aware item CRUD with readable authorization and validation reasons",
   "Automatic dialog closing after successful transactional actions",
   "Green success and red failure messages with automatic dismissal",
