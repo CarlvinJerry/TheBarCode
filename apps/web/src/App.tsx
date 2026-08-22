@@ -30,10 +30,12 @@ export default function App() {
     [message, setMessage] = useState(""),
     [online, setOnline] = useState(navigator.onLine),
     [receipt, setReceipt] = useState<string>(),
+    [receiptKind,setReceiptKind]=useState<"Unpaid"|"Paid"|"Credit">("Unpaid"),
     [selectedCustomer, setSelectedCustomer] = useState<Customer>(),
     [customerOpen, setCustomerOpen] = useState(false),
     [activeBill, setActiveBill] = useState<any>(),
     [notifications, setNotifications] = useState<Record<string, number>>({}),
+    [expandedGroups,setExpandedGroups]=useState<Record<string,boolean>>({Operations:false,"Data & Setup":false}),
     [collapsed, setCollapsed] = useState(
       localStorage.getItem("sidebar_collapsed") === "true",
     );
@@ -46,11 +48,13 @@ export default function App() {
     addEventListener("online", change);
     addEventListener("offline", change);
     const refreshNotifications=()=>getNotifications().then(setNotifications).catch(()=>0);
+    const attention=()=>void refreshNotifications();addEventListener("dukora:attention",attention);
     void refreshNotifications();
     const timer = setInterval(() => {syncOutbox().catch(() => 0);refreshNotifications()}, 15000);
     return () => {
       removeEventListener("online", change);
       removeEventListener("offline", change);
+      removeEventListener("dukora:attention",attention);
       clearInterval(timer);
     };
   }, []);
@@ -83,15 +87,14 @@ export default function App() {
         .filter((x) => x.quantity > 0),
     );
   const billPayload=()=>({deviceTransactionId:activeBill?.deviceTransactionId||crypto.randomUUID(),customerId:selectedCustomer?.id,staffId:user.id,discount:0,notes:"POS order",deviceId:localStorage.getItem("device_id")??"windows-pos-01",items:cart.map(x=>({productId:x.id,quantity:x.quantity,unitPrice:x.sellingPrice,discount:0}))});
-  async function ensureHeld(print=false){
+  async function ensureHeld(openPrint=false){
     if(!cart.length)return;
     try{
-      const saved=activeBill?await updateBill(activeBill.id,{...billPayload(),reason:"Updated from active POS order",expectedRevision:activeBill.revision}):await holdBill(billPayload());setActiveBill(saved);setNotifications(x=>({...x,Sell:(x.Sell||0)+(activeBill?0:1),Bills:(x.Bills||0)+(activeBill?0:1)}));
-      const unpaid=buildSaleReceipt({id:String(saved.receiptNumber||saved.deviceTransactionId),customerName:selectedCustomer?.name||"Walk-in customer",cashierName:user.name,method:"Unpaid",credit:true,items:cart.map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
-      setReceipt(unpaid.replace("CREDIT SALE","UNPAID BILL").replace("STATUS: UNPAID / CREDIT",`STATUS: HELD / UNPAID\nREVISION: ${saved.revision||1}\nNOT A PAYMENT RECEIPT`));
-      if(print)await printReceiptText(unpaid.replace("CREDIT SALE","UNPAID BILL").replace("STATUS: UNPAID / CREDIT",`STATUS: HELD / UNPAID\nREVISION: ${saved.revision||1}\nNOT A PAYMENT RECEIPT`));
-      setMessage(`Bill #${saved.receiptNumber} held safely${print?" and unpaid copy printed":""}`);return saved;
-    }catch{setMessage("Could not hold bill on the shared server · check connection");}
+      const wasNew=!activeBill;const saved=activeBill?await updateBill(activeBill.id,{...billPayload(),reason:"Updated from active POS order",expectedRevision:activeBill.revision}):await holdBill(billPayload());setActiveBill(saved);if(wasNew)setNotifications(x=>({...x,Sell:(x.Sell||0)+1,Bills:(x.Bills||0)+1}));getNotifications().then(setNotifications).catch(()=>0);
+      const unpaid=buildSaleReceipt({id:String(saved.receiptNumber||saved.deviceTransactionId),customerName:selectedCustomer?.name||"Walk-in customer",cashierName:user.name,method:"Unpaid",status:"UNPAID",credit:true,items:cart.map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
+      if(openPrint){setReceiptKind("Unpaid");setReceipt(`${unpaid}\nREVISION: ${saved.revision||1}`)}
+      setMessage(`Bill #${saved.receiptNumber} is held and awaiting payment or credit${openPrint?" · confirm Print Unpaid Bill":""}`);return saved;
+    }catch(error){setMessage(error instanceof Error?`Could not hold bill: ${error.message}`:"Could not hold bill on the shared server");}
   }
   async function checkout(method: string) {
     if (!cart.length) return;
@@ -106,8 +109,8 @@ export default function App() {
       const held=activeBill?await updateBill(activeBill.id,{...billPayload(),reason:"Final POS revision before posting",expectedRevision:activeBill.revision}):await holdBill({...billPayload(),deviceTransactionId:id});
       const dueAt=credit?new Date(Date.now()+7*86400000).toISOString():undefined;
       const posted=await postBill(held.id,{status:credit?"Credit":"Paid",method,amountPaid:credit?0:total,dueAt,notes:credit?"Credit approved at POS":"Paid at POS",deviceId:localStorage.getItem("device_id")??"windows-pos-01"});
-      const receiptText=buildSaleReceipt({id:String(posted.receiptNumber||id),customerName,cashierName:user.name,method,credit,items:cart.map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
-      const receiptConfig=cachedReceiptSettings();setReceipt(receiptText);if((!credit&&receiptConfig.autoPrintPaidSale)||(credit&&receiptConfig.creditSalePrintMode==="Automatic"))for(let copy=0;copy<receiptConfig.copies;copy++)await printReceiptText(receiptText);
+      const receiptText=buildSaleReceipt({id:String(posted.receiptNumber||id),customerName,cashierName:user.name,method,status:credit?"CREDIT":"PAID",credit,items:cart.map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
+      const receiptConfig=cachedReceiptSettings();setReceiptKind(credit?"Credit":"Paid");setReceipt(receiptText);if((!credit&&receiptConfig.autoPrintPaidSale)||(credit&&receiptConfig.creditSalePrintMode==="Automatic"))for(let copy=0;copy<receiptConfig.copies;copy++)await printReceiptText(receiptText);
       setCart([]);setSelectedCustomer(undefined);setActiveBill(undefined);setMessage(credit?"Credit invoice posted and added to follow-up":"Sale, payment and stock posted together");getNotifications().then(setNotifications).catch(()=>0);bootstrap().catch(()=>0);return;
     }catch(error){if(navigator.onLine){setMessage(error instanceof Error?error.message:"Sale could not be posted");return;}}
     await queueSale({
@@ -130,9 +133,9 @@ export default function App() {
       total,
       synced: false,
     });
-    const receiptText=buildSaleReceipt({id,customerName,cashierName:user.name,method,credit,items:cart.map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
+    const receiptText=buildSaleReceipt({id,customerName,cashierName:user.name,method,status:credit?"CREDIT":"PAID",credit,items:cart.map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
     const receiptConfig=cachedReceiptSettings();
-    setReceipt(receiptText);
+    setReceiptKind(credit?"Credit":"Paid");setReceipt(receiptText);
     if((!credit&&receiptConfig.autoPrintPaidSale)||(credit&&receiptConfig.creditSalePrintMode==="Automatic"))for(let copy=0;copy<receiptConfig.copies;copy++)await printReceiptText(receiptText);
     setCart([]);
     setSelectedCustomer(undefined);
@@ -140,20 +143,8 @@ export default function App() {
     setMessage("Sale saved safely on this device");
     syncOutbox().catch(() => 0);
   }
-  const views = [
-    "Sell",
-    "Dashboard",
-    "Bills",
-    "Inventory",
-    "Customers",
-    "Expenses",
-    "Reports",
-    "Smart insights",
-    "Audit trail",
-    "Staff & roles",
-    "Item setup",
-    "Settings",
-  ];
+  const primaryViews=["Sell","Dashboard","Bills","Inventory"];
+  const menuGroups={Operations:["Expense","Reports","Audit trail"],"Data & Setup":["Customers","Staff & Roles","Item Setup"]};
   const icons: Record<string, string> = {
     Sell: "▦",
     Dashboard: "◫",
@@ -161,14 +152,15 @@ export default function App() {
     Inventory: "▤",
     Customers: "♙",
     Expenses: "▧",
+    Expense: "▧",
     Reports: "⌁",
-    "Smart insights": "✦",
+    "Smart Insights": "✦",
     "Audit trail": "≡",
-    "Staff & roles": "♟",
-    "Item setup": "＋",
+    "Staff & Roles": "♟",
+    "Item Setup": "＋",
     Settings: "⚙",
   };
-  const alertKeys:Record<string,string>={Sell:"Sell",Bills:"Bills",Inventory:"Inventory",Customers:"Customers",Expenses:"Expenses","Audit trail":"AuditTrail",Settings:"Settings"};
+  const alertKeys:Record<string,string>={Sell:"Sell",Bills:"Bills",Inventory:"Inventory",Customers:"Customers",Expenses:"Expenses",Expense:"Expenses","Audit trail":"AuditTrail",Settings:"Settings"};
   const today = new Intl.DateTimeFormat("en-GB", {
     weekday: "long",
     day: "numeric",
@@ -204,7 +196,7 @@ export default function App() {
           </button>
         </div>
         <nav aria-label="Main navigation">
-          {views.map((x) => (
+          {primaryViews.map((x) => (
             <button
               className={view === x ? "active" : ""}
               onClick={() => setView(x)}
@@ -214,6 +206,8 @@ export default function App() {
               <span>{x}</span>{(notifications[alertKeys[x]]||0)>0&&<em className="menu-alert" title={`${notifications[alertKeys[x]]} items need attention`}>{notifications[alertKeys[x]]}</em>}
             </button>
           ))}
+          {Object.entries(menuGroups).map(([group,items])=><div className="nav-group" key={group}><button className="nav-group-toggle" aria-expanded={expandedGroups[group]} onClick={()=>setExpandedGroups(x=>({...x,[group]:!x[group]}))}><i>{expandedGroups[group]?"▾":"▸"}</i><span>{group}</span>{items.reduce((sum,x)=>sum+(notifications[alertKeys[x]]||0),0)>0&&<em className="menu-alert">{items.reduce((sum,x)=>sum+(notifications[alertKeys[x]]||0),0)}</em>}</button>{expandedGroups[group]&&<div className="nav-submenu">{items.map(x=><button className={view===x?"active":""} onClick={()=>setView(x)} key={x}><i>{icons[x]}</i><span>{x}</span>{(notifications[alertKeys[x]]||0)>0&&<em className="menu-alert">{notifications[alertKeys[x]]}</em>}</button>)}</div>}</div>)}
+          {["Smart Insights","Settings"].map(x=><button className={view===x?"active":""} onClick={()=>setView(x)} key={x}><i>{icons[x]}</i><span>{x}</span>{(notifications[alertKeys[x]]||0)>0&&<em className="menu-alert">{notifications[alertKeys[x]]}</em>}</button>)}
         </nav>
         <div className="user">
           <span>
@@ -372,21 +366,18 @@ export default function App() {
                 <b>{money(total)}</b>
               </div>
               <div className="pay">
-                <button onClick={() => checkout("Cash")}>▣ Cash</button>
-                <button onClick={() => checkout("M-Pesa")}>▤ M-Pesa</button>
+                <button onClick={() => checkout("Cash")}>▣ Post as Paid · Cash</button>
+                <button onClick={() => checkout("M-Pesa")}>▤ Post as Paid · M-Pesa</button>
                 <button className="credit" onClick={() => checkout("Credit")}>
-                  ◴ Credit
+                  ◴ Post as Credit
                 </button>
               </div>
-              <button className="charge" onClick={() => checkout("Cash")}>
-                Charge {money(total)} →
-              </button>
               <div className="bill-actions">
                 <button onClick={()=>ensureHeld(false)}>▧ Hold bill</button>
                 <button
                   onClick={() => ensureHeld(true)}
                 >
-                  ▤ Print bill
+                  ▤ Print Unpaid Bill
                 </button>
               </div>
             </section>
@@ -424,7 +415,7 @@ export default function App() {
             </button>
             <pre id="receipt">{receipt}</pre>
             <button className="print" onClick={() => printReceiptText(receipt)}>
-              Print receipt
+              Print {receiptKind} Bill
             </button>
           </section>
         </div>

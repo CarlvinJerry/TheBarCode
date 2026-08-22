@@ -28,7 +28,7 @@ public static class BillEndpoints
 
         api.MapPost("/bills/hold", async (HoldBillRequest r, AppDbContext db, ClaimsPrincipal principal) =>
         {
-            if (r.Items.Count == 0 || r.Items.Any(x => x.Quantity <= 0 || x.UnitPrice < 0)) return Results.BadRequest(new { error = "A bill requires valid items" });
+            if (r.Items.Count == 0 || r.Items.Any(x => x.Quantity <= 0 || x.Quantity != decimal.Truncate(x.Quantity) || x.UnitPrice < 0)) return Results.BadRequest(new { error = "Bill quantities must be positive whole units" });
             var duplicate = await db.Sales.Include(x => x.Items).Include(x => x.Payments).SingleOrDefaultAsync(x => x.DeviceTransactionId == r.DeviceTransactionId);
             if (duplicate is not null) return Results.Ok(BillView(duplicate, null, null));
             var products = await Products(r.Items, db);
@@ -49,7 +49,7 @@ public static class BillEndpoints
             if (sale is null) return Results.NotFound();
             if (sale.Status != "Held") return Results.Conflict(new { error = "Only held bills can be edited. Posted bills require a controlled reversal." });
             if (r.ExpectedRevision != sale.Revision) return Results.Conflict(new { error = $"Bill changed on another terminal. Reload revision {sale.Revision} before editing." });
-            if (r.Items.Count == 0 || r.Items.Any(x => x.Quantity <= 0 || x.UnitPrice < 0)) return Results.BadRequest(new { error = "A bill requires valid items" });
+            if (r.Items.Count == 0 || r.Items.Any(x => x.Quantity <= 0 || x.Quantity != decimal.Truncate(x.Quantity) || x.UnitPrice < 0)) return Results.BadRequest(new { error = "Bill quantities must be positive whole units" });
             var oldTotal = sale.Total;
             var oldQty = sale.Items.Sum(x => x.Quantity);
             var newQty = r.Items.Sum(x => x.Quantity);
@@ -58,9 +58,10 @@ public static class BillEndpoints
             if (lowersValue && string.IsNullOrWhiteSpace(r.Reason)) return Results.BadRequest(new { error = "An owner/manager reason is required when reducing a held bill" });
             var products = await Products(r.Items, db);
             if (products is null) return Results.BadRequest(new { error = "One or more products no longer exist" });
-            db.SaleItems.RemoveRange(sale.Items);
-            sale.Items.Clear();
+            await using var tx=await db.Database.BeginTransactionAsync();
+            var oldItems=sale.Items.ToList();await db.SaleItems.Where(x=>x.SaleId==sale.Id).ExecuteDeleteAsync();foreach(var oldItem in oldItems)db.Entry(oldItem).State=EntityState.Detached;sale.Items=[];
             ReplaceLines(sale, r.Items, products);
+            foreach(var replacement in sale.Items)db.SaleItems.Add(replacement);
             sale.CustomerId = r.CustomerId;
             sale.Discount = Math.Max(0, r.Discount);
             sale.Notes = r.Notes?.Trim();
@@ -70,6 +71,7 @@ public static class BillEndpoints
             db.BillRevisions.Add(Revision(sale, StaffId(principal), "Updated", string.IsNullOrWhiteSpace(r.Reason) ? "Items added or customer updated" : r.Reason.Trim()));
             db.AuditEvents.Add(Audit(principal, "Revised", sale, $"Revision {sale.Revision} · {oldTotal} to {sale.Total} · {r.Reason}", r.DeviceId));
             await db.SaveChangesAsync();
+            await tx.CommitAsync();
             return Results.Ok(BillView(sale, null, principal.Identity?.Name));
         });
 
@@ -78,6 +80,7 @@ public static class BillEndpoints
             var sale = await db.Sales.Include(x => x.Items).Include(x => x.Payments).Include(x => x.Revisions).SingleOrDefaultAsync(x => x.Id == id);
             if (sale is null) return Results.NotFound();
             if (sale.Status != "Held") return Results.Conflict(new { error = "This bill has already been posted" });
+            if (sale.Items.Any(x=>x.Quantity<=0||x.Quantity!=decimal.Truncate(x.Quantity)))return Results.BadRequest(new{error="Bill quantities must be positive whole units"});
             if (!PostedStatuses.Contains(r.Status)) return Results.BadRequest(new { error = "Status must be Paid, Credit or PartiallyPaid" });
             if (r.Status != "Paid" && sale.CustomerId is null) return Results.BadRequest(new { error = "Credit requires a registered customer" });
             var amount = Math.Clamp(r.AmountPaid, 0, sale.Total);

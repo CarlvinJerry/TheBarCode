@@ -8,10 +8,9 @@ internal static class EscPosReceipt {
   public static byte[] Build(string text, int columns, bool cut) {
     var normalized = text.Replace("KES", "KES").Replace('–', '-').Replace('—', '-').Replace('…', '.');
     var lines = normalized.Replace("\r", "").Split('\n').SelectMany(line => Wrap(line, columns));
-    var body = Encoding.ASCII.GetBytes(string.Join("\n", lines) + "\n");
     using var stream = new MemoryStream();
     stream.Write([0x1B, 0x40]); // ESC @: initialize once.
-    stream.Write(body);
+    foreach(var line in lines){var bold=line.Trim() is "UNPAID" or "PAID" or "CREDIT";if(bold)stream.Write([0x1B,0x45,0x01]);stream.Write(Encoding.ASCII.GetBytes(line+"\n"));if(bold)stream.Write([0x1B,0x45,0x00]);}
     stream.Write([0x1B, 0x64, 0x04]); // Feed four lines, then stop.
     if (cut) stream.Write([0x1D, 0x56, 0x42, 0x00]);
     return stream.ToArray();
