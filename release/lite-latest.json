@@ -1,12 +1,14 @@
 {
-  "version": "1.5.1",
+  "version": "1.5.2",
   "edition": "Lite",
   "channel": "lite-windows",
-  "summary": "Offline WebView2 runtime with diagnostics and automatic browser fallback.",
+  "summary": "Reliable elevated Xprinter installation and repair support.",
   "downloadUrl": "",
-  "sha256": "F5AB665154F3FEBB4F1E0257C54AB88C78E5484061AF256C9BE474EFAAD21C95",
+  "sha256": "3DCEE1C3F82E875034CEF4F3DC3AC905A9CE4EA538A39C0AC19E7D1A03475841",
   "publishedAt": "2026-08-22T00:00:00+03:00",
   "notes": [
+    "Runs the optional Xprinter vendor setup during Dukora's elevated installation stage.",
+    "Adds a Start-menu repair action that explicitly requests Windows administrator approval.",
     "Bundles Microsoft's full offline x64 Evergreen WebView2 runtime.",
     "Records the exact embedded-view initialization failure in the local desktop log.",
     "Keeps Dukora running and opens the same local UI in the default browser as a fallback.",

@@ -12,7 +12,7 @@ Dukora Lite is the low-resource, offline-first Windows edition. It uses the same
 
 ## Installation
 
-Installer: `installer\output\Dukora-Lite-Setup-1.5.1-x64.exe`
+Installer: `installer\output\Dukora-Lite-Setup-1.5.2-x64.exe`
 
 1. Run `Dukora-Lite-Setup-<version>-x64.exe` and approve Windows setup.
 2. Leave **Create a Dukora Lite desktop shortcut** selected if desired.
@@ -20,6 +20,8 @@ Installer: `installer\output\Dukora-Lite-Setup-1.5.1-x64.exe`
 4. Open Dukora Lite and create the private Owner PIN.
 
 No PostgreSQL password, Docker, firewall rule or Windows service is required. Setup includes Microsoft's full offline x64 Evergreen WebView2 runtime. If the embedded view still cannot initialize, Dukora records the exact error and opens the same local interface in the default browser while keeping the API and printing process running.
+
+The optional Xprinter task runs during elevated setup. To install or repair it later, open **Start → Dukora Lite → Install Xprinter Driver** and approve the Windows UAC prompt.
 
 ## Backups and Server migration
 

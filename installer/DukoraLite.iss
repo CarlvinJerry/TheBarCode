@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "1.5.1"
+  #define AppVersion "1.5.2"
 #endif
 #define StageDir "stage-lite"
 
@@ -29,6 +29,7 @@ Source: "{#StageDir}\print-bridge\*"; DestDir: "{app}\print-bridge"; Flags: igno
 Source: "{#StageDir}\prerequisites\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 Source: "{#StageDir}\driver\Xprinter-Receipt-Driver-2025.12.22.01.exe"; DestDir: "{app}\driver"; Flags: ignoreversion
 Source: "branding\dukora.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#StageDir}\driver-launcher\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a Dukora Lite desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: checkedonce
@@ -37,10 +38,11 @@ Name: "printerdriver"; Description: "Run the Xprinter receipt-printer driver set
 [Icons]
 Name: "{group}\Dukora Lite"; Filename: "{app}\Dukora.Desktop.exe"; IconFilename: "{app}\dukora.ico"
 Name: "{autodesktop}\Dukora Lite"; Filename: "{app}\Dukora.Desktop.exe"; IconFilename: "{app}\dukora.ico"; Tasks: desktopicon
+Name: "{group}\Install Xprinter Driver"; Filename: "{app}\Dukora.DriverInstaller.exe"; IconFilename: "{app}\dukora.ico"
 
 [Run]
 Filename: "{tmp}\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; Parameters: "/silent /install"; StatusMsg: "Installing the Microsoft desktop runtime..."; Flags: runhidden waituntilterminated
-Filename: "{app}\driver\Xprinter-Receipt-Driver-2025.12.22.01.exe"; Description: "Install Xprinter receipt-printer support"; Flags: postinstall waituntilterminated skipifsilent; Tasks: printerdriver
+Filename: "{app}\Dukora.DriverInstaller.exe"; StatusMsg: "Installing Xprinter receipt-printer support..."; Flags: waituntilterminated; Tasks: printerdriver
 Filename: "{app}\Dukora.Desktop.exe"; Description: "Open Dukora Lite"; Flags: postinstall nowait skipifsilent
 
 [Code]

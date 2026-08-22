@@ -15,7 +15,7 @@ if (Test-Path -LiteralPath $stage) {
   if (-not $resolved.StartsWith($safeRoot,[StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe staging path.' }
   Remove-Item -LiteralPath $resolved -Recurse -Force
 }
-New-Item -ItemType Directory -Force -Path "$stage\desktop","$stage\server\wwwroot","$stage\print-bridge","$stage\driver","$stage\prerequisites" | Out-Null
+New-Item -ItemType Directory -Force -Path "$stage\desktop","$stage\server\wwwroot","$stage\print-bridge","$stage\driver","$stage\driver-launcher","$stage\prerequisites" | Out-Null
 Push-Location $web
 try {
   $env:VITE_APP_VERSION=$Version
@@ -27,6 +27,7 @@ try {
 dotnet publish (Join-Path $root 'apps\api\TheBarcode.Api.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\server"
 dotnet publish (Join-Path $root 'apps\print-bridge\TheBarcode.PrintBridge.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\print-bridge"
 dotnet publish (Join-Path $root 'apps\desktop\Dukora.Desktop.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\desktop"
+dotnet publish (Join-Path $root 'apps\driver-launcher\Dukora.DriverInstaller.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\driver-launcher"
 Copy-Item -Path "$web\dist\*" -Destination "$stage\server\wwwroot" -Recurse -Force
 Copy-Item -LiteralPath $driver -Destination "$stage\driver\Xprinter-Receipt-Driver-2025.12.22.01.exe"
 Copy-Item -LiteralPath $webView -Destination "$stage\prerequisites\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"
