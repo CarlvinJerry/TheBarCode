@@ -25,6 +25,7 @@ import {
   type ReceiptSettings,
 } from "./receiptPrinter";
 import { APP_CHANNEL, APP_VERSION, RELEASE_NOTES } from "./version";
+import { displayScales, saveDisplayScale, storedDisplayScale, type DisplayScaleName } from "./displayScale";
 import {
   bootstrap,
   createProduct,
@@ -945,6 +946,7 @@ function Settings({
   notify: (x: string) => void;
 }) {
   const [theme, setTheme] = useState(localStorage.getItem("theme") ?? "Forest");
+  const [displayScale, setDisplayScale] = useState<DisplayScaleName>(storedDisplayScale());
   const [organization,setOrganization]=useState<OrganizationSettings>(defaultOrganizationSettings);
   const [receiptConfig,setReceiptConfig]=useState<ReceiptSettings>(defaultReceiptSettings);
   const [branches,setBranches]=useState<any[]>([]),[terminals,setTerminals]=useState<any[]>([]);
@@ -973,6 +975,11 @@ function Settings({
     setTheme(x);
     localStorage.setItem("theme", x);
     document.documentElement.dataset.theme = x.toLowerCase();
+  }
+  function chooseDisplayScale(x: DisplayScaleName) {
+    setDisplayScale(x);
+    saveDisplayScale(x);
+    notify(`${x} display size saved on this terminal`);
   }
   function saveTerminal() {
     localStorage.setItem("device_id", deviceName);
@@ -1032,6 +1039,18 @@ function Settings({
             >
               <i style={{ background: x[1] }} />
               <b>{x[0]}</b>
+            </button>
+          ))}
+        </div>
+      </Panel>
+      <Panel title="Display size">
+        <p className="display-scale-help">Scale the complete interface proportionally for comfortable POS viewing. Cards, charts, navigation and touch targets reflow together to preserve Dukora’s layout.</p>
+        <div className="display-scale-grid">
+          {(Object.entries(displayScales) as [DisplayScaleName, number][]).map(([name, scale]) => (
+            <button className={displayScale === name ? "active" : ""} onClick={() => chooseDisplayScale(name)} key={name} aria-pressed={displayScale === name}>
+              <b style={{ fontSize: `${Math.round(18 * scale)}px` }}>Aa</b>
+              <span>{name}</span>
+              <small>{Math.round(scale * 100)}%</small>
             </button>
           ))}
         </div>

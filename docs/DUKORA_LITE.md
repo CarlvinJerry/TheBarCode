@@ -12,7 +12,9 @@ Dukora Lite is the low-resource, offline-first Windows edition. It uses the same
 
 ## Installation
 
-Installer: `installer\output\Dukora-Lite-Setup-1.5.2-x64.exe`
+Installer: `installer\output\Dukora-Lite-Setup-1.5.3-x64.exe`
+
+Display size is configured under **Settings → Display size**. Compact, Standard, Large and Extra large scale the complete interface and persist on that Windows terminal.
 
 1. Run `Dukora-Lite-Setup-<version>-x64.exe` and approve Windows setup.
 2. Leave **Create a Dukora Lite desktop shortcut** selected if desired.

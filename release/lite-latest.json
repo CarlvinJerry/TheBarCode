@@ -1,12 +1,15 @@
 {
-  "version": "1.5.2",
+  "version": "1.5.3",
   "edition": "Lite",
   "channel": "lite-windows",
-  "summary": "Reliable elevated Xprinter installation and repair support.",
+  "summary": "Persistent proportional display scaling for clear touch-screen POS use.",
   "downloadUrl": "",
-  "sha256": "3DCEE1C3F82E875034CEF4F3DC3AC905A9CE4EA538A39C0AC19E7D1A03475841",
+  "sha256": "PENDING_BUILD",
   "publishedAt": "2026-08-22T00:00:00+03:00",
   "notes": [
+    "Adds Compact, Standard, Large and Extra large display presets.",
+    "Scales and reflows the whole UI so cards, charts and touch controls retain their proportions.",
+    "Persists the selected size on each POS terminal and applies it before the UI renders.",
     "Runs the optional Xprinter vendor setup during Dukora's elevated installation stage.",
     "Adds a Start-menu repair action that explicitly requests Windows administrator approval.",
     "Bundles Microsoft's full offline x64 Evergreen WebView2 runtime.",
