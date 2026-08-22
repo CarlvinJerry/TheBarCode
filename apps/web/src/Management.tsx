@@ -1302,16 +1302,17 @@ function Intro({
   );
 }
 function Kpis({ items,onSelect }: { items: string[][];onSelect?:(label:string)=>void }) {
+  const [detail,setDetail]=useState<string[]|null>(null);const activate=(item:string[])=>onSelect?onSelect(item[0]):setDetail(item);
   return (
-    <div className={`spec-kpis count-${items.length}`}>
+    <><div className={`spec-kpis count-${items.length}`}>
       {items.map((x) => (
-        <article key={x[0]} className={onSelect?"interactive-kpi":""} onClick={()=>onSelect?.(x[0])} onKeyDown={e=>{if(onSelect&&(e.key==="Enter"||e.key===" ")){e.preventDefault();onSelect(x[0])}}} role={onSelect?"button":undefined} tabIndex={onSelect?0:undefined}>
+        <article key={x[0]} className="interactive-kpi" onClick={()=>activate(x)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();activate(x)}}} role="button" tabIndex={0}>
           <small>{x[0]}</small>
           <b>{x[1]}</b>
           <em>{x[2]}</em>
         </article>
       ))}
-    </div>
+    </div>{detail&&<div className="modal kpi-detail"><section><button className="close" onClick={()=>setDetail(null)}>×</button><h2>{detail[0]}</h2><strong>{detail[1]}</strong><p>{detail[2]}</p><button onClick={()=>setDetail(null)}>Close</button></section></div>}</>
   );
 }
 function Two({ children }: { children: ReactNode }) {
