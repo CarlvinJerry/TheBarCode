@@ -10,7 +10,7 @@ import {
   type Staff,
 } from "./db";
 import { Management } from "./Management";
-import { printReceiptText } from "./receiptPrinter";
+import { buildSaleReceipt, cachedOrganizationSettings, cachedReceiptSettings, printReceiptText } from "./receiptPrinter";
 import { APP_VERSION } from "./version";
 import "./App.css";
 
@@ -87,7 +87,6 @@ export default function App() {
     }
     const id = crypto.randomUUID(),
       credit = method === "Credit",
-      institution = localStorage.getItem("business_name") || "The BarCode",
       customerName = selectedCustomer?.name || "Walk-in customer";
     await queueSale({
       deviceTransactionId: id,
@@ -109,9 +108,10 @@ export default function App() {
       total,
       synced: false,
     });
-    setReceipt(
-      `${institution.toUpperCase()}\nCustomer: ${customerName}\nReceipt ${id.slice(0, 8).toUpperCase()}\n${cart.map((x) => `${x.quantity} x ${x.name}  ${money(x.quantity * x.sellingPrice)}`).join("\n")}\n----------------------------\nTOTAL  ${money(total)}\n${method.toUpperCase()}\n${localStorage.getItem("receipt_footer") || "Thank you. Drink responsibly."}`,
-    );
+    const receiptText=buildSaleReceipt({id,customerName,cashierName:user.name,method,credit,items:cart.map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
+    const receiptConfig=cachedReceiptSettings();
+    setReceipt(receiptText);
+    if((!credit&&receiptConfig.autoPrintPaidSale)||(credit&&receiptConfig.creditSalePrintMode==="Automatic"))for(let copy=0;copy<receiptConfig.copies;copy++)await printReceiptText(receiptText);
     setCart([]);
     setSelectedCustomer(undefined);
     setMessage("Sale saved safely on this device");
@@ -360,7 +360,7 @@ export default function App() {
                   onClick={() =>
                     cart.length &&
                     printReceiptText(
-                      `${(localStorage.getItem("business_name") || "The BarCode").toUpperCase()}\nCustomer: ${selectedCustomer?.name || "Walk-in customer"}\nCURRENT BILL\n${cart.map((x) => `${x.quantity} x ${x.name}  ${money(x.quantity * x.sellingPrice)}`).join("\n")}\n----------------------------\nTOTAL  ${money(total)}`,
+                      `${cachedOrganizationSettings().name.toUpperCase()}\nCustomer: ${selectedCustomer?.name || "Walk-in customer"}\nCURRENT BILL\n${cart.map((x) => `${x.quantity} x ${x.name}  ${money(x.quantity * x.sellingPrice)}`).join("\n")}\n----------------------------\nTOTAL  ${money(total)}`,
                     )
                   }
                 >

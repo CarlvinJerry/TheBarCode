@@ -19,6 +19,10 @@ import {
   listSilentPrinters,
   printReceiptText,
   testReceiptText,
+  defaultOrganizationSettings,
+  defaultReceiptSettings,
+  type OrganizationSettings,
+  type ReceiptSettings,
 } from "./receiptPrinter";
 import { APP_CHANNEL, APP_VERSION, RELEASE_NOTES } from "./version";
 import {
@@ -29,8 +33,13 @@ import {
   getCustomerSummary,
   getDailyReport,
   getStaff,
+  getSettings,
   removeDemo,
   resetDemo,
+  saveBranch,
+  saveOrganization,
+  saveReceiptConfiguration,
+  saveTerminalConfiguration,
   syncOutbox,
 } from "./api";
 import {
@@ -1086,23 +1095,23 @@ function Settings({
   user: Props["user"];
   notify: (x: string) => void;
 }) {
-  const [theme, setTheme] = useState(localStorage.getItem("theme") ?? "Forest"),
-    [business, setBusiness] = useState(
-      localStorage.getItem("business_name") || "The BarCode",
-    ),
-    [footer, setFooter] = useState(
-      localStorage.getItem("receipt_footer") || "Thank you. Drink responsibly.",
-    );
+  const [theme, setTheme] = useState(localStorage.getItem("theme") ?? "Forest");
+  const [organization,setOrganization]=useState<OrganizationSettings>(defaultOrganizationSettings);
+  const [receiptConfig,setReceiptConfig]=useState<ReceiptSettings>(defaultReceiptSettings);
+  const [branches,setBranches]=useState<any[]>([]),[terminals,setTerminals]=useState<any[]>([]);
+  const [branchForm,setBranchForm]=useState({name:"",code:"",address:"",phone:"",active:true});
   const [printers, setPrinters] = useState<string[]>([]);
   const [printer, setPrinter] = useState(localStorage.getItem("receipt_printer") || "");
   const [silent, setSilent] = useState(localStorage.getItem("silent_print") === "true");
   const [bridgeReady, setBridgeReady] = useState(false);
-  const [outlet, setOutlet] = useState(localStorage.getItem("outlet_name") || "Main outlet");
   const [deviceName, setDeviceName] = useState(localStorage.getItem("device_id") || `POS-${crypto.randomUUID().slice(0, 6).toUpperCase()}`);
+  const [terminalName,setTerminalName]=useState(localStorage.getItem("terminal_name")||"Front counter");
+  const [branchId,setBranchId]=useState(localStorage.getItem("branch_id")||"");
   const [apiUrl, setApiUrl] = useState(localStorage.getItem("api_url") || "/api");
   const [updateUrl, setUpdateUrl] = useState(localStorage.getItem("update_manifest_url") || "");
   const [availableUpdate, setAvailableUpdate] = useState<{ version: string; downloadUrl: string; summary?: string }>();
   useEffect(() => {
+    getSettings().then((data)=>{setOrganization(data.organization);setReceiptConfig(data.receipt);setBranches(data.branches);setTerminals(data.terminals);localStorage.setItem("organization_profile",JSON.stringify(data.organization));localStorage.setItem("receipt_configuration",JSON.stringify(data.receipt));if(!branchId&&data.branches.length)setBranchId(data.branches[0].id)}).catch(()=>notify("Shared settings unavailable · using saved terminal configuration"));
     listSilentPrinters()
       .then((items) => {
         setPrinters(items);
@@ -1116,18 +1125,16 @@ function Settings({
     localStorage.setItem("theme", x);
     document.documentElement.dataset.theme = x.toLowerCase();
   }
-  function saveBusiness(name: string, foot: string) {
-    localStorage.setItem("business_name", name);
-    localStorage.setItem("receipt_footer", foot);
-    notify("Receipt identity saved on this terminal");
-  }
   function saveTerminal() {
-    localStorage.setItem("outlet_name", outlet);
     localStorage.setItem("device_id", deviceName);
     localStorage.setItem("api_url", apiUrl);
     localStorage.setItem("update_manifest_url", updateUrl);
-    notify("Institution, outlet and terminal connection saved");
+    notify("Terminal connection and update channel saved");
   }
+  async function persistOrganization(){const saved=await saveOrganization(organization);setOrganization(saved);localStorage.setItem("organization_profile",JSON.stringify(saved));localStorage.setItem("business_name",saved.name);notify("Shared business profile saved");}
+  async function persistReceipt(){const saved=await saveReceiptConfiguration(receiptConfig);setReceiptConfig(saved);localStorage.setItem("receipt_configuration",JSON.stringify(saved));localStorage.setItem("receipt_footer",saved.footer);notify("Shared receipt configuration saved");}
+  async function persistBranch(){const saved=await saveBranch(branchForm);const data=await getSettings();setBranches(data.branches);setBranchForm({name:"",code:"",address:"",phone:"",active:true});if(!branchId)setBranchId(saved.id);notify("Branch saved");}
+  async function persistTerminal(){if(!branchId){notify("Select or create a branch first");return}const existing=terminals.find(x=>x.deviceKey===deviceName);const saved=await saveTerminalConfiguration({id:existing?.id,branchId,name:terminalName,deviceKey:deviceName,active:true});localStorage.setItem("device_id",saved.deviceKey);localStorage.setItem("terminal_name",saved.name);localStorage.setItem("branch_id",saved.branchId);localStorage.setItem("branch_name",branches.find(x=>x.id===saved.branchId)?.name||"");setTerminals((await getSettings()).terminals);notify("This terminal is registered to the selected branch");}
   async function checkUpdates() {
     if (!updateUrl) { notify(`Version ${APP_VERSION} · add an update manifest URL when hosting is ready`); return; }
     try {
@@ -1181,13 +1188,19 @@ function Settings({
         </div>
       </Panel>
       <Two>
-        <Panel title="Institution, outlet & terminal">
+        <Panel title="Business profile">
           <div className="settings-fields">
-            <Field label="Institution"><input value={business} onChange={(e) => setBusiness(e.target.value)} /></Field>
-            <Field label="Outlet / branch"><input value={outlet} onChange={(e) => setOutlet(e.target.value)} /></Field>
-            <Field label="Unique terminal name"><input value={deviceName} onChange={(e) => setDeviceName(e.target.value)} /></Field>
-            <Field label="Shared local or hosted API URL"><input value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} placeholder="/api or https://api.example.com/api" /></Field>
-            <button className="outline-button" onClick={saveTerminal}>Save terminal connection</button>
+            <Field label="Trading name"><input value={organization.name} onChange={(e)=>setOrganization({...organization,name:e.target.value})}/></Field>
+            <Field label="Legal name"><input value={organization.legalName||""} onChange={(e)=>setOrganization({...organization,legalName:e.target.value})}/></Field>
+            <Field label="Industry profile"><select value={organization.industryProfile} onChange={(e)=>setOrganization({...organization,industryProfile:e.target.value})}><option value="BarCafe">Bar & café</option><option value="Restaurant">Restaurant</option><option value="Bakery">Bakery & cakes</option><option value="Retail">General retail</option><option value="Services">Services</option><option value="Hotel">Hotel</option><option value="Custom">Custom</option></select></Field>
+            <Field label="Currency"><select value={organization.currency} onChange={(e)=>setOrganization({...organization,currency:e.target.value})}><option>KES</option><option>USD</option><option>UGX</option><option>TZS</option></select></Field>
+            <Field label="Tagline"><input value={organization.tagline||""} onChange={(e)=>setOrganization({...organization,tagline:e.target.value})}/></Field>
+            <Field label="Phone"><input value={organization.phone||""} onChange={(e)=>setOrganization({...organization,phone:e.target.value})}/></Field>
+            <Field label="Email"><input type="email" value={organization.email||""} onChange={(e)=>setOrganization({...organization,email:e.target.value})}/></Field>
+            <Field label="Address"><input value={organization.address||""} onChange={(e)=>setOrganization({...organization,address:e.target.value})}/></Field>
+            <Field label="Tax PIN"><input value={organization.taxPin||""} onChange={(e)=>setOrganization({...organization,taxPin:e.target.value})}/></Field>
+            <Field label="VAT number"><input value={organization.vatNumber||""} onChange={(e)=>setOrganization({...organization,vatNumber:e.target.value})}/></Field>
+            <button className="outline-button" onClick={persistOrganization}>Save shared business profile</button>
           </div>
         </Panel>
         <Panel title={`TheBarcode ${APP_VERSION}`}>
@@ -1260,55 +1273,43 @@ function Settings({
         </Panel>
       </Two>
       <Two>
-        <Panel title="This terminal">
+        <Panel title="Branches">
           <div className="settings-fields">
-            <Field label="Device name">
-              <input
-                defaultValue="Tablet 01"
-                onChange={(e) =>
-                  localStorage.setItem("device_id", e.target.value)
-                }
-              />
-            </Field>
-            <Field label="Location">
-              <input defaultValue="Main bar" />
-            </Field>
-            <Field label="Receipt width">
-              <select defaultValue="80mm">
-                <option>80mm</option>
-                <option>58mm</option>
-              </select>
-            </Field>
+            <Field label="Branch name"><input value={branchForm.name} onChange={(e)=>setBranchForm({...branchForm,name:e.target.value})}/></Field>
+            <Field label="Short code"><input value={branchForm.code} onChange={(e)=>setBranchForm({...branchForm,code:e.target.value.toUpperCase()})} placeholder="MAIN"/></Field>
+            <Field label="Address"><input value={branchForm.address} onChange={(e)=>setBranchForm({...branchForm,address:e.target.value})}/></Field>
+            <Field label="Phone"><input value={branchForm.phone} onChange={(e)=>setBranchForm({...branchForm,phone:e.target.value})}/></Field>
+            <button className="outline-button" onClick={persistBranch}>Add branch</button>
+            <div className="setting-list">{branches.map(x=><span key={x.id}><b>{x.name}</b><small>{x.code} · {x.active?"Active":"Inactive"}</small></span>)}</div>
           </div>
         </Panel>
-        <Panel title="Business profile">
+        <Panel title="This terminal">
           <div className="settings-fields">
-            <Field label="Institution / business name">
-              <input
-                value={business}
-                onChange={(e) => setBusiness(e.target.value)}
-              />
-            </Field>
-            <Field label="Currency">
-              <select defaultValue="KES">
-                <option>KES</option>
-              </select>
-            </Field>
-            <Field label="Receipt footer">
-              <input
-                value={footer}
-                onChange={(e) => setFooter(e.target.value)}
-              />
-            </Field>
-            <button
-              className="outline-button"
-              onClick={() => saveBusiness(business, footer)}
-            >
-              Save receipt identity
-            </button>
+            <Field label="Branch"><select value={branchId} onChange={(e)=>setBranchId(e.target.value)}><option value="">Choose branch…</option>{branches.filter(x=>x.active).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
+            <Field label="Terminal name"><input value={terminalName} onChange={(e)=>setTerminalName(e.target.value)}/></Field>
+            <Field label="Unique device key"><input value={deviceName} onChange={(e)=>setDeviceName(e.target.value)}/></Field>
+            <Field label="Shared local or hosted API URL"><input value={apiUrl} onChange={(e)=>setApiUrl(e.target.value)} placeholder="/api or https://api.example.com/api"/></Field>
+            <button className="outline-button" onClick={async()=>{saveTerminal();await persistTerminal()}}>Register and save terminal</button>
+            <div className="setting-list">{terminals.map(x=><span key={x.id}><b>{x.name}</b><small>{branches.find(b=>b.id===x.branchId)?.name||"Unknown branch"} · {x.deviceKey}</small></span>)}</div>
           </div>
         </Panel>
       </Two>
+      <Panel title="Receipt layout & behaviour">
+        <div className="receipt-config-grid">
+          <Field label="Paper width"><select value={receiptConfig.paperWidthMm} onChange={(e)=>setReceiptConfig({...receiptConfig,paperWidthMm:+e.target.value})}><option value={80}>80 mm</option><option value={58}>58 mm</option></select></Field>
+          <Field label="Copies"><select value={receiptConfig.copies} onChange={(e)=>setReceiptConfig({...receiptConfig,copies:+e.target.value})}><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option></select></Field>
+          <Field label="Credit-sale printing"><select value={receiptConfig.creditSalePrintMode} onChange={(e)=>setReceiptConfig({...receiptConfig,creditSalePrintMode:e.target.value})}><option>Never</option><option>Optional</option><option>Automatic</option></select></Field>
+          <Field label="Later payment receipt"><select value={receiptConfig.paymentReceiptPrintMode} onChange={(e)=>setReceiptConfig({...receiptConfig,paymentReceiptPrintMode:e.target.value})}><option>Never</option><option>Optional</option><option>Automatic</option></select></Field>
+          <Field label="Receipt prefix"><input value={receiptConfig.receiptPrefix} onChange={(e)=>setReceiptConfig({...receiptConfig,receiptPrefix:e.target.value})}/></Field>
+          <Field label="Invoice prefix"><input value={receiptConfig.invoicePrefix} onChange={(e)=>setReceiptConfig({...receiptConfig,invoicePrefix:e.target.value})}/></Field>
+          <Field label="Payment prefix"><input value={receiptConfig.paymentPrefix} onChange={(e)=>setReceiptConfig({...receiptConfig,paymentPrefix:e.target.value})}/></Field>
+          <Field label="Footer message"><input value={receiptConfig.footer} onChange={(e)=>setReceiptConfig({...receiptConfig,footer:e.target.value})}/></Field>
+        </div>
+        <div className="receipt-toggles">
+          {[["Show business details","showBusinessDetails"],["Show customer","showCustomer"],["Show cashier","showCashier"],["Show tax","showTax"],["Show customer balance","showCustomerBalance"],["Show Beyond Raw Data signoff","showPoweredBy"],["Automatically print paid sales","autoPrintPaidSale"]].map(([label,key])=><label key={key}><input type="checkbox" checked={Boolean((receiptConfig as any)[key])} onChange={(e)=>setReceiptConfig({...receiptConfig,[key]:e.target.checked})}/>{label}</label>)}
+        </div>
+        <button className="outline-button" onClick={persistReceipt}>Save shared receipt configuration</button>
+      </Panel>
       {user.role === "Owner" && (
         <Panel title="Demo environment">
           <p className="muted">
