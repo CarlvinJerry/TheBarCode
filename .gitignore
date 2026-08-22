@@ -10,4 +10,5 @@
 *.user
 *.log
 installer/stage/
+installer/stage-lite/
 installer/output/

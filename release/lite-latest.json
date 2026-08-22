@@ -1,0 +1,17 @@
+{
+  "version": "1.5.0",
+  "edition": "Lite",
+  "channel": "lite-windows",
+  "summary": "Dukora's full interface in a low-resource SQLite desktop edition.",
+  "downloadUrl": "",
+  "sha256": "BD41FDA3602C38101A9B03A37518149BC6E98F5131B8E4BC0A7109569179BADF",
+  "publishedAt": "2026-08-22T00:00:00+03:00",
+  "notes": [
+    "Uses the same React UI, API, reports, visualizations and business rules as Dukora Server.",
+    "Stores data locally in SQLite with WAL journaling and no PostgreSQL installation.",
+    "Opens in a branded touch-friendly WebView2 desktop window.",
+    "Starts and stops the local API and XP-80 print bridge with the desktop application.",
+    "Protects the first-run Owner PIN with Windows DPAPI.",
+    "Includes the official Microsoft WebView2 bootstrapper and optional Xprinter driver."
+  ]
+}

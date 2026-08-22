@@ -1,6 +1,7 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.4.1";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.5.0";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Dukora Lite desktop edition with embedded SQLite storage",
   "Verified elevated Windows service setup and branded desktop launcher",
   "Live operational dashboards, expenses, reports and activity",
   "Smart Insights with local rules and optional server AI",
