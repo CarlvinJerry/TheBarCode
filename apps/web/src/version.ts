@@ -1,6 +1,9 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.9";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.10";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Controlled failed-order recovery with Retry, Open held bill and Start new order actions",
+  "Stable draft transaction identity prevents duplicate bills when a response is lost",
+  "Safe held-bill detachment keeps the record available without blocking the till",
   "Fixed the second-action 500 affecting held-bill save, print, paid and credit actions",
   "Transactional line replacement with explicit bill ownership and reload-tested persistence",
   "Authoritative held-bill revisions persisted before saving, posting or printing",

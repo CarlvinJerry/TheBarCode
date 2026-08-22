@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { bootstrap, getLoginStaff, getNotifications, holdBill, login, postBill, session, syncOutbox, updateBill } from "./api";
+import { bootstrap, getBills, getLoginStaff, getNotifications, holdBill, login, postBill, session, syncOutbox, updateBill } from "./api";
 import {
   db,
   queueCustomer,
@@ -35,6 +35,8 @@ export default function App() {
     [customerOpen, setCustomerOpen] = useState(false),
     [activeBill, setActiveBill] = useState<any>(),
     [lastHeldBill,setLastHeldBill]=useState<any>(),
+    [draftTransactionId,setDraftTransactionId]=useState(()=>crypto.randomUUID()),
+    [orderFailure,setOrderFailure]=useState(""),
     [notifications, setNotifications] = useState<Record<string, any>>({Total:0,Details:{}}),
     [readNotificationFingerprint,setReadNotificationFingerprint]=useState(localStorage.getItem("notification_read")||""),
     [alertsOpen,setAlertsOpen]=useState(false),
@@ -91,17 +93,20 @@ export default function App() {
         .map((x) => (x.id === id ? { ...x, quantity: Math.max(0,Math.min(x.stock,x.quantity + d)) } : x))
         .filter((x) => x.quantity > 0),
     );
-  const billPayload=()=>({deviceTransactionId:activeBill?.deviceTransactionId||crypto.randomUUID(),customerId:selectedCustomer?.id,staffId:user.id,discount:0,notes:"POS order",deviceId:localStorage.getItem("device_id")??"windows-pos-01",items:cart.map(x=>({productId:x.id,quantity:x.quantity,unitPrice:x.sellingPrice,discount:0}))});
+  const billPayload=()=>({deviceTransactionId:activeBill?.deviceTransactionId||draftTransactionId,customerId:selectedCustomer?.id,staffId:user.id,discount:0,notes:"POS order",deviceId:localStorage.getItem("device_id")??"windows-pos-01",items:cart.map(x=>({productId:x.id,quantity:x.quantity,unitPrice:x.sellingPrice,discount:0}))});
   async function ensureHeld(openPrint=false){
     if(!cart.length)return;
     try{
-      const saved=activeBill?await updateBill(activeBill.id,{...billPayload(),reason:"Updated from active POS order",expectedRevision:activeBill.revision}):await holdBill(billPayload());setActiveBill(saved);dispatchEvent(new Event("dukora:attention"));
+      const saved=activeBill?await updateBill(activeBill.id,{...billPayload(),reason:"Updated from active POS order",expectedRevision:activeBill.revision}):await holdBill(billPayload());setActiveBill(saved);setOrderFailure("");dispatchEvent(new Event("dukora:attention"));
       const unpaid=buildSaleReceipt({id:String(saved.receiptNumber||saved.deviceTransactionId),dailyOrderNumber:saved.dailyOrderNumber,walkInNumber:saved.walkInNumber,customerName:selectedCustomer?.name||"Walk-in customer",cashierName:user.name,method:"Unpaid",status:"UNPAID",credit:true,items:cart.map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
       if(openPrint){setReceiptKind("Unpaid");setReceipt(`${unpaid}\nREVISION: ${saved.revision||1}`)}
       setMessage(`Bill #${saved.receiptNumber} is held and awaiting payment or credit${openPrint?" · confirm Print Unpaid Bill":""}`);return saved;
-    }catch(error){setMessage(error instanceof Error?`Could not hold bill: ${error.message}`:"Could not hold bill on the shared server");}
+    }catch(error){const reason=error instanceof Error?`Could not hold bill: ${error.message}`:"Could not hold bill on the shared server";setOrderFailure(reason);setMessage(reason);}
   }
-  function startNextOrder(saved:any){setLastHeldBill(saved);setCart([]);setSelectedCustomer(undefined);setActiveBill(undefined);setQuery("");setCategory("All");setMessage(`Unpaid bill #${saved.receiptNumber} was printed and held. New entries now create a separate bill.`);dispatchEvent(new Event("dukora:attention"));bootstrap().catch(()=>0)}
+  function clearForNextOrder(saved?:any){if(saved)setLastHeldBill(saved);setCart([]);setSelectedCustomer(undefined);setActiveBill(undefined);setDraftTransactionId(crypto.randomUUID());setOrderFailure("");setQuery("");setCategory("All")}
+  function startNextOrder(saved:any){clearForNextOrder(saved);setMessage(`Unpaid bill #${saved.receiptNumber} was printed and held. New entries now create a separate bill.`);dispatchEvent(new Event("dukora:attention"));bootstrap().catch(()=>0)}
+  async function openRecoverableBill(){try{const match=activeBill||(await getBills("All")).find((x:any)=>x.deviceTransactionId===draftTransactionId);if(!match){setMessage("No saved held bill was found for this order. Retry it or start a new order.");return}setActiveBill(match);localStorage.setItem("bill_focus",match.id);setView("Bills");setOrderFailure("")}catch(error){setMessage(error instanceof Error?error.message:"Could not verify the held bill")}}
+  async function forceNewOrder(){let saved=activeBill;try{saved=saved||(await getBills("All")).find((x:any)=>x.deviceTransactionId===draftTransactionId)}catch{}clearForNextOrder(saved);setMessage(saved?`Bill #${saved.receiptNumber} remains held under Bills. A clean new order is ready.`:"The failed draft was detached. A clean new order is ready; verify Bills when the server reconnects.");dispatchEvent(new Event("dukora:attention"))}
   async function checkout(method: string) {
     if (!cart.length) return;
     if (!activeBill) {
@@ -113,7 +118,7 @@ export default function App() {
       setMessage("Choose or register a customer before recording credit");
       return;
     }
-    const id = crypto.randomUUID(), credit = method === "Credit",
+    const id = draftTransactionId, credit = method === "Credit",
       customerName = selectedCustomer?.name || "Walk-in customer";
     try{
       const held=await updateBill(activeBill.id,{...billPayload(),reason:"Final POS revision before posting",expectedRevision:activeBill.revision});
@@ -121,8 +126,8 @@ export default function App() {
       const posted=await postBill(held.id,{status:credit?"Credit":"Paid",method,amountPaid:credit?0:total,dueAt,notes:credit?"Credit approved at POS":"Paid at POS",deviceId:localStorage.getItem("device_id")??"windows-pos-01"});
       const receiptText=buildSaleReceipt({id:String(posted.receiptNumber||id),dailyOrderNumber:posted.dailyOrderNumber,walkInNumber:posted.walkInNumber,customerName,cashierName:user.name,method,status:credit?"CREDIT":"PAID",credit,items:cart.map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
       const receiptConfig=cachedReceiptSettings();setReceiptKind(credit?"Credit":"Paid");setReceipt(receiptText);if((!credit&&receiptConfig.autoPrintPaidSale)||(credit&&receiptConfig.creditSalePrintMode==="Automatic"))for(let copy=0;copy<receiptConfig.copies;copy++)await printReceiptText(receiptText);
-      setCart([]);setSelectedCustomer(undefined);setActiveBill(undefined);setMessage(credit?"Credit invoice posted and added to follow-up":"Sale, payment and stock posted together");dispatchEvent(new Event("dukora:attention"));bootstrap().catch(()=>0);return;
-    }catch(error){if(navigator.onLine){setMessage(error instanceof Error?error.message:"Sale could not be posted");return;}}
+      clearForNextOrder();setMessage(credit?"Credit invoice posted and added to follow-up":"Sale, payment and stock posted together");dispatchEvent(new Event("dukora:attention"));bootstrap().catch(()=>0);return;
+    }catch(error){const reason=error instanceof Error?error.message:"Sale could not be posted";setOrderFailure(reason);setMessage(reason);if(navigator.onLine||activeBill)return;}
     await queueSale({
       deviceTransactionId: id,
       customerId: selectedCustomer?.id,
@@ -148,9 +153,7 @@ export default function App() {
     const receiptConfig=cachedReceiptSettings();
     setReceiptKind(credit?"Credit":"Paid");setReceipt(receiptText);
     if((!credit&&receiptConfig.autoPrintPaidSale)||(credit&&receiptConfig.creditSalePrintMode==="Automatic"))for(let copy=0;copy<receiptConfig.copies;copy++)await printReceiptText(receiptText);
-    setCart([]);
-    setSelectedCustomer(undefined);
-    setActiveBill(undefined);
+    clearForNextOrder();
     setMessage("Sale saved safely on this device");
     syncOutbox().catch(() => 0);
   }
@@ -331,9 +334,10 @@ export default function App() {
                   <small>CURRENT ORDER</small>
                   <h2>{activeBill ? `Order #${activeBill.dailyOrderNumber} · Rev ${activeBill.revision}` : "New order"}</h2>
                 </span>
-                <button onClick={() => setCart([])}>⌫</button>
+                <button onClick={() => {if(activeBill){setOrderFailure("This order is already held. Detach it safely before starting another order.");setMessage("Held bills are preserved. Use Start new order below to continue without deleting it.")}else{clearForNextOrder();setMessage("Unsaved draft cleared. A clean new order is ready.")}}}>⌫</button>
               </div>
               {lastHeldBill&&!activeBill&&<div className="next-order-notice"><span><b>New order ready</b><small>Printed bill #{lastHeldBill.receiptNumber} is held. New entries create a separate bill number.</small></span><button onClick={()=>{localStorage.setItem("bill_focus",lastHeldBill.id);setView("Bills")}}>Update held bill</button></div>}
+              {orderFailure&&<div className="order-recovery"><b>Current order needs attention</b><small>{orderFailure}</small><p>This order has not been deleted. Retry it, open the matching held bill, or detach it and start a clean order.</p><div><button onClick={()=>ensureHeld(false)}>Retry current order</button><button onClick={openRecoverableBill}>Open held bill</button><button className="recovery-new" onClick={forceNewOrder}>Start new order</button></div></div>}
               <button
                 className="customer-pick"
                 onClick={() => setCustomerOpen(true)}
