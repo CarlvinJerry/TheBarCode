@@ -31,7 +31,10 @@ import {
   createStaff,
   getAudit,
   getCustomerSummary,
-  getDailyReport,
+  getExpenses,
+  getInsights,
+  getOperationalOverview,
+  getSummary,
   getStaff,
   getSettings,
   removeDemo,
@@ -50,55 +53,6 @@ import {
   type Product,
 } from "./db";
 const money = (n: number) => `KES ${Number(n || 0).toLocaleString()}`;
-const expenses = [
-  {
-    description: "Beer supplier top-up",
-    category: "Inventory",
-    amount: 8200,
-    status: "Paid",
-  },
-  {
-    description: "Electricity tokens",
-    category: "Utilities",
-    amount: 1500,
-    status: "Paid",
-  },
-  {
-    description: "Casual shift",
-    category: "Staff",
-    amount: 2200,
-    status: "Paid",
-  },
-  {
-    description: "Fridge repair",
-    category: "Maintenance",
-    amount: 3200,
-    status: "Pending",
-  },
-];
-const customers = [
-  ["Brian Otieno", "0712 345 678", "KES 2,450", "12 Aug", "Debt"],
-  ["Mercy Njeri", "0798 111 222", "Clear", "Today", "Clear"],
-  ["Kariuki Table", "0701 202 303", "KES 5,900", "Yesterday", "Debt"],
-  ["Amina Said", "0733 889 900", "Clear", "18 Aug", "Clear"],
-  ["Victor Barasa", "0722 333 444", "KES 1,200", "16 Aug", "Watch"],
-];
-const week = [
-  { day: "M", sales: 18400 },
-  { day: "T", sales: 22100 },
-  { day: "W", sales: 19800 },
-  { day: "T ", sales: 26500 },
-  { day: "F", sales: 48620 },
-  { day: "S", sales: 39200 },
-  { day: "S ", sales: 35400 },
-];
-const categoryValues = [
-  { name: "Beer", value: 86400 },
-  { name: "Spirits", value: 71800 },
-  { name: "Coffee", value: 45200 },
-  { name: "Food", value: 62400 },
-  { name: "Soft drinks", value: 38600 },
-];
 type Props = {
   view: string;
   products: Product[];
@@ -112,6 +66,7 @@ export function Management({ view, products, user, notify }: Props) {
   if (view === "Customers") return <Customers />;
   if (view === "Expenses") return <Expenses />;
   if (view === "Reports") return <Reports />;
+  if (view === "Smart insights") return <SmartInsights />;
   if (view === "Audit" || view === "Audit trail") return <Audit />;
   if (["Staff", "Users & roles", "Staff & roles"].includes(view))
     return <Staff notify={notify} />;
@@ -119,56 +74,21 @@ export function Management({ view, products, user, notify }: Props) {
   return <Settings user={user} notify={notify} />;
 }
 function Dashboard({ products }: { products: Product[] }) {
-  const local = useLiveQuery(() => db.sales.toArray(), []) ?? [];
-  const fallback = week.map((x, i) => ({
-    day: x.day,
-    revenue: x.sales,
-    profit: Math.round(x.sales * (0.28 + i * 0.01)),
-  }));
-  const [daily, setDaily] = useState(fallback);
+  const [overview, setOverview] = useState<any>(null);
   useEffect(() => {
     const to = new Date(),
       from = new Date(Date.now() - 6 * 86400000);
-    getDailyReport(
-      from.toISOString().slice(0, 10),
-      to.toISOString().slice(0, 10),
-    )
-      .then((x: any[]) => {
-        if (x.length)
-          setDaily(
-            x.map((d) => ({
-              day: new Date(d.date)
-                .toLocaleDateString("en", { weekday: "short" })
-                .slice(0, 1),
-              revenue: d.revenue,
-              profit: d.profit,
-            })),
-          );
-      })
-      .catch(() => 0);
+    getOperationalOverview(from.toISOString().slice(0,10),to.toISOString().slice(0,10)).then(setOverview).catch(() => 0);
   }, []);
-  const todayRevenue =
-    local
-      .filter(
-        (x) =>
-          new Date(x.occurredAt).toDateString() === new Date().toDateString(),
-      )
-      .reduce((s, x) => s + x.total, 0) || 48620;
+  const daily = (overview?.daily ?? []).map((d:any)=>({day:new Date(d.date).toLocaleDateString("en",{weekday:"short"}),revenue:d.revenue,profit:d.profit}));
+  const margin=overview?.revenue ? overview.grossProfit/overview.revenue*100 : 0;
   return (
     <Page>
       <Kpis
         items={[
-          ["Today’s sales", money(todayRevenue), "↑ 12.4%"],
-          ["Gross profit", money(16840), "34.6% margin"],
-          [
-            "Customer credit",
-            money(
-              local
-                .filter((x) => x.status === "Credit")
-                .reduce((s, x) => s + x.total, 0) || 9550,
-            ),
-            "Open customer balances",
-          ],
+          ["Today’s sales", money(overview?.todayRevenue ?? 0), `${overview?.salesCount ?? 0} sales in range`],
+          ["Gross profit", money(overview?.grossProfit ?? 0), `${margin.toFixed(1)}% margin`],
+          ["Customer credit", money(overview?.customerDebt ?? 0), "Open customer balances"],
           [
             "Low stock",
             `${products.filter((x) => x.stock <= x.minStock).length} items`,
@@ -210,11 +130,7 @@ function Dashboard({ products }: { products: Product[] }) {
         </Panel>
         <Panel title="Payment mix">
           <Donut
-            data={[
-              ["Cash", 25400],
-              ["M-Pesa", 12820],
-              ["Credit", 10400],
-            ]}
+            data={(overview?.paymentMix ?? []).map((x:any)=>[x.name,x.amount])}
             colors={["#153d34", "#ff7542", "#efb45a"]}
             center="78%"
             subtitle="collected"
@@ -225,27 +141,17 @@ function Dashboard({ products }: { products: Product[] }) {
         <Panel title="Top sellers">
           <Table
             heads={["Item", "Qty", "Revenue"]}
-            rows={[
-              ["Tusker Lager", "24", "KES 7,680"],
-              ["White Cap", "21", "KES 7,350"],
-              ["Guinness", "18", "KES 6,840"],
-              ["Heineken", "15", "KES 6,300"],
-            ]}
+            rows={(overview?.topSellers ?? []).slice(0,5).map((x:any)=>[x.name,String(x.quantity),money(x.revenue)])}
           />
         </Panel>
         <Panel title="Activity">
           <div className="activity">
-            {[
-              ["Kevin recorded sale #1047", "3 min ago"],
-              ["Musa restocked White Cap", "17 min ago"],
-              ["Sharon received M-Pesa", "31 min ago"],
-              ["Admin closed yesterday’s shift", "45 min ago"],
-            ].map((x) => (
-              <p key={x[0]}>
+            {(overview?.activity ?? []).slice(0,6).map((x:any) => (
+              <p key={`${x.occurredAt}-${x.details}`}>
                 <i />
                 <span>
-                  <b>{x[0]}</b>
-                  <small>{x[1]}</small>
+                  <b>{x.actor} · {x.action} {x.entityType}</b>
+                  <small>{x.details} · {new Date(x.occurredAt).toLocaleString()}</small>
                 </span>
               </p>
             ))}
@@ -275,7 +181,7 @@ function Inventory({
     if (!form.productId && products[0])
       setForm((x) => ({ ...x, productId: products[0].id }));
   }, [products, form.productId]);
-  const chart = categoryValues.map((x) => ({ ...x, label: money(x.value) }));
+  const chart = Object.values(products.reduce((a:any,x)=>{a[x.category]??={name:x.category,value:0};a[x.category].value+=x.stock*x.costPrice;return a},{})).map((x:any)=>({...x,label:money(x.value)}));
   async function save(e: FormEvent) {
     e.preventDefault();
     const sign = form.type === "Restock" ? 1 : -1;
@@ -499,16 +405,14 @@ function Customers() {
     syncOutbox().catch(() => 0);
     setOpen(false);
   }
-  const rows = ranked.length
-    ? ranked.map((x) => [
+  const rows = ranked.map((x) => [
         x.name,
         x.phone || "—",
         money(x.totalSpent),
         money(x.debt),
         x.lastVisit ? new Date(x.lastVisit).toLocaleDateString() : "—",
         x.debt > 0 ? "Debt" : "Clear",
-      ])
-    : customers.map((x) => [x[0], x[1], "KES 0", x[2], x[3], x[4]]);
+      ]);
   return (
     <Page>
       <Intro
@@ -592,30 +496,30 @@ function Customers() {
   );
 }
 function Expenses() {
-  const [category, setCategory] = useState("All");
-  const rows =
-    category === "All"
-      ? expenses
-      : expenses.filter((x) => x.category === category);
+  const today=new Date().toISOString().slice(0,10), month=new Date();month.setDate(1);
+  const [category, setCategory] = useState("All"),[from,setFrom]=useState(month.toISOString().slice(0,10)),[to,setTo]=useState(today),[rows,setRows]=useState<any[]>([]);
+  const load=()=>getExpenses(from,to,category).then(setRows).catch(()=>setRows([]));
+  useEffect(()=>{void load()},[category]);
+  const categories=Array.from(new Set(rows.map(x=>x.category))), grouped=Array.from(rows.reduce<Map<string,number>>((m,x)=>m.set(x.category,(m.get(x.category)||0)+Number(x.amount)),new Map<string,number>())).map(([name,v])=>({name,v}));
   return (
     <Page>
       <Intro
         title="Expenses & suppliers"
         text="Explore costs by period, category and payment status."
-        action="＋ New expense"
+        action="Live PostgreSQL records"
       />
       <Filter>
         <select value={category} onChange={(e) => setCategory(e.target.value)}>
-          {["All", "Inventory", "Utilities", "Staff", "Maintenance"].map(
+          {["All", ...categories].map(
             (x) => (
               <option key={x}>{x}</option>
             ),
           )}
         </select>
-        <input type="date" defaultValue="2026-08-01" />
+        <input type="date" value={from} onChange={e=>setFrom(e.target.value)} />
         <span>to</span>
-        <input type="date" defaultValue="2026-08-21" />
-        <button>Apply filters</button>
+        <input type="date" value={to} onChange={e=>setTo(e.target.value)} />
+        <button onClick={load}>Apply filters</button>
       </Filter>
       <Kpis
         items={[
@@ -624,21 +528,15 @@ function Expenses() {
             money(rows.reduce((s, x) => s + x.amount, 0)),
             `${rows.length} records`,
           ],
-          ["Supplier balances", "KES 21,500", "3 suppliers"],
-          ["Cash expenses", "KES 7,800", "18% of total"],
+          ["Unpaid balance", money(rows.reduce((s,x)=>s+Number(x.amount)-Number(x.paidAmount),0)), "Recorded outstanding amount"],
+          ["Cash expenses", money(rows.filter(x=>x.method==="Cash").reduce((s,x)=>s+Number(x.amount),0)), "Selected range"],
         ]}
       />
       <Two>
         <Panel title="Expenses by category">
           <Chart>
             <BarChart
-              data={[
-                { name: "Stock", v: 18200 },
-                { name: "Utility", v: 6500 },
-                { name: "Staff", v: 9200 },
-                { name: "Ops", v: 4100 },
-                { name: "Rent", v: 4600 },
-              ]}
+              data={grouped}
             >
               <CartesianGrid vertical={false} stroke="#e4ebe7" />
               <XAxis dataKey="name" axisLine={false} tickLine={false} />
@@ -647,16 +545,10 @@ function Expenses() {
             </BarChart>
           </Chart>
         </Panel>
-        <Panel title="Monthly expense trend">
+        <Panel title="Expense records over time">
           <Chart>
             <LineChart
-              data={[
-                { m: "Mar", v: 38000 },
-                { m: "Apr", v: 41200 },
-                { m: "May", v: 35600 },
-                { m: "Jun", v: 44100 },
-                { m: "Jul", v: 42600 },
-              ]}
+              data={rows.slice().reverse().map(x=>({m:new Date(x.date).toLocaleDateString(undefined,{month:"short",day:"numeric"}),v:x.amount}))}
             >
               <CartesianGrid vertical={false} stroke="#e4ebe7" />
               <XAxis dataKey="m" axisLine={false} tickLine={false} />
@@ -673,7 +565,7 @@ function Expenses() {
             x.description,
             x.category,
             money(x.amount),
-            x.status,
+            Number(x.paidAmount)>=Number(x.amount)?"Paid":"Pending",
           ])}
         />
       </Panel>
@@ -681,7 +573,10 @@ function Expenses() {
   );
 }
 function Reports() {
-  const [range, setRange] = useState("This month");
+  const today=new Date().toISOString().slice(0,10), month=new Date();month.setDate(1);
+  const [range, setRange] = useState("This month"),[from,setFrom]=useState(month.toISOString().slice(0,10)),[to,setTo]=useState(today),[summary,setSummary]=useState<any>(null);
+  const load=()=>getSummary(from,to).then(setSummary).catch(()=>setSummary(null));useEffect(()=>{void load()},[]);
+  const gross=(summary?.revenue??0)-(summary?.cost??0),net=gross-(summary?.expenses??0);
   return (
     <Page>
       <Intro
@@ -699,17 +594,17 @@ function Reports() {
             {x}
           </button>
         ))}
-        <input type="date" defaultValue="2026-08-01" />
+        <input type="date" value={from} onChange={e=>setFrom(e.target.value)} />
         <span>to</span>
-        <input type="date" defaultValue="2026-08-21" />
-        <button className="apply">Refresh report</button>
+        <input type="date" value={to} onChange={e=>setTo(e.target.value)} />
+        <button className="apply" onClick={load}>Refresh report</button>
       </div>
       <Kpis
         items={[
-          ["Revenue", "KES 170,120", "7 days"],
-          ["Cost of goods", "KES 112,780", "66.3%"],
-          ["Gross profit", "KES 57,340", "33.7%"],
-          ["Expenses", "KES 46,500", "Selected range"],
+          ["Revenue", money(summary?.revenue??0), `${summary?.salesCount??0} sales`],
+          ["Cost of goods", money(summary?.cost??0), "Recorded sale-item cost"],
+          ["Gross profit", money(gross), summary?.revenue?`${(gross/summary.revenue*100).toFixed(1)}%`:"0%"],
+          ["Expenses", money(summary?.expenses??0), "Selected range"],
         ]}
       />
       <Two>
@@ -717,11 +612,11 @@ function Reports() {
           <Table
             heads={["Line", "Amount"]}
             rows={[
-              ["Sales revenue", "KES 170,120"],
-              ["Cost of goods", "(KES 112,780)"],
-              ["Gross profit", "KES 57,340"],
-              ["Expenses", "(KES 46,500)"],
-              ["Net profit", "KES 10,840"],
+              ["Sales revenue", money(summary?.revenue??0)],
+              ["Cost of goods", `(${money(summary?.cost??0)})`],
+              ["Gross profit", money(gross)],
+              ["Expenses", `(${money(summary?.expenses??0)})`],
+              ["Net profit", money(net)],
             ]}
           />
         </Panel>
@@ -732,7 +627,7 @@ function Reports() {
               Download a formatted workbook containing KPI cards, revenue and
               expense charts, sales, inventory, customers, and source tables.
             </p>
-            <button onClick={downloadExcel}>
+            <button onClick={()=>downloadExcel({from,to,...summary,grossProfit:gross,netProfit:net})}>
               ⇩ Download Excel with visuals
             </button>
           </div>
@@ -741,6 +636,19 @@ function Reports() {
     </Page>
   );
 }
+
+function SmartInsights(){
+  const today=new Date().toISOString().slice(0,10), start=new Date();start.setDate(start.getDate()-29);
+  const [from,setFrom]=useState(start.toISOString().slice(0,10)),[to,setTo]=useState(today),[data,setData]=useState<any>(null),[loading,setLoading]=useState(false);
+  const load=()=>{setLoading(true);getInsights(from,to).then(setData).catch(()=>setData(null)).finally(()=>setLoading(false))};useEffect(load,[]);
+  return <Page>
+    <Intro title="Smart insights" text="Live business signals from sales, stock, customer credit and expenses." action={data?.mode==="ai"?"✦ AI analysis active":"◆ Rule engine active"}/>
+    <Filter><input type="date" value={from} onChange={e=>setFrom(e.target.value)}/><span>to</span><input type="date" value={to} onChange={e=>setTo(e.target.value)}/><button onClick={load}>{loading?"Analysing…":"Refresh insights"}</button></Filter>
+    <Panel title="Business briefing"><p className="insight-summary">{data?.summary??(loading?"Analysing live records…":"Insights are unavailable. Confirm this terminal is connected to the local server.")}</p><small>{data?.providerStatus} · No customer names, phone numbers or receipt-level data are sent to an AI provider.</small></Panel>
+    <div className="insight-grid">{(data?.insights??[]).map((x:any)=><article className={`insight-card ${x.severity}`} key={x.id}><header><span>{x.category}</span><b>{x.metric}</b></header><h3>{x.title}</h3><p>{x.description}</p><footer><strong>Suggested action</strong>{x.recommendation}</footer></article>)}</div>
+    <Panel title="How analysis works"><p>Without server AI credentials, Dukora always uses its built-in deterministic rules. To enable optional AI analysis, set <code>Insights__Endpoint</code>, <code>Insights__Model</code> and <code>Insights__ApiKey</code> on the local server or hosted API, then restart it. Keys are never stored in the browser.</p></Panel>
+  </Page>
+}
 function Audit() {
   const [remote, setRemote] = useState<any[]>([]);
   useEffect(() => {
@@ -748,56 +656,7 @@ function Audit() {
       .then(setRemote)
       .catch(() => setRemote([]));
   }, []);
-  const rows = [
-    [
-      "20:42:11",
-      "Kevin",
-      "Recorded cash sale",
-      "Sale #1047",
-      "Tablet 01",
-      "Synced",
-    ],
-    [
-      "20:38:04",
-      "Sharon",
-      "Applied discount · KES 100",
-      "Sale #1046",
-      "Tablet 02",
-      "Synced",
-    ],
-    [
-      "20:31:55",
-      "Musa",
-      "Stock adjustment · −2",
-      "Guinness",
-      "Store phone",
-      "Queued",
-    ],
-    [
-      "20:15:09",
-      "Admin",
-      "Changed selling price",
-      "Cappuccino",
-      "Office laptop",
-      "Synced",
-    ],
-    [
-      "19:58:31",
-      "Kevin",
-      "Opened customer credit",
-      "Brian Otieno",
-      "Tablet 01",
-      "Synced",
-    ],
-    [
-      "19:22:18",
-      "Musa",
-      "Recorded wastage · −3",
-      "Fresh milk",
-      "Store phone",
-      "Queued",
-    ],
-  ];
+  const rows = remote.map(x=>[new Date(x.occurredAt).toLocaleString(),x.actor,`${x.action} ${x.entityType}`,x.details,x.deviceId||"Server","Synced"]);
   return (
     <Page>
       <Intro
@@ -812,11 +671,9 @@ function Audit() {
         </select>
         <select>
           <option>All users</option>
-          <option>Kevin</option>
-          <option>Sharon</option>
-          <option>Musa</option>
+          {Array.from(new Set(remote.map(x=>x.actor))).map(x=><option key={String(x)}>{String(x)}</option>)}
         </select>
-        <input type="date" defaultValue="2026-08-21" />
+        <input type="date" defaultValue={new Date().toISOString().slice(0,10)} />
         <button>Filter log</button>
       </Filter>
       <Panel title="Recent activity">
@@ -825,7 +682,6 @@ function Audit() {
           rows={rows}
         />
       </Panel>
-      <span className="sr-only">{remote.length} central entries</span>
     </Page>
   );
 }
@@ -851,22 +707,15 @@ function Staff({ notify }: { notify: (x: string) => void }) {
       notify("Owner authorization is required");
     }
   }
-  const display = rows.length
-    ? rows.map((x, i) => [
+  const display = rows.map((x) => [
         x.name,
         x.role,
         x.role === "Owner" || x.role === "Manager" ? "Yes" : "No",
         x.role === "Owner" || x.role === "Storekeeper" ? "Yes" : "No",
         x.role === "Owner" || x.role === "Manager" ? "Yes" : "No",
-        i ? money([21480, 17920, 9220][i % 3]) : "—",
-        "Active",
-      ])
-    : [
-        ["Admin", "Owner", "Yes", "Yes", "Yes", "—", "Active"],
-        ["Kevin", "Cashier", "No", "No", "No", "KES 21,480", "Active"],
-        ["Sharon", "Manager", "Yes", "No", "Yes", "KES 17,920", "Active"],
-        ["Musa", "Storekeeper", "No", "Yes", "No", "KES 9,220", "Active"],
-      ];
+        "—",
+        x.active?"Active":"Inactive",
+      ]);
   return (
     <Page>
       <Intro
@@ -1327,9 +1176,16 @@ function Settings({
     </Page>
   );
 }
-function downloadExcel() {
-  const data =
-    "Line\tAmount\nSales revenue\t170120\nCost of goods\t112780\nGross profit\t57340\nExpenses\t46500\nNet profit\t10840";
+function downloadExcel(report:any = {}) {
+  const data = [
+    ["Dukora management report", `${report.from??""} to ${report.to??""}`],
+    ["Line","Amount"],
+    ["Sales revenue",report.revenue??0],
+    ["Cost of goods",report.cost??0],
+    ["Gross profit",report.grossProfit??0],
+    ["Expenses",report.expenses??0],
+    ["Net profit",report.netProfit??0],
+  ].map(x=>x.join("\t")).join("\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(
     new Blob([data], { type: "application/vnd.ms-excel" }),
