@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "1.5.0"
+  #define AppVersion "1.5.1"
 #endif
 #define StageDir "stage-lite"
 
@@ -26,7 +26,7 @@ WizardSmallImageFile=branding\dukora-logo.png
 Source: "{#StageDir}\desktop\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#StageDir}\server\*"; DestDir: "{app}\server"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#StageDir}\print-bridge\*"; DestDir: "{app}\print-bridge"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#StageDir}\prerequisites\MicrosoftEdgeWebView2Setup.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
+Source: "{#StageDir}\prerequisites\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 Source: "{#StageDir}\driver\Xprinter-Receipt-Driver-2025.12.22.01.exe"; DestDir: "{app}\driver"; Flags: ignoreversion
 Source: "branding\dukora.ico"; DestDir: "{app}"; Flags: ignoreversion
 
@@ -39,7 +39,7 @@ Name: "{group}\Dukora Lite"; Filename: "{app}\Dukora.Desktop.exe"; IconFilename:
 Name: "{autodesktop}\Dukora Lite"; Filename: "{app}\Dukora.Desktop.exe"; IconFilename: "{app}\dukora.ico"; Tasks: desktopicon
 
 [Run]
-Filename: "{tmp}\MicrosoftEdgeWebView2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "Checking the Microsoft desktop runtime..."; Flags: runhidden waituntilterminated
+Filename: "{tmp}\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; Parameters: "/silent /install"; StatusMsg: "Installing the Microsoft desktop runtime..."; Flags: runhidden waituntilterminated
 Filename: "{app}\driver\Xprinter-Receipt-Driver-2025.12.22.01.exe"; Description: "Install Xprinter receipt-printer support"; Flags: postinstall waituntilterminated skipifsilent; Tasks: printerdriver
 Filename: "{app}\Dukora.Desktop.exe"; Description: "Open Dukora Lite"; Flags: postinstall nowait skipifsilent
 

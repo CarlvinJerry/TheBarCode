@@ -1,12 +1,15 @@
 {
-  "version": "1.5.0",
+  "version": "1.5.1",
   "edition": "Lite",
   "channel": "lite-windows",
-  "summary": "Dukora's full interface in a low-resource SQLite desktop edition.",
+  "summary": "Offline WebView2 runtime with diagnostics and automatic browser fallback.",
   "downloadUrl": "",
-  "sha256": "BD41FDA3602C38101A9B03A37518149BC6E98F5131B8E4BC0A7109569179BADF",
+  "sha256": "F5AB665154F3FEBB4F1E0257C54AB88C78E5484061AF256C9BE474EFAAD21C95",
   "publishedAt": "2026-08-22T00:00:00+03:00",
   "notes": [
+    "Bundles Microsoft's full offline x64 Evergreen WebView2 runtime.",
+    "Records the exact embedded-view initialization failure in the local desktop log.",
+    "Keeps Dukora running and opens the same local UI in the default browser as a fallback.",
     "Uses the same React UI, API, reports, visualizations and business rules as Dukora Server.",
     "Stores data locally in SQLite with WAL journaling and no PostgreSQL installation.",
     "Opens in a branded touch-friendly WebView2 desktop window.",

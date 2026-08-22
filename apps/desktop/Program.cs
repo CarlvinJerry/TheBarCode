@@ -27,7 +27,7 @@ internal static class Program
             if (configuration is null) return;
             await EnsureApi(paths, configuration);
             StartPrintBridge(paths);
-            Application.Run(new DukoraWindow(AppUrl, paths.WebViewData));
+            Application.Run(new DukoraWindow(AppUrl, paths.WebViewData, paths.DesktopLog));
         }
         catch (Exception ex)
         {
@@ -108,9 +108,10 @@ internal sealed class DukoraWindow : Form
     readonly WebView2 browser = new() { Dock = DockStyle.Fill };
     readonly string url;
     readonly string userData;
-    public DukoraWindow(string url, string userData)
+    readonly string errorLog;
+    public DukoraWindow(string url, string userData, string errorLog)
     {
-        this.url = url; this.userData = userData;
+        this.url = url; this.userData = userData; this.errorLog = errorLog;
         Text = "Dukora — Smarter Business Operations";
         Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "dukora.ico"));
         MinimumSize = new Size(960, 640);
@@ -122,13 +123,24 @@ internal sealed class DukoraWindow : Form
     {
         try
         {
+            _ = CoreWebView2Environment.GetAvailableBrowserVersionString();
             var environment = await CoreWebView2Environment.CreateAsync(null, userData);
             await browser.EnsureCoreWebView2Async(environment);
             browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
             browser.CoreWebView2.Settings.IsStatusBarEnabled = false;
             browser.CoreWebView2.Navigate(url);
         }
-        catch (Exception ex) { MessageBox.Show($"The Dukora window could not initialize. Install Microsoft Edge WebView2 Runtime and reopen Dukora.\n\n{ex.Message}", "Dukora", MessageBoxButtons.OK, MessageBoxIcon.Error); Close(); }
+        catch (Exception ex)
+        {
+            await File.AppendAllTextAsync(errorLog, $"{DateTimeOffset.Now:O} WebView2 initialization failed: {ex}{Environment.NewLine}");
+            browser.Visible = false;
+            var message = new Label { Text = "Dukora is running, but its embedded desktop view could not start.\nThe same interface has been opened in your default browser.\n\nClose this window when you finish using Dukora.", AutoSize = true, Font = new Font(Font.FontFamily, 13), TextAlign = ContentAlignment.MiddleCenter };
+            var open = new Button { Text = "Open Dukora in browser", AutoSize = true, Padding = new Padding(16,8,16,8) };
+            open.Click += (_, _) => Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            var fallback = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(50) };
+            fallback.Controls.AddRange([message, open]); Controls.Add(fallback); fallback.BringToFront();
+            open.PerformClick();
+        }
     }
 }
 
@@ -150,13 +162,13 @@ internal sealed class PinDialog : Form
     }
 }
 
-internal sealed record AppPaths(string Root, string ConfigFile, string DatabaseFile, string ApiLog, string WebViewData)
+internal sealed record AppPaths(string Root, string ConfigFile, string DatabaseFile, string ApiLog, string DesktopLog, string WebViewData)
 {
     public static AppPaths Create()
     {
         var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Beyond Raw Data", "Dukora Lite");
         Directory.CreateDirectory(root); var logs = Path.Combine(root, "Logs"); Directory.CreateDirectory(logs);
-        return new(root, Path.Combine(root,"configuration.json"), Path.Combine(root,"dukora.db"), Path.Combine(logs,"api.log"), Path.Combine(root,"WebView2"));
+        return new(root, Path.Combine(root,"configuration.json"), Path.Combine(root,"dukora.db"), Path.Combine(logs,"api.log"), Path.Combine(logs,"desktop.log"), Path.Combine(root,"WebView2"));
     }
 }
 

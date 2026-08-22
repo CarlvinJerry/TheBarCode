@@ -7,7 +7,8 @@ if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'VERSION must use semantic ver
 $stage = Join-Path $root 'installer\stage-lite'
 $web = Join-Path $root 'apps\web'
 $driver = Join-Path $root 'installer\vendor\Xprinter-Receipt-Driver-2025.12.22.01.exe'
-$webView = Join-Path $root 'installer\vendor\MicrosoftEdgeWebView2Setup.exe'
+$webView = Join-Path $root 'installer\vendor\MicrosoftEdgeWebView2RuntimeInstallerX64.exe'
+if (-not (Test-Path -LiteralPath $webView)) { Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/?linkid=2124701' -OutFile $webView }
 foreach ($required in @($driver,$webView)) { if (-not (Test-Path -LiteralPath $required)) { throw "Installer prerequisite missing: $required" } }
 if (Test-Path -LiteralPath $stage) {
   $resolved = [IO.Path]::GetFullPath($stage); $safeRoot = [IO.Path]::GetFullPath((Join-Path $root 'installer'))
@@ -28,7 +29,7 @@ dotnet publish (Join-Path $root 'apps\print-bridge\TheBarcode.PrintBridge.csproj
 dotnet publish (Join-Path $root 'apps\desktop\Dukora.Desktop.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\desktop"
 Copy-Item -Path "$web\dist\*" -Destination "$stage\server\wwwroot" -Recurse -Force
 Copy-Item -LiteralPath $driver -Destination "$stage\driver\Xprinter-Receipt-Driver-2025.12.22.01.exe"
-Copy-Item -LiteralPath $webView -Destination "$stage\prerequisites\MicrosoftEdgeWebView2Setup.exe"
+Copy-Item -LiteralPath $webView -Destination "$stage\prerequisites\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"
 $iscc = Get-Command iscc.exe -ErrorAction SilentlyContinue
 if (-not $iscc) { $isccPath = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1 } else { $isccPath=$iscc.Source }
 if (-not $isccPath) { throw 'Inno Setup 6 is required.' }

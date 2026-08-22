@@ -1,6 +1,7 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.5.0";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.5.1";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Offline x64 WebView2 runtime and resilient browser fallback",
   "Dukora Lite desktop edition with embedded SQLite storage",
   "Verified elevated Windows service setup and branded desktop launcher",
   "Live operational dashboards, expenses, reports and activity",
