@@ -3,7 +3,7 @@ using TheBarcode.PrintBridge;
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls("http://127.0.0.1:17777");
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
-  .WithOrigins("http://localhost:8088", "http://127.0.0.1:8088")
+  .WithOrigins("http://localhost:8088", "http://127.0.0.1:8088", "http://localhost:8090", "http://127.0.0.1:8090")
   .AllowAnyHeader()
   .AllowAnyMethod()));
 

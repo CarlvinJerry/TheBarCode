@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 namespace TheBarcode.Api;
 public static class SeedData
 {
- public static async Task Initialize(AppDbContext db,string bootstrapPin){await db.Database.EnsureCreatedAsync();foreach(var statement in new[]{"ALTER TABLE staff ADD COLUMN IF NOT EXISTS is_demo boolean NOT NULL DEFAULT false","ALTER TABLE products ADD COLUMN IF NOT EXISTS is_demo boolean NOT NULL DEFAULT false","ALTER TABLE customers ADD COLUMN IF NOT EXISTS is_demo boolean NOT NULL DEFAULT false","ALTER TABLE expenses ADD COLUMN IF NOT EXISTS is_demo boolean NOT NULL DEFAULT false",
+ public static async Task Initialize(AppDbContext db,string bootstrapPin){await db.Database.EnsureCreatedAsync();if(db.Database.IsNpgsql())foreach(var statement in new[]{"ALTER TABLE staff ADD COLUMN IF NOT EXISTS is_demo boolean NOT NULL DEFAULT false","ALTER TABLE products ADD COLUMN IF NOT EXISTS is_demo boolean NOT NULL DEFAULT false","ALTER TABLE customers ADD COLUMN IF NOT EXISTS is_demo boolean NOT NULL DEFAULT false","ALTER TABLE expenses ADD COLUMN IF NOT EXISTS is_demo boolean NOT NULL DEFAULT false",
  "CREATE TABLE IF NOT EXISTS organizations (id uuid PRIMARY KEY,created_at timestamptz NOT NULL,updated_at timestamptz NOT NULL,name text NOT NULL,legal_name text NULL,industry_profile text NOT NULL,currency text NOT NULL,phone text NULL,email text NULL,address text NULL,tax_pin text NULL,vat_number text NULL,tagline text NULL)",
  "CREATE TABLE IF NOT EXISTS branches (id uuid PRIMARY KEY,created_at timestamptz NOT NULL,updated_at timestamptz NOT NULL,name text NOT NULL,code text NOT NULL,address text NULL,phone text NULL,active boolean NOT NULL)",
  "CREATE UNIQUE INDEX IF NOT EXISTS ix_branches_code ON branches(code)",
