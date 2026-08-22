@@ -1,6 +1,10 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.7";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.8";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Authoritative held-bill revisions persisted before saving, posting or printing",
+  "Cash and M-Pesa selection when revised held bills are posted as paid",
+  "System messages displayed above every active dialog and workspace",
+  "Product existence and stock validation before held-bill printing",
   "Offline WebView2 prerequisite detection and bundled installation for low-resource Windows targets",
   "Cashier and Storekeeper expense submission with Owner/Manager governance",
   "Stock-safe quantity ceilings across carts, held revisions and server posting",
