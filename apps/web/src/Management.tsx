@@ -163,8 +163,8 @@ function Dashboard({ products,navigate }: { products: Product[]; navigate:(x:str
           <Donut
             data={(overview?.paymentMix ?? []).map((x:any)=>[x.name,x.amount])}
             colors={["#153d34", "#ff7542", "#efb45a"]}
-            center="78%"
-            subtitle="collected"
+            center={`${Number(overview?.collectionRate??0).toFixed(1)}%`}
+            subtitle={`sales collected · ${money(overview?.cashCollected??0)} received in range`}
           />
         </Panel>
       </Two>
@@ -674,7 +674,7 @@ function Reports({user}:{user:{role:string}}) {
       </div>
       <Kpis
         items={[
-          ["Revenue", money(summary?.revenue??0), `${summary?.salesCount??0} sales`],
+          ["Revenue", money(summary?.revenue??0), `${summary?.salesCount??0} sales · ${Number(summary?.collectionRate??0).toFixed(1)}% collected`],
           ["Cost of goods", money(summary?.cost??0), "Recorded sale-item cost"],
           ["Gross profit", money(gross), summary?.revenue?`${(gross/summary.revenue*100).toFixed(1)}%`:"0%"],
           ["Expenses", money(summary?.expenses??0), "Selected range"],
@@ -1141,8 +1141,8 @@ function Settings({
           ))}
         </div>
       </Panel>
-      <Panel title="Display size">
-        <p className="display-scale-help">Scale the complete interface proportionally for comfortable POS viewing. Cards, charts, navigation and touch targets reflow together to preserve Dukora’s layout.</p>
+      <Panel title="Font & interface size">
+        <p className="display-scale-help">Change every font proportionally while scaling cards, charts, navigation and touch targets with it. The relative hierarchy is preserved and the choice persists on this terminal.</p>
         <div className="display-scale-grid">
           {(Object.entries(displayScales) as [DisplayScaleName, number][]).map(([name, scale]) => (
             <button className={displayScale === name ? "active" : ""} onClick={() => chooseDisplayScale(name)} key={name} aria-pressed={displayScale === name}>
@@ -1313,11 +1313,11 @@ function Settings({
 function downloadPdfReport({from,to,summary,detail}:{from:string;to:string;summary:any;detail:any}){
   if(!summary||!detail)return;
   const org=cachedOrganizationSettings(),doc=new jsPDF({unit:"mm",format:"a4"}),green=[21,61,52] as [number,number,number],orange=[255,117,66] as [number,number,number];
-  const revenue=Number(summary.revenue||0),cost=Number(summary.cost||0),expenses=Number(summary.expenses||0),gross=revenue-cost,net=gross-expenses,margin=revenue?gross/revenue*100:0,fmt=(n:number)=>`${org.currency} ${n.toLocaleString(undefined,{maximumFractionDigits:0})}`;
+  const revenue=Number(summary.revenue||0),cost=Number(summary.cost||0),expenses=Number(summary.expenses||0),gross=revenue-cost,net=gross-expenses,collectionRate=Number(summary.collectionRate||0),cashCollected=Number(summary.cashCollected||0),fmt=(n:number)=>`${org.currency} ${n.toLocaleString(undefined,{maximumFractionDigits:0})}`;
   doc.setFillColor(...green);doc.rect(0,0,210,34,"F");doc.setTextColor(255);doc.setFont("helvetica","bold");doc.setFontSize(19);doc.text(org.name,14,14);doc.setFontSize(11);doc.text("Management summary",14,22);doc.setFont("helvetica","normal");doc.setFontSize(8);doc.text(`${from} to ${to} | Generated ${new Date().toLocaleString()}`,14,28);doc.setTextColor(24,38,33);
-  const cards=[ ["Revenue",fmt(revenue)],["Gross profit",fmt(gross)],["Net profit",fmt(net)],["Margin",`${margin.toFixed(1)}%`] ];cards.forEach((c,i)=>{const x=14+i*47;doc.setFillColor(244,248,246);doc.roundedRect(x,40,43,23,2,2,"F");doc.setFontSize(7);doc.setTextColor(100,115,108);doc.text(c[0],x+4,47);doc.setFontSize(11);doc.setFont("helvetica","bold");doc.setTextColor(24,55,46);doc.text(c[1],x+4,56,{maxWidth:36});doc.setFont("helvetica","normal")});
+  const cards=[ ["Revenue",fmt(revenue)],["Gross profit",fmt(gross)],["Collected",`${collectionRate.toFixed(1)}%`],["Cash received",fmt(cashCollected)] ];cards.forEach((c,i)=>{const x=14+i*47;doc.setFillColor(244,248,246);doc.roundedRect(x,40,43,23,2,2,"F");doc.setFontSize(7);doc.setTextColor(100,115,108);doc.text(c[0],x+4,47);doc.setFontSize(11);doc.setFont("helvetica","bold");doc.setTextColor(24,55,46);doc.text(c[1],x+4,56,{maxWidth:36});doc.setFont("helvetica","normal")});
   doc.setFontSize(11);doc.setFont("helvetica","bold");doc.text("Daily revenue and gross profit",14,73);const daily=detail.daily||[],max=Math.max(1,...daily.map((x:any)=>Number(x.revenue)));daily.slice(-14).forEach((x:any,i:number)=>{const bx=15+i*12.8,rh=28*Number(x.revenue)/max,ph=28*Math.max(0,Number(x.profit))/max;doc.setFillColor(...green);doc.rect(bx,105-rh,5.2,rh,"F");doc.setFillColor(...orange);doc.rect(bx+5.2,105-ph,5.2,ph,"F");doc.setFontSize(5.5);doc.setTextColor(95);doc.text(new Date(x.date).toLocaleDateString(undefined,{month:"short",day:"numeric"}),bx,110,{angle:35})});doc.setFontSize(7);doc.setTextColor(...green);doc.text("Revenue",156,73);doc.setTextColor(...orange);doc.text("Gross profit",177,73);
-  autoTable(doc,{startY:119,head:[["Profit and loss","Amount"]],body:[["Posted sales revenue",fmt(revenue)],["Cost of goods sold",fmt(cost)],["Gross profit",fmt(gross)],["Operating expenses",fmt(expenses)],["Net profit",fmt(net)]],theme:"grid",headStyles:{fillColor:green},styles:{fontSize:8}});
+  autoTable(doc,{startY:119,head:[["Profit, collection and loss","Amount"]],body:[["Posted sales revenue",fmt(revenue)],["Payments against period sales",fmt(Number(summary.salesCollected||0))],["Collection rate",`${collectionRate.toFixed(1)}%`],["Cash received during period",fmt(cashCollected)],["Cost of goods sold",fmt(cost)],["Gross profit",fmt(gross)],["Operating expenses",fmt(expenses)],["Net profit",fmt(net)]],theme:"grid",headStyles:{fillColor:green},styles:{fontSize:8}});
   autoTable(doc,{startY:(doc as any).lastAutoTable.finalY+7,head:[["Top seller","Qty","Revenue","Profit"]],body:(detail.topSellers||[]).slice(0,8).map((x:any)=>[x.name,Number(x.quantity).toLocaleString(),fmt(Number(x.revenue)),fmt(Number(x.profit))]),theme:"striped",headStyles:{fillColor:green},styles:{fontSize:7.5}});
   doc.addPage();doc.setFillColor(...green);doc.rect(0,0,210,18,"F");doc.setTextColor(255);doc.setFont("helvetica","bold");doc.setFontSize(13);doc.text("Operations detail",14,12);doc.setTextColor(25);doc.setFont("helvetica","normal");
   autoTable(doc,{startY:25,head:[["Payment method","Collected"]],body:(detail.paymentMix||[]).map((x:any)=>[x.name,fmt(Number(x.amount))]),theme:"grid",headStyles:{fillColor:green},styles:{fontSize:8}});

@@ -41,15 +41,19 @@ public static class InsightsEndpoints
         if (to < from) (from, to) = (to, from);
         var start = from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var end = to.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-        var allSales=await db.Sales.AsNoTracking().Where(x=>x.IsDemo==demo&&(x.Status=="Paid"||x.Status=="Credit"||x.Status=="PartiallyPaid")).Include(x=>x.Items).Include(x=>x.Payments).ToListAsync();
+        var financialSales=await db.Sales.AsNoTracking().Where(x=>x.IsDemo==demo&&(x.Status=="Paid"||x.Status=="Credit"||x.Status=="PartiallyPaid"||x.Status=="Refunded")).Include(x=>x.Items).Include(x=>x.Payments).ToListAsync();
+        var allSales=financialSales.Where(x=>x.Status!="Refunded").ToList();
         var sales=allSales.Where(x=>x.OccurredAt>=start&&x.OccurredAt<end).ToList();
         var expenses = await db.Expenses.AsNoTracking().Where(x =>x.IsDemo==demo&&x.Date >= from && x.Date <= to).ToListAsync();
         var products = await db.Products.AsNoTracking().Where(x => x.Active&&x.IsDemo==demo).ToListAsync();
         var velocityStart=DateTimeOffset.UtcNow.AddDays(-30);var recentSales=allSales.Where(x=>(x.PostedAt??x.OccurredAt)>=velocityStart).ToList();var recentLines=recentSales.SelectMany(x=>x.Items).GroupBy(x=>x.ProductId).ToDictionary(x=>x.Key,x=>x.Sum(line=>line.Quantity)/30m);
         var customerSales=allSales.Where(x=>x.CustomerId!=null).ToList();
-        var rangePayments=allSales.SelectMany(x=>x.Payments).Where(x=>x.PaidAt>=start&&x.PaidAt<end).ToList();
+        var rangePayments=financialSales.SelectMany(x=>x.Payments).Where(x=>x.PaidAt>=start&&x.PaidAt<end).ToList();
         var activity=(await db.AuditEvents.AsNoTracking().Take(500).ToListAsync()).OrderByDescending(x=>x.OccurredAt).Take(12).ToList();
         var revenue = sales.Sum(x => x.Total);
+        var salesCollected=sales.SelectMany(x=>x.Payments).Sum(x=>x.Amount);
+        var collectionRate=revenue<=0?0:Math.Clamp(salesCollected/revenue*100m,0m,100m);
+        var cashCollected=rangePayments.Sum(x=>x.Amount);
         var cost = sales.SelectMany(x => x.Items).Sum(x => x.UnitCost * x.Quantity);
         var paid = customerSales.SelectMany(x => x.Payments).Sum(x => x.Amount);
         var customerRevenue = customerSales.Sum(x => x.Total);
@@ -60,7 +64,7 @@ public static class InsightsEndpoints
         var paymentMix = rangePayments.GroupBy(x => x.Method).Select(g => new NamedAmount(g.Key, g.Sum(x => x.Amount))).OrderByDescending(x => x.Amount).ToList();
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var stockRisks=products.Select(x=>{var dailyUse=recentLines.GetValueOrDefault(x.Id);var days=dailyUse>0?x.Stock/dailyUse:(decimal?)null;var projected=x.Stock<=x.MinStock*1.5m||(days is not null&&days<=7);return new StockRisk(x.Id,x.Name,x.Category,x.Stock,x.MinStock,x.CostPrice,x.SellingPrice,dailyUse,days,projected,x.Stock<=x.MinStock);}).Where(x=>x.ProjectedLow).OrderBy(x=>x.DaysRemaining??decimal.MaxValue).ThenBy(x=>x.Stock).ToList();
-        return new OperationalSnapshot(from, to, revenue, cost, revenue - cost, expenses.Sum(x => x.Amount), sales.Count, Math.Max(0, customerRevenue - paid), stockRisks.Count, products.Count(x => x.Stock <= 0), products.Sum(x => x.Stock * x.CostPrice), sales.Where(x => DateOnly.FromDateTime(x.OccurredAt.UtcDateTime) == today).Sum(x => x.Total), daily, top, categories, expenseCategories, paymentMix, stockRisks, activity.Select(x => new ActivityItem(x.Actor, x.Action, x.EntityType, x.Details, x.DeviceId, x.OccurredAt)).ToList(), expenses.OrderByDescending(x => x.Date).Take(100).Select(x => new ExpenseItem(x.Id, x.Date, x.Description, x.Category, x.Amount, x.PaidAmount, x.Method)).ToList());
+        return new OperationalSnapshot(from, to, revenue, cost, revenue - cost, expenses.Sum(x => x.Amount), sales.Count, Math.Max(0, customerRevenue - paid), stockRisks.Count, products.Count(x => x.Stock <= 0), products.Sum(x => x.Stock * x.CostPrice), sales.Where(x => DateOnly.FromDateTime(x.OccurredAt.UtcDateTime) == today).Sum(x => x.Total), daily, top, categories, expenseCategories, paymentMix, stockRisks, activity.Select(x => new ActivityItem(x.Actor, x.Action, x.EntityType, x.Details, x.DeviceId, x.OccurredAt)).ToList(), expenses.OrderByDescending(x => x.Date).Take(100).Select(x => new ExpenseItem(x.Id, x.Date, x.Description, x.Category, x.Amount, x.PaidAmount, x.Method)).ToList()){SalesCollected=salesCollected,CashCollected=cashCollected,CollectionRate=collectionRate};
     }
 }
 
@@ -113,7 +117,10 @@ public sealed class SmartInsightsService(IConfiguration configuration, AppDbCont
 
 public record OperationalSnapshot(DateOnly From, DateOnly To, decimal Revenue, decimal Cost, decimal GrossProfit, decimal Expenses, int SalesCount, decimal CustomerDebt, int LowStockCount, int OutOfStockCount, decimal StockValue, decimal TodayRevenue, List<DailyMetric> Daily, List<TopSeller> TopSellers, List<CategoryStock> StockByCategory, List<NamedAmount> ExpenseByCategory, List<NamedAmount> PaymentMix, List<StockRisk> LowStock, List<ActivityItem> Activity, List<ExpenseItem> ExpenseRecords)
 {
-    public object ForAi(bool includeUserNames=false) => new { From, To, Revenue, Cost, GrossProfit, Expenses, SalesCount, CustomerDebt, LowStockCount, OutOfStockCount, StockValue, Daily, TopSellers, StockByCategory, ExpenseByCategory, PaymentMix,StaffActivity=includeUserNames?Activity.Select(x=>new{x.Actor,x.Action,x.EntityType,x.OccurredAt}):null };
+    public decimal SalesCollected { get; init; }
+    public decimal CashCollected { get; init; }
+    public decimal CollectionRate { get; init; }
+    public object ForAi(bool includeUserNames=false) => new { From, To, Revenue, Cost, GrossProfit, Expenses, SalesCount, SalesCollected, CashCollected, CollectionRate, CustomerDebt, LowStockCount, OutOfStockCount, StockValue, Daily, TopSellers, StockByCategory, ExpenseByCategory, PaymentMix,StaffActivity=includeUserNames?Activity.Select(x=>new{x.Actor,x.Action,x.EntityType,x.OccurredAt}):null };
 }
 public record DailyMetric(DateOnly Date, decimal Revenue, decimal Profit);
 public record TopSeller(Guid ProductId, string Name, decimal Quantity, decimal Revenue, decimal Profit);

@@ -1,6 +1,9 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.10";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.11";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Live sales collection rate replaces the hard-coded dashboard percentage",
+  "Separate period-sales collection and actual cash-received measures across dashboard, reports, PDF and insights",
+  "Persistent proportional Font & interface size settings across the complete application",
   "Controlled failed-order recovery with Retry, Open held bill and Start new order actions",
   "Stable draft transaction identity prevents duplicate bills when a response is lost",
   "Safe held-bill detachment keeps the record available without blocking the till",

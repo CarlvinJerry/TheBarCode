@@ -59,4 +59,32 @@ public sealed class BillLifecycleTests
         Assert.False(risk.BelowMinimum);
         Assert.True(risk.ProjectedLow);
     }
+
+    [Fact]
+    public async Task Live_snapshot_calculates_collection_rate_and_cash_received()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options;
+        await using var db = new AppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+        var staff = new StaffUser { Name = "Owner", Role = "Owner", PinHash = "test" };
+        var product = new Product { Name = "Coffee", Category = "Cafe", CostPrice = 30, SellingPrice = 100, Stock = 10 };
+        var paid = new Sale { DeviceTransactionId = "collection-paid", ReceiptNumber = 1, StaffId = staff.Id, Status = "Paid", Total = 100, OccurredAt = DateTimeOffset.UtcNow };
+        paid.Items.Add(new SaleItem { ProductId = product.Id, ProductName = product.Name, Quantity = 1, UnitPrice = 100, UnitCost = 30 });
+        paid.Payments.Add(new Payment { Method = "Cash", Amount = 100, PaidAt = DateTimeOffset.UtcNow });
+        var credit = new Sale { DeviceTransactionId = "collection-credit", ReceiptNumber = 2, StaffId = staff.Id, Status = "PartiallyPaid", Total = 100, OccurredAt = DateTimeOffset.UtcNow };
+        credit.Items.Add(new SaleItem { ProductId = product.Id, ProductName = product.Name, Quantity = 1, UnitPrice = 100, UnitCost = 30 });
+        credit.Payments.Add(new Payment { Method = "M-Pesa", Amount = 50, PaidAt = DateTimeOffset.UtcNow });
+        db.AddRange(staff, product, paid, credit);
+        await db.SaveChangesAsync();
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var result = await InsightsEndpoints.BuildSnapshot(db, today, today);
+
+        Assert.Equal(200, result.Revenue);
+        Assert.Equal(150, result.SalesCollected);
+        Assert.Equal(150, result.CashCollected);
+        Assert.Equal(75, result.CollectionRate);
+    }
 }
