@@ -2,6 +2,12 @@
 param([Parameter(Mandatory=$true)][string]$InstallRoot)
 $ErrorActionPreference = 'Stop'
 
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = [Security.Principal.WindowsPrincipal]::new($identity)
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+  throw 'Dukora configuration requires Administrator privileges. Run the installer as Administrator.'
+}
+
 function New-HexSecret([int]$Length) {
   $bytes = New-Object byte[] $Length
   $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
@@ -57,17 +63,34 @@ $config | Set-Content -LiteralPath (Join-Path $InstallRoot 'server\appsettings.P
 $api = Join-Path $InstallRoot 'server\TheBarcode.Api.exe'
 & sc.exe stop TheBarcodeApi 2>$null | Out-Null
 & sc.exe delete TheBarcodeApi 2>$null | Out-Null
+for ($attempt = 1; $attempt -le 20 -and (Get-Service TheBarcodeApi -ErrorAction SilentlyContinue); $attempt++) { Start-Sleep -Milliseconds 250 }
 & sc.exe create TheBarcodeApi binPath= "`"$api`" --urls http://0.0.0.0:8088" start= auto DisplayName= "Dukora Local Server" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Windows could not register the Dukora Local Server service.' }
 & sc.exe description TheBarcodeApi 'Local API and shared business data service for Dukora' | Out-Null
 & sc.exe start TheBarcodeApi | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Windows could not start the Dukora Local Server service.' }
 & netsh.exe advfirewall firewall delete rule name='TheBarcode Local Server' 2>$null | Out-Null
 & netsh.exe advfirewall firewall add rule name='TheBarcode Local Server' dir=in action=allow protocol=TCP localport=8088 profile=private | Out-Null
+
+$healthy = $false
+for ($attempt = 1; $attempt -le 20; $attempt++) {
+  Start-Sleep -Milliseconds 500
+  try {
+    $health = Invoke-RestMethod -Uri 'http://127.0.0.1:8088/api/health' -TimeoutSec 2
+    if ($health.status -eq 'healthy') { $healthy = $true; break }
+  } catch { }
+}
+if (-not $healthy) {
+  $serviceState = (Get-Service TheBarcodeApi -ErrorAction SilentlyContinue).Status
+  throw "Dukora Local Server did not become ready on port 8088. Service status: $serviceState. Re-run Configure Dukora as Administrator."
+}
 
 $bridge = Join-Path $InstallRoot 'print-bridge\TheBarcode.PrintBridge.exe'
 $startup = Join-Path ([Environment]::GetFolderPath('Startup')) 'TheBarcode Print Bridge.cmd'
 "@echo off`r`nstart `"`" /min `"$bridge`" --urls http://127.0.0.1:17777" | Set-Content -LiteralPath $startup -Encoding ascii
 Start-Process -FilePath $bridge -ArgumentList '--urls http://127.0.0.1:17777' -WindowStyle Hidden
 
-Write-Host 'Dukora native installation is configured.' -ForegroundColor Green
+Write-Host 'Dukora native installation is configured and responding on port 8088.' -ForegroundColor Green
 Write-Host 'Other terminals on this outlet network can use this computer IP on port 8088.' -ForegroundColor Cyan
+Start-Process 'http://localhost:8088'
 Read-Host 'Press Enter to close'

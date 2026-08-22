@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "1.4.0"
+  #define AppVersion "1.4.1"
 #endif
 #define StageDir "stage"
 
@@ -17,7 +17,8 @@ ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 Compression=lzma2/max
 SolidCompression=yes
-UninstallDisplayIcon={app}\TheBarcode.Api.exe
+SetupIconFile=branding\dukora.ico
+UninstallDisplayIcon={app}\branding\dukora.ico
 WizardStyle=modern
 WizardSmallImageFile=branding\dukora-logo.png
 
@@ -29,18 +30,18 @@ Source: "{#StageDir}\driver\*"; DestDir: "{app}\driver"; Flags: ignoreversion
 Source: "{#StageDir}\release\*"; DestDir: "{app}\release"; Flags: ignoreversion
 Source: "branding\dukora-logo.png"; DestDir: "{app}\branding"; Flags: ignoreversion
 Source: "branding\dukora-full-logo.png"; DestDir: "{app}\branding"; Flags: ignoreversion
+Source: "branding\dukora.ico"; DestDir: "{app}\branding"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Dukora"; Filename: "http://localhost:8088"; IconFilename: "{app}\server\TheBarcode.Api.exe"
-Name: "{autodesktop}\Dukora"; Filename: "http://localhost:8088"; IconFilename: "{app}\server\TheBarcode.Api.exe"; Tasks: desktopicon
-Name: "{group}\Configure Dukora"; Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\tools\configure-native.ps1"" -InstallRoot ""{app}"""
+Name: "{group}\Dukora"; Filename: "http://localhost:8088"; IconFilename: "{app}\branding\dukora.ico"
+Name: "{autodesktop}\Dukora"; Filename: "http://localhost:8088"; IconFilename: "{app}\branding\dukora.ico"; Tasks: desktopicon
+Name: "{group}\Configure Dukora"; Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\configure-native-launcher.ps1"" -InstallRoot ""{app}"""; IconFilename: "{app}\branding\dukora.ico"
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: checkedonce
 
 [Run]
-Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\tools\configure-native.ps1"" -InstallRoot ""{app}"""; Description: "Configure database, printer and Windows services"; Flags: postinstall waituntilterminated runascurrentuser
-Filename: "http://localhost:8088"; Description: "Open Dukora"; Flags: postinstall nowait skipifsilent shellexec
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\configure-native.ps1"" -InstallRoot ""{app}"""; Description: "Configure database, printer and Windows services"; Flags: waituntilterminated
 
 [UninstallRun]
 Filename: "sc.exe"; Parameters: "stop TheBarcodeApi"; Flags: runhidden; RunOnceId: "StopApi"

@@ -1,11 +1,13 @@
 {
-  "version": "1.4.0",
+  "version": "1.4.1",
   "channel": "local-windows",
-  "summary": "Live operational reporting and Smart Insights for the Dukora Lenovo test release.",
+  "summary": "Verified Windows service setup and branded Dukora desktop launcher.",
   "downloadUrl": "",
-  "sha256": "5671626A8FC936FFEEBB8C48B160D7C4C9E18C2DCE37CD7C22236FEB11B7CC1F",
+  "sha256": "7046900E9D2A02EC3262E1E34A1CD387D0D96C384555DD46695B2FC3284F4CD0",
   "publishedAt": "2026-08-22T00:00:00+03:00",
   "notes": [
+    "Kept installer configuration elevated and verify the local API health endpoint before launch.",
+    "Added a multi-resolution Dukora logo icon to Setup, shortcuts and the uninstall entry.",
     "Connected dashboard KPIs, payment mix, top sellers, activity, expenses and reports to PostgreSQL records.",
     "Added Smart Insights with an offline rule engine and optional privacy-conscious LLM integration.",
     "Fixed installer, Start menu and desktop URL launch handling.",

@@ -30,6 +30,7 @@ dotnet publish (Join-Path $root 'apps\api\TheBarcode.Api.csproj') -c Release -r 
 dotnet publish (Join-Path $root 'apps\print-bridge\TheBarcode.PrintBridge.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\print-bridge"
 Copy-Item -Path "$web\dist\*" -Destination "$stage\api\wwwroot" -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $root 'installer\configure-native.ps1') -Destination "$stage\tools\configure-native.ps1"
+Copy-Item -LiteralPath (Join-Path $root 'installer\configure-native-launcher.ps1') -Destination "$stage\tools\configure-native-launcher.ps1"
 Copy-Item -LiteralPath $driver -Destination "$stage\driver\Xprinter-Receipt-Driver-2025.12.22.01.exe"
 Copy-Item -LiteralPath (Join-Path $root 'release\latest.json') -Destination "$stage\release\latest.json"
 
