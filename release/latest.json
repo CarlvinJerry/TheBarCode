@@ -3,7 +3,7 @@
   "channel": "local-windows",
   "summary": "Live operational reporting and Smart Insights for the Dukora Lenovo test release.",
   "downloadUrl": "",
-  "sha256": "573F35463C5DF0744ED641A00F62CD50944E170225E30495FDEE42B3DFAA9226",
+  "sha256": "5671626A8FC936FFEEBB8C48B160D7C4C9E18C2DCE37CD7C22236FEB11B7CC1F",
   "publishedAt": "2026-08-22T00:00:00+03:00",
   "notes": [
     "Connected dashboard KPIs, payment mix, top sellers, activity, expenses and reports to PostgreSQL records.",
