@@ -41,6 +41,18 @@ On additional terminals:
 2. Install the PWA shortcut when desired.
 3. Open **Settings → Institution, outlet & terminal**.
 4. Give every terminal a unique name such as `MAIN-BAR-01`, `KITCHEN-01`, or `RECEPTION-01`.
+
+## Smart Insights and optional AI
+
+Smart Insights works immediately after installation using Dukora's local rule engine. It reads PostgreSQL aggregates for sales, profit, expenses, customer credit and inventory, so no internet connection or AI account is required.
+
+Optional AI analysis is configured on the API host—not in a browser. Set these Windows service environment values and restart **TheBarcode Local Server**:
+
+- `Insights__Endpoint`: an OpenAI-compatible chat-completions HTTPS endpoint
+- `Insights__Model`: the model identifier provided by the host
+- `Insights__ApiKey`: the secret API key
+
+Only aggregate business metrics are included in AI requests. Customer names, phone numbers and receipt-level records are excluded. If the endpoint is unavailable, Dukora automatically continues with its local rule engine.
 5. Keep the shared API address as `/api` when the UI was opened from the outlet server.
 6. Install the local print bridge only on terminals that have their own receipt printer.
 

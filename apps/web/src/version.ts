@@ -1,6 +1,8 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.3.0";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.4.0";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Live operational dashboards, expenses, reports and activity",
+  "Smart Insights with local rules and optional server AI",
   "Rebranded as Dukora — Smarter Business Operations",
   "Shared organization, branch and terminal configuration",
   "Configurable 58/80 mm receipts and printing policies",
