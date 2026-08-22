@@ -15,7 +15,11 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { printReceiptText, testReceiptText } from "./receiptPrinter";
+import {
+  listSilentPrinters,
+  printReceiptText,
+  testReceiptText,
+} from "./receiptPrinter";
 import {
   bootstrap,
   createProduct,
@@ -1088,6 +1092,19 @@ function Settings({
     [footer, setFooter] = useState(
       localStorage.getItem("receipt_footer") || "Thank you. Drink responsibly.",
     );
+  const [printers, setPrinters] = useState<string[]>([]);
+  const [printer, setPrinter] = useState(localStorage.getItem("receipt_printer") || "");
+  const [silent, setSilent] = useState(localStorage.getItem("silent_print") === "true");
+  const [bridgeReady, setBridgeReady] = useState(false);
+  useEffect(() => {
+    listSilentPrinters()
+      .then((items) => {
+        setPrinters(items);
+        setBridgeReady(true);
+        if (!printer && items.length === 1) setPrinter(items[0]);
+      })
+      .catch(() => setBridgeReady(false));
+  }, []);
   function choose(x: string) {
     setTheme(x);
     localStorage.setItem("theme", x);
@@ -1139,14 +1156,37 @@ function Settings({
           <div className="device-row">
             <i>▤</i>
             <span>
-            <b>XP-P5 / P510 Portable</b>
-              <small>Windows queue · USB or Bluetooth</small>
+              <b>Xprinter XP-80</b>
+              <small>Local ESC/POS bridge · USB or Bluetooth queue</small>
             </span>
-            <em>Configured</em>
+            <em>{bridgeReady ? "Bridge ready" : "Bridge offline"}</em>
+          </div>
+          <div className="settings-fields printer-settings">
+            <Field label="Windows printer">
+              <select value={printer} onChange={(e) => setPrinter(e.target.value)}>
+                <option value="">Choose printer…</option>
+                {printers.map((name) => <option key={name}>{name}</option>)}
+              </select>
+            </Field>
+            <label className="print-toggle">
+              <input type="checkbox" checked={silent} onChange={(e) => setSilent(e.target.checked)} />
+              Print silently through the local bridge
+            </label>
+            <button className="outline-button" onClick={() => {
+              localStorage.setItem("receipt_printer", printer);
+              localStorage.setItem("silent_print", String(silent));
+              localStorage.setItem("receipt_cut", "false");
+              notify("XP-80 printer configuration saved");
+            }}>Save printer</button>
           </div>
           <button
             className="outline-button"
-            onClick={() => printReceiptText(testReceiptText())}
+            onClick={async () => {
+              localStorage.setItem("receipt_printer", printer);
+              localStorage.setItem("silent_print", String(silent));
+              const mode = await printReceiptText(testReceiptText());
+              notify(mode === "silent" ? "Silent test receipt sent to XP-80" : "Print bridge unavailable · opened print preview");
+            }}
           >
             Print test receipt
           </button>
@@ -1184,9 +1224,9 @@ function Settings({
               <input defaultValue="Main bar" />
             </Field>
             <Field label="Receipt width">
-              <select defaultValue="58mm">
-                <option>58mm</option>
+              <select defaultValue="80mm">
                 <option>80mm</option>
+                <option>58mm</option>
               </select>
             </Field>
           </div>

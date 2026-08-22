@@ -6,7 +6,7 @@ The same procedure applies to the Xprinter XP-P5. In its Windows Printing Prefer
 
 If paper feeds continuously, cancel the job in the Windows printer queue and power-cycle the printer. Confirm the driver paper type and sensor mode before retrying. TheBarcode now creates an isolated receipt-only print document; it no longer sends the full application page.
 
-Silent direct printing is not available to an ordinary browser by default. The planned production option is a small localhost Windows print bridge that accepts a receipt only from TheBarcode and writes ESC/POS to the configured printer queue. This removes print preview while retaining USB and Bluetooth support.
+Silent direct printing is provided by the TheBarcode localhost Windows print bridge. Run `scripts\install-print-bridge.ps1`, select **Xprinter XP-80** under Settings, enable silent printing, save, and use the test button. The bridge writes ESC/POS to the configured Windows queue and removes print preview while retaining USB and Bluetooth support.
 
 1. Pair or connect the P510 and install the manufacturer driver.
 2. In Windows printer settings, print a test page and set the paper width to 58 mm.

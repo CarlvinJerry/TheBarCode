@@ -73,6 +73,16 @@ The institution name is printed at the top of every receipt. A selected register
 
 ## 7. Connect the P510 printer
 
+For the tested Xprinter XP-80, install its Windows receipt-printer driver and confirm the Windows queue is named **Xprinter XP-80**. Then install TheBarcode's local silent-print bridge from the project folder:
+
+```powershell
+.\scripts\install-print-bridge.ps1
+```
+
+The bridge is published as a self-contained Windows executable under `%LOCALAPPDATA%\TheBarcode\PrintBridge`, starts minimized at Windows sign-in, and listens only on `127.0.0.1:17777`. Building it during installation requires the .NET 10 SDK; the resulting bridge does not require Docker or a separately installed .NET runtime.
+
+Open **TheBarcode → Settings → Receipt printer**, select **Xprinter XP-80**, enable silent printing, save, and print a test receipt. When the bridge is available, TheBarcode submits RAW ESC/POS and no PDF or browser print window opens. If the bridge is unavailable, the application deliberately falls back to print preview.
+
 TheBarcode prints through the normal Windows printer queue. This supports either connection supplied by the P510:
 
 ### USB
@@ -96,7 +106,7 @@ For either connection:
 3. Open **TheBarcode → Settings → Receipt printer → Print test receipt**.
 4. Complete cash, M-Pesa and named-customer credit sales and verify each receipt.
 
-The current application does not send raw ESC/POS bytes directly to USB or Bluetooth. The browser opens the Windows print workflow, and Windows sends the job through the selected USB or Bluetooth printer driver. This is more reliable across different computers and connection types. Silent printing would require a separately installed local print bridge or controlled kiosk configuration and should be evaluated after the P510 driver is tested.
+The silent-print bridge sends RAW ESC/POS to the selected Windows queue. Windows still owns the physical USB or Bluetooth connection, so the same application code works with either interface. Cutting is disabled by default because portable models may not contain an automatic cutter.
 
 ## 8. Confirm offline operation
 

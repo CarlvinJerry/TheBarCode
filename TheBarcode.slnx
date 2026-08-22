@@ -3,6 +3,9 @@
   <Folder Name="/apps/api/">
     <Project Path="apps/api/TheBarcode.Api.csproj" />
   </Folder>
+  <Folder Name="/apps/print-bridge/">
+    <Project Path="apps/print-bridge/TheBarcode.PrintBridge.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/TheBarcode.Api.Tests/TheBarcode.Api.Tests.csproj" />
   </Folder>
