@@ -86,7 +86,7 @@ export default function App() {
   async function ensureHeld(print=false){
     if(!cart.length)return;
     try{
-      const saved=activeBill?await updateBill(activeBill.id,{...billPayload(),reason:"Updated from active POS order"}):await holdBill(billPayload());setActiveBill(saved);setNotifications(x=>({...x,Sell:(x.Sell||0)+(activeBill?0:1),Bills:(x.Bills||0)+(activeBill?0:1)}));
+      const saved=activeBill?await updateBill(activeBill.id,{...billPayload(),reason:"Updated from active POS order",expectedRevision:activeBill.revision}):await holdBill(billPayload());setActiveBill(saved);setNotifications(x=>({...x,Sell:(x.Sell||0)+(activeBill?0:1),Bills:(x.Bills||0)+(activeBill?0:1)}));
       const unpaid=buildSaleReceipt({id:String(saved.receiptNumber||saved.deviceTransactionId),customerName:selectedCustomer?.name||"Walk-in customer",cashierName:user.name,method:"Unpaid",credit:true,items:cart.map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
       setReceipt(unpaid.replace("CREDIT SALE","UNPAID BILL").replace("STATUS: UNPAID / CREDIT",`STATUS: HELD / UNPAID\nREVISION: ${saved.revision||1}\nNOT A PAYMENT RECEIPT`));
       if(print)await printReceiptText(unpaid.replace("CREDIT SALE","UNPAID BILL").replace("STATUS: UNPAID / CREDIT",`STATUS: HELD / UNPAID\nREVISION: ${saved.revision||1}\nNOT A PAYMENT RECEIPT`));
@@ -103,7 +103,7 @@ export default function App() {
     const id = crypto.randomUUID(), credit = method === "Credit",
       customerName = selectedCustomer?.name || "Walk-in customer";
     try{
-      const held=activeBill||await holdBill({...billPayload(),deviceTransactionId:id});
+      const held=activeBill?await updateBill(activeBill.id,{...billPayload(),reason:"Final POS revision before posting",expectedRevision:activeBill.revision}):await holdBill({...billPayload(),deviceTransactionId:id});
       const dueAt=credit?new Date(Date.now()+7*86400000).toISOString():undefined;
       const posted=await postBill(held.id,{status:credit?"Credit":"Paid",method,amountPaid:credit?0:total,dueAt,notes:credit?"Credit approved at POS":"Paid at POS",deviceId:localStorage.getItem("device_id")??"windows-pos-01"});
       const receiptText=buildSaleReceipt({id:String(posted.receiptNumber||id),customerName,cashierName:user.name,method,credit,items:cart.map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});

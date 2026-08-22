@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import {
   Bar,
   BarChart,
@@ -22,6 +24,7 @@ import {
   defaultOrganizationSettings,
   defaultReceiptSettings,
   buildSaleReceipt,
+  cachedOrganizationSettings,
   type OrganizationSettings,
   type ReceiptSettings,
 } from "./receiptPrinter";
@@ -35,6 +38,7 @@ import {
   getCustomerSummary,
   getExpenses,
   getInsights,
+  getInsightsSettings,
   getOperationalOverview,
   getSummary,
   getStaff,
@@ -43,6 +47,7 @@ import {
   payBill,
   postBill,
   cancelBill,
+  refundBill,
   updateBill,
   updateProduct,
   updateCustomer,
@@ -53,6 +58,7 @@ import {
   saveOrganization,
   saveReceiptConfiguration,
   saveTerminalConfiguration,
+  saveInsightsSettings,
   syncOutbox,
 } from "./api";
 import {
@@ -79,7 +85,7 @@ export function Management({ view, products, user, notify, navigate }: Props) {
   if (view === "Expenses") return <Expenses />;
   if (view === "Reports") return <Reports />;
   if (view === "Smart insights") return <SmartInsights />;
-  if (view === "Audit" || view === "Audit trail") return <Audit />;
+  if (view === "Audit" || view === "Audit trail") return <Audit user={user} />;
   if (["Staff", "Users & roles", "Staff & roles"].includes(view))
     return <Staff notify={notify} />;
   if (view === "Item setup") return <ItemSetup products={products} notify={notify} />;
@@ -177,10 +183,11 @@ function Bills({user,notify}:{user:{id:string;name:string;role:string};notify:(x
   const [status,setStatus]=useState(localStorage.getItem("bill_filter")||"Pending"),[rows,setRows]=useState<any[]>([]),[selected,setSelected]=useState<any>(),[lines,setLines]=useState<any[]>([]),[payment,setPayment]=useState({method:"Cash",amount:0,reference:""});
   const load=()=>getBills(status).then(setRows).catch(()=>setRows([]));useEffect(()=>{localStorage.removeItem("bill_filter");void load()},[status]);
   const open=(x:any)=>{setSelected(x);setLines(x.items.map((i:any)=>({productId:i.productId,productName:i.productName,quantity:Number(i.quantity),unitPrice:Number(i.unitPrice),discount:Number(i.discount||0)})));setPayment({method:"Cash",amount:Number(x.balance||0),reference:""})};
-  const saveHeld=async()=>{try{const saved=await updateBill(selected.id,{customerId:selected.customerId,discount:selected.discount||0,notes:selected.notes,reason:"Bill revision approved in bill workspace",deviceId:localStorage.getItem("device_id"),items:lines.map(x=>({productId:x.productId,quantity:x.quantity,unitPrice:x.unitPrice,discount:x.discount}))});setSelected(saved);notify(`Bill #${saved.receiptNumber} revision ${saved.revision} saved`);await load()}catch(e){notify(e instanceof Error?e.message:"Owner or manager approval is required")}};
+  const saveHeld=async()=>{try{const saved=await updateBill(selected.id,{customerId:selected.customerId,discount:selected.discount||0,notes:selected.notes,reason:"Bill revision approved in bill workspace",deviceId:localStorage.getItem("device_id"),expectedRevision:selected.revision,items:lines.map(x=>({productId:x.productId,quantity:x.quantity,unitPrice:x.unitPrice,discount:x.discount}))});setSelected(saved);notify(`Bill #${saved.receiptNumber} revision ${saved.revision} saved`);await load()}catch(e){notify(e instanceof Error?e.message:"Owner or manager approval is required")}};
   const post=async(kind:"Paid"|"Credit")=>{try{const saved=await postBill(selected.id,{status:kind,method:"Cash",amountPaid:kind==="Paid"?selected.total:0,dueAt:kind==="Credit"?new Date(Date.now()+7*86400000).toISOString():undefined,notes:"Posted from bill workspace",deviceId:localStorage.getItem("device_id")});setSelected(saved);notify(`${kind} bill posted; stock and reports updated`);await load()}catch(e){notify(e instanceof Error?e.message:"Bill could not be posted")}};
   const recordPayment=async()=>{try{const saved=await payBill(selected.id,{...payment,deviceId:localStorage.getItem("device_id")});setSelected(saved);notify(`Payment recorded; balance ${money(saved.balance)}`);await load()}catch(e){notify(e instanceof Error?e.message:"Payment could not be recorded")}};
   const cancel=async()=>{const reason=prompt("Owner/manager cancellation reason");if(!reason)return;try{await cancelBill(selected.id,reason,localStorage.getItem("device_id")||undefined);setSelected(undefined);notify("Held bill cancelled with audit record");await load()}catch{notify("Owner or manager authorization is required")}};
+  const refund=async()=>{const reason=prompt("Owner/manager refund reason");if(!reason)return;try{await refundBill(selected.id,reason,localStorage.getItem("device_id")||undefined);setSelected(undefined);notify("Sale refunded; inventory and accounts reversed");await load()}catch{notify("Owner or manager authorization is required")}};
   const print=async()=>{const credit=selected.status!=="Paid";const text=buildSaleReceipt({id:String(selected.receiptNumber),customerName:selected.customerName||"Walk-in customer",cashierName:selected.cashierName||user.name,method:selected.payments?.at(-1)?.method||"Unpaid",credit,items:lines.map(x=>({name:x.productName,quantity:x.quantity,unitPrice:x.unitPrice})),total:selected.total});await printReceiptText(selected.status==="Held"?text.replace("CREDIT SALE","UNPAID BILL").replace("STATUS: UNPAID / CREDIT",`STATUS: HELD / UNPAID\nREVISION: ${selected.revision}\nNOT A PAYMENT RECEIPT`):text)};
   const totals={held:rows.filter(x=>x.status==="Held").length,credit:rows.filter(x=>x.status==="Credit"||x.status==="PartiallyPaid").reduce((s,x)=>s+Number(x.balance),0),overdue:rows.filter(x=>x.dueAt&&new Date(x.dueAt)<new Date()&&x.balance>0).length};
   return <Page><Intro title="Bills & payment follow-up" text="Open, revise, post and collect against the complete live bill register."/>
@@ -189,7 +196,7 @@ function Bills({user,notify}:{user:{id:string;name:string;role:string};notify:(x
     <Panel title="Bill register"><div className="spec-table-wrap"><table className="spec-table"><thead><tr>{["Bill","Date","Customer","Status","Total","Paid","Balance","Action"].map(x=><th key={x}>{x}</th>)}</tr></thead><tbody>{rows.map(x=><tr key={x.id}><td>#{x.receiptNumber} · r{x.revision}</td><td>{new Date(x.occurredAt).toLocaleString()}</td><td>{x.customerName||"Walk-in"}</td><td><span className={`badge ${String(x.status).toLowerCase()}`}>{x.status}</span></td><td>{money(x.total)}</td><td>{money(x.paid)}</td><td>{money(x.balance)}</td><td><button className="table-action" onClick={()=>open(x)}>Open</button></td></tr>)}</tbody></table></div></Panel>
     {selected&&<div className="modal bill-workspace"><section><button className="close" onClick={()=>setSelected(undefined)}>×</button><h2>Bill #{selected.receiptNumber}</h2><p className="muted">{selected.status} · Revision {selected.revision} · {selected.customerName||"Walk-in customer"}</p>
       <div className="bill-edit-lines">{lines.map((x,i)=><div key={x.productId}><b>{x.productName}</b><Field label="Quantity"><input type="number" min=".01" step=".01" disabled={selected.status!=="Held"} value={x.quantity} onChange={e=>setLines(lines.map((v,j)=>j===i?{...v,quantity:+e.target.value}:v))}/></Field><Field label="Price"><input type="number" min="0" disabled={selected.status!=="Held"} value={x.unitPrice} onChange={e=>setLines(lines.map((v,j)=>j===i?{...v,unitPrice:+e.target.value}:v))}/></Field><strong>{money(x.quantity*x.unitPrice)}</strong></div>)}</div>
-      <div className="button-row">{selected.status==="Held"&&<><button onClick={saveHeld}>Save revision</button><button onClick={()=>post("Paid")}>Post paid</button><button onClick={()=>post("Credit")} disabled={!selected.customerId}>Post credit</button><button className="danger-button" onClick={cancel}>Cancel</button></>}<button onClick={print}>Print current document</button></div>
+      <div className="button-row">{selected.status==="Held"&&<><button onClick={saveHeld}>Save revision</button><button onClick={()=>post("Paid")}>Post paid</button><button onClick={()=>post("Credit")} disabled={!selected.customerId}>Post credit</button><button className="danger-button" onClick={cancel}>Cancel</button></>}{["Paid","Credit","PartiallyPaid"].includes(selected.status)&&["Owner","Manager"].includes(user.role)&&<button className="danger-button" onClick={refund}>Refund / reverse</button>}<button onClick={print}>Print current document</button></div>
       {(selected.status==="Credit"||selected.status==="PartiallyPaid")&&<div className="payment-box"><h3>Record later payment</h3><Field label="Method"><select value={payment.method} onChange={e=>setPayment({...payment,method:e.target.value})}><option>Cash</option><option>M-Pesa</option><option>Card</option><option>Bank</option></select></Field><Field label="Amount"><input type="number" min=".01" max={selected.balance} value={payment.amount} onChange={e=>setPayment({...payment,amount:+e.target.value})}/></Field><Field label="Reference"><input value={payment.reference} onChange={e=>setPayment({...payment,reference:e.target.value})}/></Field><button onClick={recordPayment}>Record payment</button></div>}
       <Panel title="Immutable revision history"><Table heads={["Revision","Action","Reason","Time"]} rows={(selected.revisions||[]).map((x:any)=>[String(x.revision),x.action,x.reason,new Date(x.createdAt).toLocaleString()])}/></Panel>
     </section></div>}
@@ -590,8 +597,8 @@ function Expenses() {
 }
 function Reports() {
   const today=new Date().toISOString().slice(0,10), month=new Date();month.setDate(1);
-  const [range, setRange] = useState("This month"),[from,setFrom]=useState(month.toISOString().slice(0,10)),[to,setTo]=useState(today),[summary,setSummary]=useState<any>(null);
-  const load=()=>getSummary(from,to).then(setSummary).catch(()=>setSummary(null));useEffect(()=>{void load()},[]);
+  const [range, setRange] = useState("This month"),[from,setFrom]=useState(month.toISOString().slice(0,10)),[to,setTo]=useState(today),[summary,setSummary]=useState<any>(null),[detail,setDetail]=useState<any>(null);
+  const load=()=>Promise.all([getSummary(from,to),getOperationalOverview(from,to)]).then(([s,d])=>{setSummary(s);setDetail(d)}).catch(()=>{setSummary(null);setDetail(null)});useEffect(()=>{void load()},[]);
   const gross=(summary?.revenue??0)-(summary?.cost??0),net=gross-(summary?.expenses??0);
   return (
     <Page>
@@ -636,15 +643,15 @@ function Reports() {
             ]}
           />
         </Panel>
-        <Panel title="Excel management pack">
+        <Panel title="PDF management report">
           <div className="export-card">
             <i>⇩</i>
             <p>
-              Download a formatted workbook containing KPI cards, revenue and
-              expense charts, sales, inventory, customers, and source tables.
+              Generate a concise branded PDF containing verified KPI formulas,
+              daily performance visuals, payment mix, top sellers, stock risks and expenses.
             </p>
-            <button onClick={()=>downloadExcel({from,to,...summary,grossProfit:gross,netProfit:net})}>
-              ⇩ Download Excel with visuals
+            <button onClick={()=>downloadPdfReport({from,to,summary,detail})}>
+              ⇩ Download PDF report
             </button>
           </div>
         </Panel>
@@ -662,16 +669,19 @@ function SmartInsights(){
     <Filter><input type="date" value={from} onChange={e=>setFrom(e.target.value)}/><span>to</span><input type="date" value={to} onChange={e=>setTo(e.target.value)}/><button onClick={load}>{loading?"Analysing…":"Refresh insights"}</button></Filter>
     <Panel title="Business briefing"><p className="insight-summary">{data?.summary??(loading?"Analysing live records…":"Insights are unavailable. Confirm this terminal is connected to the local server.")}</p><small>{data?.providerStatus} · No customer names, phone numbers or receipt-level data are sent to an AI provider.</small></Panel>
     <div className="insight-grid">{(data?.insights??[]).map((x:any)=><article className={`insight-card ${x.severity}`} key={x.id}><header><span>{x.category}</span><b>{x.metric}</b></header><h3>{x.title}</h3><p>{x.description}</p><footer><strong>Suggested action</strong>{x.recommendation}</footer></article>)}</div>
-    <Panel title="How analysis works"><p>Without server AI credentials, Dukora always uses its built-in deterministic rules. To enable optional AI analysis, set <code>Insights__Endpoint</code>, <code>Insights__Model</code> and <code>Insights__ApiKey</code> on the local server or hosted API, then restart it. Keys are never stored in the browser.</p></Panel>
+    <Panel title="How analysis works"><p>Without an enabled AI provider, Dukora always uses its built-in deterministic rules. Owners can configure an HTTPS chat-model endpoint, model and API key in Settings. The key is encrypted by the local server and is never returned to the browser.</p></Panel>
   </Page>
 }
-function Audit() {
+function Audit({user}:{user:{role:string}}) {
   const [remote, setRemote] = useState<any[]>([]),[action,setAction]=useState("All actions"),[actor,setActor]=useState("All users"),[date,setDate]=useState("");
+  const permitted=["Owner","Manager","Auditor"].includes(user.role);
   useEffect(() => {
+    if(!permitted)return;
     getAudit()
       .then(setRemote)
       .catch(() => setRemote([]));
-  }, []);
+  }, [permitted]);
+  if(!permitted)return <Page><Intro title="Audit trail" text="Every sensitive action is timestamped with user, device and sync status."/><Panel title="Restricted access"><p>The audit trail is available to Owners, Managers and Auditors. Sign in with an authorised staff account to review it.</p></Panel></Page>;
   const filtered=remote.filter(x=>(action==="All actions"||x.entityType===action)&&(actor==="All users"||x.actor===actor)&&(!date||String(x.occurredAt).startsWith(date)));
   const rows = filtered.map(x=>[new Date(x.occurredAt).toLocaleString(),x.actor,`${x.action} ${x.entityType}`,x.details,x.deviceId||"Server","Synced"]);
   return (
@@ -962,8 +972,10 @@ function Settings({
   const [apiUrl, setApiUrl] = useState(localStorage.getItem("api_url") || "/api");
   const [updateUrl, setUpdateUrl] = useState(localStorage.getItem("update_manifest_url") || "");
   const [availableUpdate, setAvailableUpdate] = useState<{ version: string; downloadUrl: string; summary?: string }>();
+  const [insightsConfig,setInsightsConfig]=useState({enabled:false,endpoint:"https://api.openai.com/v1/chat/completions",model:"gpt-5-mini",apiKey:"",apiKeyConfigured:false,clearApiKey:false,allowUserNames:false});
   useEffect(() => {
     getSettings().then((data)=>{setOrganization(data.organization);setReceiptConfig(data.receipt);setBranches(data.branches);setTerminals(data.terminals);localStorage.setItem("organization_profile",JSON.stringify(data.organization));localStorage.setItem("receipt_configuration",JSON.stringify(data.receipt));if(!branchId&&data.branches.length)setBranchId(data.branches[0].id)}).catch(()=>notify("Shared settings unavailable · using saved terminal configuration"));
+    if(["Owner","Manager"].includes(user.role))getInsightsSettings().then(x=>setInsightsConfig(current=>({...current,...x,apiKey:"",clearApiKey:false}))).catch(()=>0);
     listSilentPrinters()
       .then((items) => {
         setPrinters(items);
@@ -990,6 +1002,7 @@ function Settings({
   }
   async function persistOrganization(){const saved=await saveOrganization(organization);setOrganization(saved);localStorage.setItem("organization_profile",JSON.stringify(saved));localStorage.setItem("business_name",saved.name);notify("Shared business profile saved");}
   async function persistReceipt(){const saved=await saveReceiptConfiguration(receiptConfig);setReceiptConfig(saved);localStorage.setItem("receipt_configuration",JSON.stringify(saved));localStorage.setItem("receipt_footer",saved.footer);notify("Shared receipt configuration saved");}
+  async function persistInsights(){try{const saved=await saveInsightsSettings(insightsConfig);setInsightsConfig(current=>({...current,...saved,apiKey:"",clearApiKey:false}));notify(saved.enabled&&saved.apiKeyConfigured?"AI insights provider saved and encrypted":"Rule-based Smart Insights remains active")}catch(e){notify(e instanceof Error?e.message:"Owner authorization is required")}}
   async function persistBranch(){const saved=await saveBranch(branchForm);const data=await getSettings();setBranches(data.branches);setBranchForm({name:"",code:"",address:"",phone:"",active:true});if(!branchId)setBranchId(saved.id);notify("Branch saved");}
   async function persistTerminal(){if(!branchId){notify("Select or create a branch first");return}const existing=terminals.find(x=>x.deviceKey===deviceName);const saved=await saveTerminalConfiguration({id:existing?.id,branchId,name:terminalName,deviceKey:deviceName,active:true});localStorage.setItem("device_id",saved.deviceKey);localStorage.setItem("terminal_name",saved.name);localStorage.setItem("branch_id",saved.branchId);localStorage.setItem("branch_name",branches.find(x=>x.id===saved.branchId)?.name||"");setTerminals((await getSettings()).terminals);notify("This terminal is registered to the selected branch");}
   async function checkUpdates() {
@@ -1179,6 +1192,11 @@ function Settings({
         </div>
         <button className="outline-button" onClick={persistReceipt}>Save shared receipt configuration</button>
       </Panel>
+      {["Owner","Manager"].includes(user.role)&&<Panel title="Smart Insights provider">
+        <p className="muted">Optional server-side chat model configuration. The key is encrypted before storage and is never returned to the browser. If this is disabled or unavailable, Dukora automatically uses its deterministic business rule engine.</p>
+        <div className="receipt-config-grid"><Field label="HTTPS chat-completions endpoint"><input value={insightsConfig.endpoint} onChange={e=>setInsightsConfig({...insightsConfig,endpoint:e.target.value})}/></Field><Field label="Model"><input value={insightsConfig.model} onChange={e=>setInsightsConfig({...insightsConfig,model:e.target.value})}/></Field><Field label={insightsConfig.apiKeyConfigured?"Replace API key (configured)":"API key"}><input type="password" autoComplete="new-password" value={insightsConfig.apiKey} onChange={e=>setInsightsConfig({...insightsConfig,apiKey:e.target.value})}/></Field></div>
+        <div className="receipt-toggles"><label><input type="checkbox" checked={insightsConfig.enabled} onChange={e=>setInsightsConfig({...insightsConfig,enabled:e.target.checked})}/> Enable configured AI provider</label><label><input type="checkbox" checked={insightsConfig.allowUserNames} onChange={e=>setInsightsConfig({...insightsConfig,allowUserNames:e.target.checked})}/> Allow staff names in operational activity summaries</label><label><input type="checkbox" checked={insightsConfig.clearApiKey} onChange={e=>setInsightsConfig({...insightsConfig,clearApiKey:e.target.checked})}/> Remove saved API key</label></div><button className="outline-button" onClick={persistInsights}>Save Smart Insights configuration</button>
+      </Panel>}
       {user.role === "Owner" && (
         <Panel title="Demo environment">
           <p className="muted">
@@ -1196,23 +1214,20 @@ function Settings({
     </Page>
   );
 }
-function downloadExcel(report:any = {}) {
-  const data = [
-    ["Dukora management report", `${report.from??""} to ${report.to??""}`],
-    ["Line","Amount"],
-    ["Sales revenue",report.revenue??0],
-    ["Cost of goods",report.cost??0],
-    ["Gross profit",report.grossProfit??0],
-    ["Expenses",report.expenses??0],
-    ["Net profit",report.netProfit??0],
-  ].map(x=>x.join("\t")).join("\n");
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(
-    new Blob([data], { type: "application/vnd.ms-excel" }),
-  );
-  a.download = "Dukora-management-pack.xls";
-  a.click();
-  URL.revokeObjectURL(a.href);
+function downloadPdfReport({from,to,summary,detail}:{from:string;to:string;summary:any;detail:any}){
+  if(!summary||!detail){alert("Refresh the report before downloading");return}
+  const org=cachedOrganizationSettings(),doc=new jsPDF({unit:"mm",format:"a4"}),green=[21,61,52] as [number,number,number],orange=[255,117,66] as [number,number,number];
+  const revenue=Number(summary.revenue||0),cost=Number(summary.cost||0),expenses=Number(summary.expenses||0),gross=revenue-cost,net=gross-expenses,margin=revenue?gross/revenue*100:0,fmt=(n:number)=>`${org.currency} ${n.toLocaleString(undefined,{maximumFractionDigits:0})}`;
+  doc.setFillColor(...green);doc.rect(0,0,210,34,"F");doc.setTextColor(255);doc.setFont("helvetica","bold");doc.setFontSize(19);doc.text(org.name,14,14);doc.setFontSize(11);doc.text("Management summary",14,22);doc.setFont("helvetica","normal");doc.setFontSize(8);doc.text(`${from} to ${to} | Generated ${new Date().toLocaleString()}`,14,28);doc.setTextColor(24,38,33);
+  const cards=[ ["Revenue",fmt(revenue)],["Gross profit",fmt(gross)],["Net profit",fmt(net)],["Margin",`${margin.toFixed(1)}%`] ];cards.forEach((c,i)=>{const x=14+i*47;doc.setFillColor(244,248,246);doc.roundedRect(x,40,43,23,2,2,"F");doc.setFontSize(7);doc.setTextColor(100,115,108);doc.text(c[0],x+4,47);doc.setFontSize(11);doc.setFont("helvetica","bold");doc.setTextColor(24,55,46);doc.text(c[1],x+4,56,{maxWidth:36});doc.setFont("helvetica","normal")});
+  doc.setFontSize(11);doc.setFont("helvetica","bold");doc.text("Daily revenue and gross profit",14,73);const daily=detail.daily||[],max=Math.max(1,...daily.map((x:any)=>Number(x.revenue)));daily.slice(-14).forEach((x:any,i:number)=>{const bx=15+i*12.8,rh=28*Number(x.revenue)/max,ph=28*Math.max(0,Number(x.profit))/max;doc.setFillColor(...green);doc.rect(bx,105-rh,5.2,rh,"F");doc.setFillColor(...orange);doc.rect(bx+5.2,105-ph,5.2,ph,"F");doc.setFontSize(5.5);doc.setTextColor(95);doc.text(new Date(x.date).toLocaleDateString(undefined,{month:"short",day:"numeric"}),bx,110,{angle:35})});doc.setFontSize(7);doc.setTextColor(...green);doc.text("Revenue",156,73);doc.setTextColor(...orange);doc.text("Gross profit",177,73);
+  autoTable(doc,{startY:119,head:[["Profit and loss","Amount"]],body:[["Posted sales revenue",fmt(revenue)],["Cost of goods sold",fmt(cost)],["Gross profit",fmt(gross)],["Operating expenses",fmt(expenses)],["Net profit",fmt(net)]],theme:"grid",headStyles:{fillColor:green},styles:{fontSize:8}});
+  autoTable(doc,{startY:(doc as any).lastAutoTable.finalY+7,head:[["Top seller","Qty","Revenue","Profit"]],body:(detail.topSellers||[]).slice(0,8).map((x:any)=>[x.name,Number(x.quantity).toLocaleString(),fmt(Number(x.revenue)),fmt(Number(x.profit))]),theme:"striped",headStyles:{fillColor:green},styles:{fontSize:7.5}});
+  doc.addPage();doc.setFillColor(...green);doc.rect(0,0,210,18,"F");doc.setTextColor(255);doc.setFont("helvetica","bold");doc.setFontSize(13);doc.text("Operations detail",14,12);doc.setTextColor(25);doc.setFont("helvetica","normal");
+  autoTable(doc,{startY:25,head:[["Payment method","Collected"]],body:(detail.paymentMix||[]).map((x:any)=>[x.name,fmt(Number(x.amount))]),theme:"grid",headStyles:{fillColor:green},styles:{fontSize:8}});
+  autoTable(doc,{startY:(doc as any).lastAutoTable.finalY+7,head:[["Low stock item","Category","Stock","Minimum","Sell price"]],body:(detail.lowStock||[]).map((x:any)=>[x.name,x.category,String(x.stock),String(x.minStock),fmt(Number(x.sellingPrice))]),theme:"striped",headStyles:{fillColor:orange},styles:{fontSize:7.5}});
+  autoTable(doc,{startY:(doc as any).lastAutoTable.finalY+7,head:[["Expense","Category","Amount","Paid","Method"]],body:(detail.expenseRecords||[]).slice(0,30).map((x:any)=>[x.description,x.category,fmt(Number(x.amount)),fmt(Number(x.paidAmount)),x.method]),theme:"grid",headStyles:{fillColor:green},styles:{fontSize:7}});
+  const pages=doc.getNumberOfPages();for(let p=1;p<=pages;p++){doc.setPage(p);doc.setFontSize(7);doc.setTextColor(110);doc.text(`Dukora - ${org.name} - Page ${p} of ${pages}`,105,291,{align:"center"})}doc.save(`Dukora-report-${from}-to-${to}.pdf`);
 }
 function Page({ children }: { children: ReactNode }) {
   return <div className="spec-page">{children}</div>;

@@ -12,7 +12,17 @@ Dukora Lite is the low-resource, offline-first Windows edition. It uses the same
 
 ## Installation
 
-Installer: `installer\output\Dukora-Lite-Setup-1.5.3-x64.exe`
+Installer: `installer\output\Dukora-Lite-Setup-1.6.0-x64.exe`
+
+## Governed bill workflow
+
+- **Held** is an editable unpaid order. Printing an unpaid copy creates the numbered held bill but does not post revenue, debt, profit or inventory.
+- Adding items is permitted to normal sales users. Reducing quantities/prices, increasing discounts and cancelling require an Owner or Manager session, a reason and an audit record.
+- Every held-bill edit creates an immutable numbered revision. An expected-revision check prevents one terminal from overwriting another terminal's changes.
+- **Paid**, **Credit** and **PartiallyPaid** are posted transactions. Posting validates stock and commits inventory movements, accounting values, payments and audit history in one database transaction.
+- Credit requires a registered customer. Later payments remain attached to the original invoice until its balance reaches zero.
+- Refunds are controlled reversals: they restore inventory, reverse the recorded payment and exclude the refunded sale from live revenue and profit.
+- Items, customers and staff are archived/deactivated rather than physically removed so historical documents remain valid.
 
 Display size is configured under **Settings → Display size**. Compact, Standard, Large and Extra large scale the complete interface and persist on that Windows terminal.
 

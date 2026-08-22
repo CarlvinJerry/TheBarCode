@@ -36,16 +36,17 @@ public static class InsightsEndpoints
         }).RequireAuthorization(p => p.RequireRole("Owner", "Manager"));
     }
 
-    internal static async Task<OperationalSnapshot> BuildSnapshot(AppDbContext db, DateOnly from, DateOnly to)
+    public static async Task<OperationalSnapshot> BuildSnapshot(AppDbContext db, DateOnly from, DateOnly to)
     {
         if (to < from) (from, to) = (to, from);
         var start = from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var end = to.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-        var sales = await db.Sales.AsNoTracking().Where(x => (x.Status == "Paid" || x.Status == "Credit" || x.Status == "PartiallyPaid") && x.OccurredAt >= start && x.OccurredAt < end).Include(x => x.Items).Include(x => x.Payments).ToListAsync();
+        var sales = (await db.Sales.AsNoTracking().Where(x => x.Status == "Paid" || x.Status == "Credit" || x.Status == "PartiallyPaid").Include(x => x.Items).Include(x => x.Payments).ToListAsync()).Where(x => x.OccurredAt >= start && x.OccurredAt < end).ToList();
         var expenses = await db.Expenses.AsNoTracking().Where(x => x.Date >= from && x.Date <= to).ToListAsync();
         var products = await db.Products.AsNoTracking().Where(x => x.Active).ToListAsync();
         var customerSales = await db.Sales.AsNoTracking().Where(x => x.CustomerId != null && (x.Status == "Paid" || x.Status == "Credit" || x.Status == "PartiallyPaid")).Include(x => x.Payments).ToListAsync();
-        var activity = await db.AuditEvents.AsNoTracking().OrderByDescending(x => x.OccurredAt).Take(12).ToListAsync();
+        var rangePayments=(await db.Payments.AsNoTracking().ToListAsync()).Where(x=>x.PaidAt>=start&&x.PaidAt<end).ToList();
+        var activity = (await db.AuditEvents.AsNoTracking().Take(500).ToListAsync()).OrderByDescending(x => x.OccurredAt).Take(12).ToList();
         var revenue = sales.Sum(x => x.Total);
         var cost = sales.SelectMany(x => x.Items).Sum(x => x.UnitCost * x.Quantity);
         var paid = customerSales.SelectMany(x => x.Payments).Sum(x => x.Amount);
@@ -54,20 +55,18 @@ public static class InsightsEndpoints
         var top = sales.SelectMany(x => x.Items).GroupBy(x => new { x.ProductId, x.ProductName }).Select(g => new TopSeller(g.Key.ProductId, g.Key.ProductName, g.Sum(x => x.Quantity), g.Sum(x => x.Quantity * x.UnitPrice - x.Discount), g.Sum(x => (x.UnitPrice - x.UnitCost) * x.Quantity - x.Discount))).OrderByDescending(x => x.Revenue).Take(10).ToList();
         var categories = products.GroupBy(x => x.Category).Select(g => new CategoryStock(g.Key, g.Sum(x => x.Stock * x.CostPrice), g.Sum(x => x.Stock), g.Count())).OrderByDescending(x => x.Value).ToList();
         var expenseCategories = expenses.GroupBy(x => x.Category).Select(g => new NamedAmount(g.Key, g.Sum(x => x.Amount))).OrderByDescending(x => x.Amount).ToList();
-        var paymentMix = sales.SelectMany(x => x.Payments).GroupBy(x => x.Method).Select(g => new NamedAmount(g.Key, g.Sum(x => x.Amount))).OrderByDescending(x => x.Amount).ToList();
+        var paymentMix = rangePayments.GroupBy(x => x.Method).Select(g => new NamedAmount(g.Key, g.Sum(x => x.Amount))).OrderByDescending(x => x.Amount).ToList();
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         return new OperationalSnapshot(from, to, revenue, cost, revenue - cost, expenses.Sum(x => x.Amount), sales.Count, Math.Max(0, customerRevenue - paid), products.Count(x => x.Stock <= x.MinStock), products.Count(x => x.Stock <= 0), products.Sum(x => x.Stock * x.CostPrice), sales.Where(x => DateOnly.FromDateTime(x.OccurredAt.UtcDateTime) == today).Sum(x => x.Total), daily, top, categories, expenseCategories, paymentMix, products.Where(x => x.Stock <= x.MinStock).OrderBy(x => x.Stock).Select(x => new StockRisk(x.Id, x.Name, x.Category, x.Stock, x.MinStock, x.CostPrice, x.SellingPrice)).ToList(), activity.Select(x => new ActivityItem(x.Actor, x.Action, x.EntityType, x.Details, x.DeviceId, x.OccurredAt)).ToList(), expenses.OrderByDescending(x => x.Date).Take(100).Select(x => new ExpenseItem(x.Id, x.Date, x.Description, x.Category, x.Amount, x.PaidAmount, x.Method)).ToList());
     }
 }
 
-public sealed class SmartInsightsService(IConfiguration configuration, IHttpClientFactory clients, ILogger<SmartInsightsService> logger)
+public sealed class SmartInsightsService(IConfiguration configuration, AppDbContext db, SecretProtector protector, IHttpClientFactory clients, ILogger<SmartInsightsService> logger)
 {
     public async Task<object> Generate(OperationalSnapshot data, CancellationToken ct)
     {
         var rules = RuleInsights(data);
-        var apiKey = configuration["Insights:ApiKey"];
-        var endpoint = configuration["Insights:Endpoint"];
-        var model = configuration["Insights:Model"] ?? "configured-model";
+        var saved=await db.InsightsConfigurations.AsNoTracking().FirstOrDefaultAsync(ct);var apiKey=saved is {Enabled:true,EncryptedApiKey:not null}?protector.Unprotect(saved.EncryptedApiKey):configuration["Insights:ApiKey"];var endpoint=saved is {Enabled:true}?saved.Endpoint:configuration["Insights:Endpoint"];var model=saved is {Enabled:true}?saved.Model:configuration["Insights:Model"]??"configured-model";var allowUserNames=saved?.AllowUserNames==true;
         if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(endpoint))
             return Result("rules", false, "Rule engine active", data, rules);
         try
@@ -75,7 +74,7 @@ public sealed class SmartInsightsService(IConfiguration configuration, IHttpClie
             var client = clients.CreateClient("insights");
             using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-            request.Content = JsonContent.Create(new { model, messages = new[] { new { role = "system", content = "You are a business operations analyst. Return concise JSON with summary and insights. Never invent values." }, new { role = "user", content = JsonSerializer.Serialize(new { aggregates = data.ForAi(), ruleFindings = rules }) } }, response_format = new { type = "json_object" }, temperature = 0.2 });
+            request.Content = JsonContent.Create(new { model, messages = new[] { new { role = "system", content = "You are a business operations analyst. Return concise JSON with summary and insights. Never invent values. Never request or infer customer phone numbers or other contact details." }, new { role = "user", content = JsonSerializer.Serialize(new { aggregates = data.ForAi(allowUserNames), ruleFindings = rules }) } }, response_format = new { type = "json_object" }, temperature = 0.2 });
             using var response = await client.SendAsync(request, ct);
             response.EnsureSuccessStatusCode();
             using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
@@ -111,7 +110,7 @@ public sealed class SmartInsightsService(IConfiguration configuration, IHttpClie
 
 public record OperationalSnapshot(DateOnly From, DateOnly To, decimal Revenue, decimal Cost, decimal GrossProfit, decimal Expenses, int SalesCount, decimal CustomerDebt, int LowStockCount, int OutOfStockCount, decimal StockValue, decimal TodayRevenue, List<DailyMetric> Daily, List<TopSeller> TopSellers, List<CategoryStock> StockByCategory, List<NamedAmount> ExpenseByCategory, List<NamedAmount> PaymentMix, List<StockRisk> LowStock, List<ActivityItem> Activity, List<ExpenseItem> ExpenseRecords)
 {
-    public object ForAi() => new { From, To, Revenue, Cost, GrossProfit, Expenses, SalesCount, CustomerDebt, LowStockCount, OutOfStockCount, StockValue, Daily, TopSellers, StockByCategory, ExpenseByCategory, PaymentMix };
+    public object ForAi(bool includeUserNames=false) => new { From, To, Revenue, Cost, GrossProfit, Expenses, SalesCount, CustomerDebt, LowStockCount, OutOfStockCount, StockValue, Daily, TopSellers, StockByCategory, ExpenseByCategory, PaymentMix,StaffActivity=includeUserNames?Activity.Select(x=>new{x.Actor,x.Action,x.EntityType,x.OccurredAt}):null };
 }
 public record DailyMetric(DateOnly Date, decimal Revenue, decimal Profit);
 public record TopSeller(Guid ProductId, string Name, decimal Quantity, decimal Revenue, decimal Profit);
