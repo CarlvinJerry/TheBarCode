@@ -37,7 +37,10 @@ import {
   createStaff,
   getAudit,
   getCustomerSummary,
-  getExpenses,
+  getProductionExpenses,
+  createProductionExpense,
+  payExpense,
+  updateExpense,
   getInsights,
   getInsightsSettings,
   getMaintenanceBackups,
@@ -91,7 +94,7 @@ export function Management({ view, products, user, notify, navigate }: Props) {
   if (view === "Inventory")
     return <Inventory products={products} user={user} notify={notify} />;
   if (view === "Customers") return <Customers notify={notify} />;
-  if (view === "Expenses" || view === "Expense") return <Expenses />;
+  if (view === "Expenses" || view === "Expense") return <Expenses user={user} notify={notify} />;
   if (view === "Reports") return <Reports user={user} />;
   if (view === "Smart Insights" || view === "Smart insights") return <SmartInsights user={user} />;
   if (view === "Audit" || view === "Audit trail") return <Audit user={user} />;
@@ -191,7 +194,7 @@ function Dashboard({ products,navigate }: { products: Product[]; navigate:(x:str
 function Bills({products,user,notify}:{products:Product[];user:{id:string;name:string;role:string};notify:(x:string)=>void}){
   const customers=useLiveQuery(()=>db.customers.toArray(),[])??[];
   const [status,setStatus]=useState(localStorage.getItem("bill_filter")||"Pending"),[rows,setRows]=useState<any[]>([]),[selected,setSelected]=useState<any>(),[lines,setLines]=useState<any[]>([]),[payment,setPayment]=useState({method:"Cash",amount:0,reference:""}),[addProductId,setAddProductId]=useState(""),[productSearch,setProductSearch]=useState(""),[pendingApproval,setPendingApproval]=useState(false),[creditOpen,setCreditOpen]=useState(false),[newCustomer,setNewCustomer]=useState({name:"",phone:"",creditLimit:0}),[approvals,setApprovals]=useState<any[]>([]);
-  const canApprove=["Owner","Manager"].includes(user.role);const load=()=>Promise.all([getBills(status).then(setRows),canApprove?getBillApprovals().then(setApprovals):Promise.resolve()]).catch(()=>setRows([]));useEffect(()=>{localStorage.removeItem("bill_filter");void load()},[status]);
+  const canApprove=["Owner","Manager"].includes(user.role);const load=async()=>{try{const [loaded,approvalRows]=await Promise.all([getBills(status),canApprove?getBillApprovals():Promise.resolve([])]);setRows(loaded);setApprovals(approvalRows as any[]);const focus=localStorage.getItem("bill_focus");if(focus){const match=loaded.find((x:any)=>x.id===focus);if(match)open(match);localStorage.removeItem("bill_focus")}}catch{setRows([])}};useEffect(()=>{localStorage.removeItem("bill_filter");void load()},[status]);
   const open=(x:any)=>{setSelected(x);setPendingApproval(Boolean(x.revisions?.some((r:any)=>r.action==="ApprovalRequested")));setProductSearch("");setLines(x.items.map((i:any)=>({productId:i.productId,productName:i.productName,quantity:Number(i.quantity),unitPrice:Number(i.unitPrice),discount:Number(i.discount||0)})));setPayment({method:"Cash",amount:Number(x.balance||0),reference:""})};
   const saveHeld=async()=>{const payload={customerId:selected.customerId,discount:selected.discount||0,notes:selected.notes,reason:"Held bill change requested from bill workspace",deviceId:localStorage.getItem("device_id"),expectedRevision:selected.revision,items:lines.map(x=>({productId:x.productId,quantity:x.quantity,unitPrice:x.unitPrice,discount:x.discount}))};const lowers=lines.reduce((s,x)=>s+x.quantity*x.unitPrice-x.discount,0)<Number(selected.total);try{if(lowers&&!canApprove){await requestBillApproval(selected.id,payload);setSelected(undefined);notify(`Bill #${selected.receiptNumber} is now Pending Approval`);dispatchEvent(new Event("dukora:attention"));await load();return}const saved=await updateBill(selected.id,payload);setSelected(undefined);setPendingApproval(false);notify(`Bill #${saved.receiptNumber} revision ${saved.revision} saved`);dispatchEvent(new Event("dukora:attention"));await load()}catch(e){notify(e instanceof Error?e.message:"Owner or manager approval is required")}};
   const resolveApproval=async(item:any,approve:boolean)=>{const reason=prompt(`${approve?"Approve":"Reject"} change to bill #${item.receiptNumber}: reason`);if(!reason)return;try{await resolveBillApproval(item.id,{approve,reason,deviceId:localStorage.getItem("device_id")});notify(`Bill #${item.receiptNumber} change ${approve?"approved":"rejected"}`);dispatchEvent(new Event("dukora:attention"));await load()}catch(e){notify(e instanceof Error?e.message:"Approval could not be completed")}};
@@ -546,18 +549,23 @@ function Customers({notify}:{notify:(x:string)=>void}) {
     </Page>
   );
 }
-function Expenses() {
+function Expenses({user,notify}:{user:{role:string},notify:(x:string)=>void}) {
   const today=new Date().toISOString().slice(0,10), month=new Date();month.setDate(1);
-  const [category, setCategory] = useState("All"),[from,setFrom]=useState(month.toISOString().slice(0,10)),[to,setTo]=useState(today),[rows,setRows]=useState<any[]>([]);
-  const load=()=>getExpenses(from,to,category).then(setRows).catch(()=>setRows([]));
-  useEffect(()=>{void load()},[category]);
+  const blank={date:today,category:"Inventory",description:"",amount:0,initiallyPaid:0,method:"Cash",payee:"",reference:"",dueDate:"",taxAmount:0,notes:"",recurring:false};
+  const [category, setCategory] = useState("All"),[status,setStatus]=useState("All"),[from,setFrom]=useState(month.toISOString().slice(0,10)),[to,setTo]=useState(today),[rows,setRows]=useState<any[]>([]),[adding,setAdding]=useState(false),[form,setForm]=useState(blank),[paying,setPaying]=useState<any>(),[payment,setPayment]=useState({amount:0,method:"Cash",reference:"",notes:""}),[editing,setEditing]=useState<any>();
+  const canChange=["Owner","Manager"].includes(user.role);const load=()=>getProductionExpenses(from,to,category,status).then(setRows).catch(()=>setRows([]));
+  useEffect(()=>{void load()},[category,status]);
+  async function addExpense(e:FormEvent){e.preventDefault();try{await createProductionExpense({...form,dueDate:form.dueDate||null,branchId:null,deviceId:localStorage.getItem("device_id")||"expense-ui"});setAdding(false);setForm(blank);await load();dispatchEvent(new Event("dukora:attention"));notify("Expense recorded successfully")}catch(error){notify(error instanceof Error?error.message:"Expense could not be saved")}}
+  async function settle(e:FormEvent){e.preventDefault();try{await payExpense(paying.id,{...payment,deviceId:localStorage.getItem("device_id")||"expense-ui"});setPaying(undefined);setPayment({amount:0,method:"Cash",reference:"",notes:""});await load();dispatchEvent(new Event("dukora:attention"));notify("Expense payment recorded and balance updated")}catch(error){notify(error instanceof Error?error.message:"Payment could not be saved")}}
+  async function saveEdit(e:FormEvent){e.preventDefault();try{await updateExpense(editing.id,{category:editing.category,description:editing.description,payee:editing.payee,reference:editing.reference,dueDate:editing.dueDate||null,taxAmount:+editing.taxAmount||0,notes:editing.notes,recurring:Boolean(editing.recurring),active:Boolean(editing.active),reason:editing.reason});setEditing(undefined);await load();dispatchEvent(new Event("dukora:attention"));notify("Expense details updated")}catch(error){notify(error instanceof Error?error.message:"Expense could not be updated")}}
   const categories=Array.from(new Set(rows.map(x=>x.category))), grouped=Array.from(rows.reduce<Map<string,number>>((m,x)=>m.set(x.category,(m.get(x.category)||0)+Number(x.amount)),new Map<string,number>())).map(([name,v])=>({name,v}));
   return (
     <Page>
       <Intro
         title="Expenses & suppliers"
         text="Explore costs by period, category and payment status."
-        action="Live PostgreSQL records"
+        action={canChange?"＋ Add expense":undefined}
+        onAction={canChange?()=>setAdding(true):undefined}
       />
       <Filter>
         <select value={category} onChange={(e) => setCategory(e.target.value)}>
@@ -567,6 +575,7 @@ function Expenses() {
             ),
           )}
         </select>
+        <select value={status} onChange={e=>setStatus(e.target.value)}><option>All</option><option>Approved</option><option>Archived</option></select>
         <input type="date" value={from} onChange={e=>setFrom(e.target.value)} />
         <span>to</span>
         <input type="date" value={to} onChange={e=>setTo(e.target.value)} />
@@ -611,15 +620,22 @@ function Expenses() {
       </Two>
       <Panel title="Filtered expenses">
         <Table
-          heads={["Description", "Category", "Amount", "Status"]}
+          heads={["Date","Description", "Payee", "Category", "Amount","Paid","Balance", "Status","Action"]}
           rows={rows.map((x) => [
+            new Date(`${x.date}T00:00:00`).toLocaleDateString(),
             x.description,
+            x.payee||"—",
             x.category,
             money(x.amount),
-            Number(x.paidAmount)>=Number(x.amount)?"Paid":"Pending",
+            money(x.paidAmount),money(x.balance),
+            !x.active?"Archived":Number(x.balance)<=0?"Paid":Number(x.paidAmount)>0?"Partially paid":"Unpaid",
+            canChange?<div className="button-row" key={x.id}>{Number(x.balance)>0&&x.active&&<button className="table-action" onClick={()=>{setPaying(x);setPayment({...payment,amount:Number(x.balance)})}}>Pay</button>}<button className="table-action" onClick={()=>setEditing({...x,reason:""})}>Edit</button></div>:"View only",
           ])}
         />
       </Panel>
+      {adding&&<div className="modal record-editor"><section><button className="close" onClick={()=>setAdding(false)}>×</button><h2>Add expense</h2><form className="item-form" onSubmit={addExpense}><Field label="Expense date"><input type="date" required value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></Field><Field label="Category"><select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}>{["Inventory","Utilities","Rent","Payroll","Maintenance","Transport","Marketing","Tax","Supplies","Other"].map(x=><option key={x}>{x}</option>)}</select></Field><Field label="Description"><input required value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></Field><Field label="Supplier / payee"><input value={form.payee} onChange={e=>setForm({...form,payee:e.target.value})}/></Field><Field label="Invoice / receipt reference"><input value={form.reference} onChange={e=>setForm({...form,reference:e.target.value})}/></Field><Field label="Due date"><input type="date" value={form.dueDate} onChange={e=>setForm({...form,dueDate:e.target.value})}/></Field><Field label="Total amount"><input type="number" min="0.01" step="0.01" required value={form.amount} onChange={e=>setForm({...form,amount:+e.target.value})}/></Field><Field label="Initially paid"><input type="number" min="0" max={form.amount} step="0.01" value={form.initiallyPaid} onChange={e=>setForm({...form,initiallyPaid:+e.target.value})}/></Field><Field label="Payment method"><select value={form.method} onChange={e=>setForm({...form,method:e.target.value})}>{["Cash","M-Pesa","Bank","Card","Pending"].map(x=><option key={x}>{x}</option>)}</select></Field><Field label="Tax included"><input type="number" min="0" step="0.01" value={form.taxAmount} onChange={e=>setForm({...form,taxAmount:+e.target.value})}/></Field><Field label="Notes"><input value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/></Field><label className="check"><input type="checkbox" checked={form.recurring} onChange={e=>setForm({...form,recurring:e.target.checked})}/> Recurring obligation</label><button className="save-item">Save expense</button></form></section></div>}
+      {paying&&<div className="modal record-editor"><section><button className="close" onClick={()=>setPaying(undefined)}>×</button><h2>Pay expense</h2><p>{paying.description} · outstanding {money(paying.balance)}</p><form className="customer-form" onSubmit={settle}><Field label="Amount"><input type="number" min="0.01" max={paying.balance} step="0.01" required value={payment.amount} onChange={e=>setPayment({...payment,amount:+e.target.value})}/></Field><Field label="Method"><select value={payment.method} onChange={e=>setPayment({...payment,method:e.target.value})}>{["Cash","M-Pesa","Bank","Card"].map(x=><option key={x}>{x}</option>)}</select></Field><Field label="Payment reference"><input value={payment.reference} onChange={e=>setPayment({...payment,reference:e.target.value})}/></Field><Field label="Notes"><input value={payment.notes} onChange={e=>setPayment({...payment,notes:e.target.value})}/></Field><button>Record payment</button></form></section></div>}
+      {editing&&<div className="modal record-editor"><section><button className="close" onClick={()=>setEditing(undefined)}>×</button><h2>Edit expense</h2><form className="customer-form" onSubmit={saveEdit}><Field label="Category"><input required value={editing.category} onChange={e=>setEditing({...editing,category:e.target.value})}/></Field><Field label="Description"><input required value={editing.description} onChange={e=>setEditing({...editing,description:e.target.value})}/></Field><Field label="Supplier / payee"><input value={editing.payee||""} onChange={e=>setEditing({...editing,payee:e.target.value})}/></Field><Field label="Reference"><input value={editing.reference||""} onChange={e=>setEditing({...editing,reference:e.target.value})}/></Field><Field label="Due date"><input type="date" value={editing.dueDate||""} onChange={e=>setEditing({...editing,dueDate:e.target.value})}/></Field><Field label="Tax"><input type="number" min="0" value={editing.taxAmount||0} onChange={e=>setEditing({...editing,taxAmount:+e.target.value})}/></Field><Field label="Notes"><input value={editing.notes||""} onChange={e=>setEditing({...editing,notes:e.target.value})}/></Field><Field label="Reason for change"><input required value={editing.reason} onChange={e=>setEditing({...editing,reason:e.target.value})}/></Field><label><input type="checkbox" checked={editing.recurring} onChange={e=>setEditing({...editing,recurring:e.target.checked})}/> Recurring</label><label><input type="checkbox" checked={editing.active} onChange={e=>setEditing({...editing,active:e.target.checked})}/> Active (clear to archive)</label><button>Save controlled change</button></form></section></div>}
     </Page>
   );
 }

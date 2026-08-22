@@ -29,6 +29,17 @@ public static class OperationsMigration
                 ,"CREATE TABLE IF NOT EXISTS product_import_batches (id TEXT NOT NULL PRIMARY KEY, staff_id TEXT NOT NULL, duplicate_policy TEXT NOT NULL, total_rows INTEGER NOT NULL, created_count INTEGER NOT NULL, updated_count INTEGER NOT NULL, skipped_count INTEGER NOT NULL, status TEXT NOT NULL, device_id TEXT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
                 ,"CREATE TABLE IF NOT EXISTS product_import_lines (id TEXT NOT NULL PRIMARY KEY, product_import_batch_id TEXT NOT NULL, product_id TEXT NOT NULL, product_was_created INTEGER NOT NULL, stock_change TEXT NOT NULL, previous_json TEXT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY (product_import_batch_id) REFERENCES product_import_batches(id) ON DELETE CASCADE)"
                 ,"CREATE INDEX IF NOT EXISTS ix_product_import_lines_batch_id ON product_import_lines(product_import_batch_id)"
+                ,"ALTER TABLE expenses ADD COLUMN payee TEXT NULL"
+                ,"ALTER TABLE expenses ADD COLUMN reference TEXT NULL"
+                ,"ALTER TABLE expenses ADD COLUMN due_date TEXT NULL"
+                ,"ALTER TABLE expenses ADD COLUMN tax_amount TEXT NOT NULL DEFAULT 0"
+                ,"ALTER TABLE expenses ADD COLUMN notes TEXT NULL"
+                ,"ALTER TABLE expenses ADD COLUMN recurring INTEGER NOT NULL DEFAULT 0"
+                ,"ALTER TABLE expenses ADD COLUMN status TEXT NOT NULL DEFAULT 'Approved'"
+                ,"ALTER TABLE expenses ADD COLUMN branch_id TEXT NULL"
+                ,"ALTER TABLE expenses ADD COLUMN active INTEGER NOT NULL DEFAULT 1"
+                ,"CREATE TABLE IF NOT EXISTS expense_payments (id TEXT NOT NULL PRIMARY KEY, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, expense_id TEXT NOT NULL, amount TEXT NOT NULL, method TEXT NOT NULL, reference TEXT NULL, notes TEXT NULL, staff_id TEXT NOT NULL, paid_at TEXT NOT NULL, FOREIGN KEY (expense_id) REFERENCES expenses(id) ON DELETE CASCADE)"
+                ,"CREATE INDEX IF NOT EXISTS ix_expense_payments_expense_id ON expense_payments(expense_id)"
             }
             : new[]
             {
@@ -56,6 +67,17 @@ public static class OperationsMigration
                 ,"CREATE TABLE IF NOT EXISTS product_import_batches (id uuid PRIMARY KEY, staff_id uuid NOT NULL, duplicate_policy text NOT NULL, total_rows integer NOT NULL, created_count integer NOT NULL, updated_count integer NOT NULL, skipped_count integer NOT NULL, status text NOT NULL, device_id text NULL, created_at timestamptz NOT NULL, updated_at timestamptz NOT NULL)"
                 ,"CREATE TABLE IF NOT EXISTS product_import_lines (id uuid PRIMARY KEY, product_import_batch_id uuid NOT NULL REFERENCES product_import_batches(id) ON DELETE CASCADE, product_id uuid NOT NULL, product_was_created boolean NOT NULL, stock_change numeric(18,3) NOT NULL, previous_json text NULL, created_at timestamptz NOT NULL, updated_at timestamptz NOT NULL)"
                 ,"CREATE INDEX IF NOT EXISTS ix_product_import_lines_batch_id ON product_import_lines(product_import_batch_id)"
+                ,"ALTER TABLE expenses ADD COLUMN IF NOT EXISTS payee text NULL"
+                ,"ALTER TABLE expenses ADD COLUMN IF NOT EXISTS reference text NULL"
+                ,"ALTER TABLE expenses ADD COLUMN IF NOT EXISTS due_date date NULL"
+                ,"ALTER TABLE expenses ADD COLUMN IF NOT EXISTS tax_amount numeric(18,2) NOT NULL DEFAULT 0"
+                ,"ALTER TABLE expenses ADD COLUMN IF NOT EXISTS notes text NULL"
+                ,"ALTER TABLE expenses ADD COLUMN IF NOT EXISTS recurring boolean NOT NULL DEFAULT false"
+                ,"ALTER TABLE expenses ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'Approved'"
+                ,"ALTER TABLE expenses ADD COLUMN IF NOT EXISTS branch_id uuid NULL"
+                ,"ALTER TABLE expenses ADD COLUMN IF NOT EXISTS active boolean NOT NULL DEFAULT true"
+                ,"CREATE TABLE IF NOT EXISTS expense_payments (id uuid PRIMARY KEY, created_at timestamptz NOT NULL, updated_at timestamptz NOT NULL, expense_id uuid NOT NULL REFERENCES expenses(id) ON DELETE CASCADE, amount numeric(18,2) NOT NULL, method text NOT NULL, reference text NULL, notes text NULL, staff_id uuid NOT NULL, paid_at timestamptz NOT NULL)"
+                ,"CREATE INDEX IF NOT EXISTS ix_expense_payments_expense_id ON expense_payments(expense_id)"
             };
 
         foreach (var statement in statements)

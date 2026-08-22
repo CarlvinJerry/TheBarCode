@@ -34,7 +34,9 @@ export default function App() {
     [selectedCustomer, setSelectedCustomer] = useState<Customer>(),
     [customerOpen, setCustomerOpen] = useState(false),
     [activeBill, setActiveBill] = useState<any>(),
+    [lastHeldBill,setLastHeldBill]=useState<any>(),
     [notifications, setNotifications] = useState<Record<string, any>>({Total:0,Details:{}}),
+    [readNotificationFingerprint,setReadNotificationFingerprint]=useState(localStorage.getItem("notification_read")||""),
     [alertsOpen,setAlertsOpen]=useState(false),
     [navigationLayout,setNavigationLayout]=useState(localStorage.getItem("navigation_layout")||"Vertical"),
     [expandedGroups,setExpandedGroups]=useState<Record<string,boolean>>({Operations:false,"Data & Setup":false}),
@@ -42,6 +44,9 @@ export default function App() {
       localStorage.getItem("sidebar_collapsed") === "true",
     );
   const notificationRequest=useRef(0);
+  const notificationFingerprint=JSON.stringify(Object.values(notifications.Details||{}).flat().map((x:any)=>[x.id,x.status,x.stock,x.minStock,x.balance,x.total]));
+  const notificationsRead=Boolean(notificationFingerprint)&&readNotificationFingerprint===notificationFingerprint;
+  const attention=notificationsRead?{...notifications,Total:0,Bills:0,Customers:0,Inventory:0,Approvals:0,Expenses:0}:notifications;
   useEffect(() => {
     document.documentElement.dataset.theme = (
       localStorage.getItem("theme") || "Forest"
@@ -61,6 +66,7 @@ export default function App() {
   }, []);
   useEffect(()=>{if(!user)return;const refresh=async()=>{const request=++notificationRequest.current;try{const current=await getNotifications();if(request===notificationRequest.current)setNotifications(current)}catch{}};const attention=()=>void refresh();const visible=()=>{if(document.visibilityState==="visible")void refresh()};addEventListener("dukora:attention",attention);addEventListener("focus",attention);document.addEventListener("visibilitychange",visible);void refresh();const timer=setInterval(refresh,10000);return()=>{removeEventListener("dukora:attention",attention);removeEventListener("focus",attention);document.removeEventListener("visibilitychange",visible);clearInterval(timer)}},[user?.id]);
   useEffect(()=>{if(!message)return;const timer=setTimeout(()=>setMessage(""),5000);return()=>clearTimeout(timer)},[message]);
+  useEffect(()=>{if(readNotificationFingerprint)localStorage.setItem("notification_read",readNotificationFingerprint)},[readNotificationFingerprint]);
   const messageIsError=/unable|failed|failure|could not|cannot|invalid|error|required|permission|expired|unavailable|refused|correction/i.test(message);
   const visibleProducts = products.filter((p) =>
     user?.isDemo ? p.isDemo : !p.isDemo,
@@ -100,6 +106,7 @@ export default function App() {
       setMessage(`Bill #${saved.receiptNumber} is held and awaiting payment or credit${openPrint?" · confirm Print Unpaid Bill":""}`);return saved;
     }catch(error){setMessage(error instanceof Error?`Could not hold bill: ${error.message}`:"Could not hold bill on the shared server");}
   }
+  function startNextOrder(saved:any){setLastHeldBill(saved);setCart([]);setSelectedCustomer(undefined);setActiveBill(undefined);setQuery("");setCategory("All");setMessage(`Unpaid bill #${saved.receiptNumber} was printed and held. New entries now create a separate bill.`);dispatchEvent(new Event("dukora:attention"));bootstrap().catch(()=>0)}
   async function checkout(method: string) {
     if (!cart.length) return;
     if (!activeBill) {
@@ -213,11 +220,11 @@ export default function App() {
               key={x}
             >
               <i>{icons[x]}</i>
-              <span>{x}</span>{(notifications[alertKeys[x]]||0)>0&&<em className="menu-alert" title={`${notifications[alertKeys[x]]} items need attention`}>{notifications[alertKeys[x]]}</em>}
+              <span>{x}</span>{(attention[alertKeys[x]]||0)>0&&<em className="menu-alert" title={`${attention[alertKeys[x]]} items need attention`}>{attention[alertKeys[x]]}</em>}
             </button>
           ))}
-          {Object.entries(menuGroups).map(([group,items])=><div className="nav-group" key={group}><button className="nav-group-toggle" aria-expanded={expandedGroups[group]} onClick={()=>setExpandedGroups(x=>({...x,[group]:!x[group]}))}><i>{expandedGroups[group]?"▾":"▸"}</i><span>{group}</span>{items.reduce((sum,x)=>sum+(notifications[alertKeys[x]]||0),0)>0&&<em className="menu-alert">{items.reduce((sum,x)=>sum+(notifications[alertKeys[x]]||0),0)}</em>}</button>{expandedGroups[group]&&<div className="nav-submenu">{items.map(x=><button className={view===x?"active":""} onClick={()=>setView(x)} key={x}><i>{icons[x]}</i><span>{x}</span>{(notifications[alertKeys[x]]||0)>0&&<em className="menu-alert">{notifications[alertKeys[x]]}</em>}</button>)}</div>}</div>)}
-          {["Smart Insights","Settings"].map(x=><button className={view===x?"active":""} onClick={()=>setView(x)} key={x}><i>{icons[x]}</i><span>{x}</span>{(notifications[alertKeys[x]]||0)>0&&<em className="menu-alert">{notifications[alertKeys[x]]}</em>}</button>)}
+          {Object.entries(menuGroups).map(([group,items])=><div className="nav-group" key={group}><button className="nav-group-toggle" aria-expanded={expandedGroups[group]} onClick={()=>setExpandedGroups(x=>({...x,[group]:!x[group]}))}><i>{expandedGroups[group]?"▾":"▸"}</i><span>{group}</span>{items.reduce((sum,x)=>sum+(attention[alertKeys[x]]||0),0)>0&&<em className="menu-alert">{items.reduce((sum,x)=>sum+(attention[alertKeys[x]]||0),0)}</em>}</button>{expandedGroups[group]&&<div className="nav-submenu">{items.map(x=><button className={view===x?"active":""} onClick={()=>setView(x)} key={x}><i>{icons[x]}</i><span>{x}</span>{(attention[alertKeys[x]]||0)>0&&<em className="menu-alert">{attention[alertKeys[x]]}</em>}</button>)}</div>}</div>)}
+          {["Smart Insights","Settings"].map(x=><button className={view===x?"active":""} onClick={()=>setView(x)} key={x}><i>{icons[x]}</i><span>{x}</span>{(attention[alertKeys[x]]||0)>0&&<em className="menu-alert">{attention[alertKeys[x]]}</em>}</button>)}
         </nav>
         <div className="user">
           <span>
@@ -255,8 +262,8 @@ export default function App() {
             <span className={online ? "online" : "offline"}>
               {online ? "● Online" : "● Offline ready"} · {queued} queued
             </span>
-            <button className="notification-bell" onClick={()=>setAlertsOpen(x=>!x)} aria-label="Open notifications">♢{Number(notifications.Total||0)>0&&<em>{notifications.Total}</em>}</button>
-            {alertsOpen&&<div className="notification-panel"><h3>Needs attention · {notifications.Total||0}</h3>{Number(notifications.Approvals||0)>0&&<button onClick={()=>{setView("Bills");setAlertsOpen(false)}}><b>{notifications.Approvals} approval requests</b><small>{notifications.Details?.approvals?.slice(0,2).map((x:any)=>x.label).join(" · ")||"Held-bill changes need review"}</small></button>}{Number(notifications.Bills||0)>0&&<button onClick={()=>{setView("Bills");setAlertsOpen(false)}}><b>{notifications.Bills} unresolved bills</b><small>{notifications.Details?.bills?.slice(0,3).map((x:any)=>`${x.label} ${x.status}`).join(" · ")}</small></button>}{Number(notifications.Inventory||0)>0&&<button onClick={()=>{setView("Inventory");setAlertsOpen(false)}}><b>{notifications.Inventory} stock alerts</b><small>{notifications.Details?.inventory?.slice(0,3).map((x:any)=>x.label).join(" · ")}</small></button>}{Number(notifications.Expenses||0)>0&&<button onClick={()=>{setView("Expense");setAlertsOpen(false)}}><b>{notifications.Expenses} unpaid expenses</b><small>{notifications.Details?.expenses?.slice(0,3).map((x:any)=>x.label).join(" · ")}</small></button>}{Number(notifications.Total||0)===0&&<p className="notification-empty">All caught up. No unresolved issues.</p>}</div>}
+            <button className="notification-bell" onClick={()=>setAlertsOpen(x=>!x)} aria-label="Open notifications">♢{Number(attention.Total||0)>0&&<em>{attention.Total}</em>}</button>
+            {alertsOpen&&<div className="notification-panel"><h3>Active conditions · {notifications.Total||0}</h3>{Number(notifications.Total||0)>0&&<button className="mark-read" onClick={()=>setReadNotificationFingerprint(notificationFingerprint)}><b>{notificationsRead?"Marked as read":"Mark current alerts as read"}</b><small>Badges return if the underlying records change.</small></button>}{Number(notifications.Approvals||0)>0&&<button onClick={()=>{setView("Bills");setAlertsOpen(false)}}><b>{notifications.Approvals} approval requests</b><small>{notifications.Details?.approvals?.slice(0,2).map((x:any)=>x.label).join(" · ")||"Held-bill changes need review"}</small></button>}{Number(notifications.Bills||0)>0&&<button onClick={()=>{setView("Bills");setAlertsOpen(false)}}><b>{notifications.Bills} unresolved bills</b><small>{notifications.Details?.bills?.slice(0,3).map((x:any)=>`${x.label} ${x.status}`).join(" · ")}</small></button>}{Number(notifications.Inventory||0)>0&&<button onClick={()=>{setView("Inventory");setAlertsOpen(false)}}><b>{notifications.Inventory} stock alerts</b><small>{notifications.Details?.inventory?.slice(0,3).map((x:any)=>x.label).join(" · ")}</small></button>}{Number(notifications.Expenses||0)>0&&<button onClick={()=>{setView("Expense");setAlertsOpen(false)}}><b>{notifications.Expenses} unpaid expenses</b><small>{notifications.Details?.expenses?.slice(0,3).map((x:any)=>x.label).join(" · ")}</small></button>}{Number(notifications.Total||0)===0&&<p className="notification-empty">All caught up. No unresolved issues.</p>}</div>}
           </div>
         </header>
         {view === "Sell" ? (
@@ -331,6 +338,7 @@ export default function App() {
                 </span>
                 <button onClick={() => setCart([])}>⌫</button>
               </div>
+              {lastHeldBill&&!activeBill&&<div className="next-order-notice"><span><b>New order ready</b><small>Printed bill #{lastHeldBill.receiptNumber} is held. New entries create a separate bill number.</small></span><button onClick={()=>{localStorage.setItem("bill_focus",lastHeldBill.id);setView("Bills")}}>Update held bill</button></div>}
               <button
                 className="customer-pick"
                 onClick={() => setCustomerOpen(true)}
@@ -426,7 +434,7 @@ export default function App() {
               ×
             </button>
             <pre id="receipt">{receipt}</pre>
-            <button className="print" onClick={async()=>{try{await printReceiptText(receipt);setReceipt(undefined);setMessage(`${receiptKind} bill sent to the configured printer`)}catch(e){setMessage(e instanceof Error?e.message:"Receipt printing failed")}}}>
+            <button className="print" onClick={async()=>{try{await printReceiptText(receipt);setReceipt(undefined);if(receiptKind==="Unpaid"&&activeBill)startNextOrder(activeBill);else setMessage(`${receiptKind} bill sent to the configured printer`)}catch(e){setMessage(e instanceof Error?e.message:"Receipt printing failed")}}}>
               Print {receiptKind} Bill
             </button>
           </section>

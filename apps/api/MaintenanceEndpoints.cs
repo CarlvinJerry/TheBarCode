@@ -44,6 +44,8 @@ public static class MaintenanceEndpoints
             await db.StockMovements.Where(x => liveProductIds.Contains(x.ProductId)).ExecuteDeleteAsync();
             await db.ProductImportLines.ExecuteDeleteAsync();
             await db.ProductImportBatches.ExecuteDeleteAsync();
+            var liveExpenseIds=await db.Expenses.Where(x=>!x.IsDemo).Select(x=>x.Id).ToListAsync();
+            await db.ExpensePayments.Where(x=>liveExpenseIds.Contains(x.ExpenseId)).ExecuteDeleteAsync();
             await db.Expenses.Where(x => !x.IsDemo).ExecuteDeleteAsync();
             await db.Customers.Where(x => !x.IsDemo).ExecuteDeleteAsync();
             await db.Products.Where(x => !x.IsDemo).ExecuteDeleteAsync();

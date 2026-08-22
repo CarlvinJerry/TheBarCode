@@ -1,6 +1,9 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.5";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.6";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Printed unpaid bills detach safely into a fresh order with direct held-bill revision routing",
+  "Production expense register with suppliers, references, due dates, tax and controlled settlement history",
+  "Mark-as-read attention badges that reappear only when authoritative records change",
   "Owner-only verified local backup, purge and desktop restore controls",
   "Strict Demo and live institution data isolation across devices and analytics",
   "Authoritative approval and notification reconciliation with faster reports and insights",
