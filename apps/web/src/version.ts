@@ -1,6 +1,11 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.0";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.1";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Verified role-aware item CRUD with readable authorization and validation reasons",
+  "Automatic dialog closing after successful transactional actions",
+  "Green success and red failure messages with automatic dismissal",
+  "Theme-aware branded login panel with Beyond Raw Data signoff",
+  "Smaller Powered by Dukora | Beyond Raw Data receipt footer",
   "Automatic held-bill workflow with explicit UNPAID, PAID and CREDIT printing",
   "Reliable multi-terminal held-bill revisions with new product additions",
   "Whole-unit sale quantities and governed paid or credit posting",

@@ -12,7 +12,7 @@ Dukora Lite is the low-resource, offline-first Windows edition. It uses the same
 
 ## Installation
 
-Installer: `installer\output\Dukora-Lite-Setup-1.8.0-x64.exe`
+Installer: `installer\output\Dukora-Lite-Setup-1.8.1-x64.exe`
 
 ## Bulk item setup
 
