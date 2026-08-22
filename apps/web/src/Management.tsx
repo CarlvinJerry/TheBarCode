@@ -90,7 +90,7 @@ export function Management({ view, products, user, notify, navigate }: Props) {
   if (view === "Customers") return <Customers notify={notify} />;
   if (view === "Expenses" || view === "Expense") return <Expenses />;
   if (view === "Reports") return <Reports />;
-  if (view === "Smart Insights" || view === "Smart insights") return <SmartInsights />;
+  if (view === "Smart Insights" || view === "Smart insights") return <SmartInsights user={user} />;
   if (view === "Audit" || view === "Audit trail") return <Audit user={user} />;
   if (["Staff", "Users & roles", "Staff & roles", "Staff & Roles"].includes(view))
     return <Staff notify={notify} />;
@@ -682,14 +682,14 @@ function Reports() {
   );
 }
 
-function SmartInsights(){
+function SmartInsights({user}:{user:{role:string}}){
   const today=new Date().toISOString().slice(0,10), start=new Date();start.setDate(start.getDate()-29);
-  const [from,setFrom]=useState(start.toISOString().slice(0,10)),[to,setTo]=useState(today),[data,setData]=useState<any>(null),[loading,setLoading]=useState(false);
-  const load=()=>{setLoading(true);getInsights(from,to).then(setData).catch(()=>setData(null)).finally(()=>setLoading(false))};useEffect(load,[]);
+  const [from,setFrom]=useState(start.toISOString().slice(0,10)),[to,setTo]=useState(today),[data,setData]=useState<any>(null),[loading,setLoading]=useState(false),[error,setError]=useState("");
+  const permitted=["Owner","Manager"].includes(user.role);const load=()=>{if(!permitted){setError("Smart Insights is available to Owner and Manager accounts.");return}setLoading(true);setError("");getInsights(from,to).then(setData).catch(e=>{setData(null);setError(e instanceof Error?e.message:"Smart Insights could not load")}).finally(()=>setLoading(false))};useEffect(load,[]);
   return <Page>
     <Intro title="Smart insights" text="Live business signals from sales, stock, customer credit and expenses." action={data?.mode==="ai"?"✦ AI analysis active":"◆ Rule engine active"}/>
     <Filter><input type="date" value={from} onChange={e=>setFrom(e.target.value)}/><span>to</span><input type="date" value={to} onChange={e=>setTo(e.target.value)}/><button onClick={load}>{loading?"Analysing…":"Refresh insights"}</button></Filter>
-    <Panel title="Business briefing"><p className="insight-summary">{data?.summary??(loading?"Analysing live records…":"Insights are unavailable. Confirm this terminal is connected to the local server.")}</p><small>{data?.providerStatus} · No customer names, phone numbers or receipt-level data are sent to an AI provider.</small></Panel>
+    <Panel title="Business briefing"><p className={`insight-summary ${error?"insight-error":""}`}>{data?.summary??(loading?"Analysing live records…":error||"No insight data is available for this period.")}</p><small>{data?.providerStatus||"Built-in rule engine"} · No customer phone numbers or receipt-level data are sent to an AI provider.</small></Panel>
     <div className="insight-grid">{(data?.insights??[]).map((x:any)=><article className={`insight-card ${x.severity}`} key={x.id}><header><span>{x.category}</span><b>{x.metric}</b></header><h3>{x.title}</h3><p>{x.description}</p><footer><strong>Suggested action</strong>{x.recommendation}</footer></article>)}</div>
     <Panel title="How analysis works"><p>Without an enabled AI provider, Dukora always uses its built-in deterministic rules. Owners can configure an HTTPS chat-model endpoint, model and API key in Settings. The key is encrypted by the local server and is never returned to the browser.</p></Panel>
   </Page>

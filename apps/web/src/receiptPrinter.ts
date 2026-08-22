@@ -57,7 +57,7 @@ function printReceiptPreview(text: string) {
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
-    .split("\n").map(line=>["UNPAID","PAID","CREDIT"].includes(line.trim())?`<strong>${line}</strong>`:line.trim()==="Powered by Dukora | Beyond Raw Data"?`<small>${line}</small>`:line).join("\n");
+    .split("\n").map(line=>line.trim().startsWith("STATUS: ")?`<strong>${line}</strong>`:line.trim()==="Powered by Dukora | Beyond Raw Data"?`<small>${line}</small>`:line).join("\n");
   doc.open();
   doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Receipt</title><style>
     @page { size: ${width}mm auto; margin: 0; }
@@ -78,16 +78,17 @@ function printReceiptPreview(text: string) {
 }
 
 export function testReceiptText() {
-  const organization=cachedOrganizationSettings(),receipt=cachedReceiptSettings(),line="-".repeat(receipt.paperWidthMm===58?32:48);
-  return `${organization.name.toUpperCase()}\nPRINTER TEST\n${new Date().toLocaleString()}\n${line}\nCONFIGURED ${receipt.paperWidthMm} MM\nDIRECT ESC/POS TEST\n${line}\n${receipt.footer}${receipt.showPoweredBy?"\nPowered by Dukora | Beyond Raw Data":""}`;
+  const organization=cachedOrganizationSettings(),receipt=cachedReceiptSettings(),line="-".repeat(receipt.paperWidthMm===58?32:48),branch=localStorage.getItem("branch_name")||"Main branch",terminal=localStorage.getItem("device_id")||"POS-01";
+  return `${organization.name.toUpperCase()}${organization.tagline?`\n${organization.tagline}`:""}${organization.address?`\n${organization.address}`:""}${organization.phone?`\nTel: ${organization.phone}`:""}\nBranch: ${branch}\n${line}\nPRINTER TEST\nTEST-0001\n${new Date().toLocaleString()}\nTill: ${terminal}\nPaper: ${receipt.paperWidthMm} mm\nSTATUS: TEST OK\n${line}\n${receipt.footer}${receipt.showPoweredBy?"\nPowered by Dukora | Beyond Raw Data":""}`;
 }
 
-export function buildSaleReceipt(input:{id:string;customerName:string;cashierName:string;method:string;status?:"UNPAID"|"PAID"|"CREDIT";credit:boolean;items:{name:string;quantity:number;unitPrice:number}[];total:number}){
+function localNumbers(id:string,walkIn:boolean){const date=new Date().toISOString().slice(0,10),key=`receipt_numbers_${date}`;try{const data=JSON.parse(localStorage.getItem(key)||'{"order":0,"walkIn":0,"ids":{}}');if(!data.ids[id]){data.order++;if(walkIn)data.walkIn++;data.ids[id]={order:data.order,walkIn:walkIn?data.walkIn:null};localStorage.setItem(key,JSON.stringify(data))}return data.ids[id]}catch{return{order:1,walkIn:walkIn?1:null}}}
+export function buildSaleReceipt(input:{id:string;dailyOrderNumber?:number;walkInNumber?:number|null;customerName:string;cashierName:string;method:string;status?:"UNPAID"|"PAID"|"CREDIT";credit:boolean;items:{name:string;quantity:number;unitPrice:number}[];total:number}){
  const org=cachedOrganizationSettings(),cfg=cachedReceiptSettings(),branch=localStorage.getItem("branch_name")||"Main branch",terminal=localStorage.getItem("device_id")||"POS-01",cols=cfg.paperWidthMm===58?32:48,line="-".repeat(cols),money=(n:number)=>`${org.currency} ${n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`,rows:string[]=[];
  rows.push(org.name.toUpperCase());if(org.legalName&&org.legalName!==org.name)rows.push(org.legalName);if(org.tagline)rows.push(org.tagline);
  if(cfg.showBusinessDetails){if(org.address)rows.push(org.address);if(org.phone)rows.push(`Tel: ${org.phone}`);if(org.taxPin)rows.push(`PIN: ${org.taxPin}`);rows.push(`Branch: ${branch}`)}
- const status=input.status??(input.credit?"CREDIT":"PAID");rows.push(line,status==="UNPAID"?"UNPAID BILL":status==="CREDIT"?"CREDIT SALE":"SALES RECEIPT",status,`${cfg.receiptPrefix}-${input.id.slice(0,8).toUpperCase()}`,new Date().toLocaleString(),`Till: ${terminal}`);
- if(cfg.showCashier)rows.push(`Cashier: ${input.cashierName}`);if(cfg.showCustomer)rows.push(`Customer: ${input.customerName}`);rows.push(line);
+ const status=input.status??(input.credit?"CREDIT":"PAID"),walkIn=input.customerName.toLowerCase().startsWith("walk-in"),numbers=input.dailyOrderNumber?{order:input.dailyOrderNumber,walkIn:input.walkInNumber}:localNumbers(input.id,walkIn);rows.push(line,status==="UNPAID"?"UNPAID BILL":status==="CREDIT"?"CREDIT SALE":"SALES RECEIPT",`${cfg.receiptPrefix}-${input.id.slice(0,8).toUpperCase()}`,`Order today: ${numbers.order}`,new Date().toLocaleString(),`Till: ${terminal}`);
+ if(cfg.showCashier)rows.push(`Cashier: ${input.cashierName}`);if(cfg.showCustomer)rows.push(`Customer: ${walkIn&&numbers.walkIn?`Walk-in #${numbers.walkIn}`:input.customerName}`);rows.push(line);
  for(const item of input.items){rows.push(item.name);rows.push(`${item.quantity} x ${money(item.unitPrice)}  ${money(item.quantity*item.unitPrice)}`)}
  rows.push(line,`TOTAL: ${money(input.total)}`,status==="UNPAID"?`STATUS: UNPAID\nHELD - NOT A PAYMENT RECEIPT`:status==="CREDIT"?`PAID: ${money(0)}\nBALANCE: ${money(input.total)}\nSTATUS: CREDIT`:`PAYMENT: ${input.method.toUpperCase()}\nSTATUS: PAID`,line,cfg.footer);if(cfg.showPoweredBy)rows.push("Powered by Dukora | Beyond Raw Data");return rows.join("\n");
 }

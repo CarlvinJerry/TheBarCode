@@ -33,13 +33,15 @@ public static class BillEndpoints
             if (duplicate is not null) return Results.Ok(BillView(duplicate, null, null));
             var products = await Products(r.Items, db);
             if (products is null) return Results.BadRequest(new { error = "One or more products no longer exist" });
-            var sale = new Sale { DeviceTransactionId = r.DeviceTransactionId, ReceiptNumber = await NextNumber(db), CustomerId = r.CustomerId, StaffId = r.StaffId, Status = "Held", Discount = Math.Max(0, r.Discount), Notes = r.Notes?.Trim(), OccurredAt = DateTimeOffset.UtcNow };
+            await using var tx=await db.Database.BeginTransactionAsync();var numbering=await NextDailyNumbers(db,r.CustomerId is null);
+            var sale = new Sale { DeviceTransactionId = r.DeviceTransactionId, ReceiptNumber = await NextNumber(db), DailyOrderNumber=numbering.Order,WalkInNumber=numbering.WalkIn,CustomerId = r.CustomerId, StaffId = r.StaffId, Status = "Held", Discount = Math.Max(0, r.Discount), Notes = r.Notes?.Trim(), OccurredAt = DateTimeOffset.Now };
             ReplaceLines(sale, r.Items, products);
             sale.Total = Total(sale);
             sale.Revisions.Add(Revision(sale, r.StaffId, "Held", "Initial unpaid bill"));
             db.Sales.Add(sale);
             db.AuditEvents.Add(Audit(principal, "Held", sale, $"Unpaid bill {sale.ReceiptNumber} · {sale.Total}", r.DeviceId));
             await db.SaveChangesAsync();
+            await tx.CommitAsync();
             return Results.Created($"/api/bills/{sale.Id}", BillView(sale, null, principal.Identity?.Name));
         });
 
@@ -236,6 +238,7 @@ public static class BillEndpoints
     static void ReplaceLines(Sale sale,IEnumerable<BillLineRequest> lines,IReadOnlyDictionary<Guid,Product> products){foreach(var line in lines){var p=products[line.ProductId];sale.Items.Add(new SaleItem{ProductId=p.Id,ProductName=p.Name,Quantity=line.Quantity,UnitPrice=line.UnitPrice,UnitCost=p.CostPrice,Discount=Math.Max(0,line.Discount)});}}
     static decimal Total(Sale sale)=>Math.Max(0,sale.Items.Sum(x=>x.Quantity*x.UnitPrice-x.Discount)-sale.Discount);
     static async Task<long> NextNumber(AppDbContext db)=>(await db.Sales.MaxAsync(x=>(long?)x.ReceiptNumber)??1000)+1;
+    static async Task<(int Order,int? WalkIn)> NextDailyNumbers(AppDbContext db,bool walkIn){var today=DateOnly.FromDateTime(DateTime.Today);var rows=await db.Sales.AsNoTracking().Select(x=>new{x.OccurredAt,x.DailyOrderNumber,x.WalkInNumber}).ToListAsync();var current=rows.Where(x=>DateOnly.FromDateTime(x.OccurredAt.LocalDateTime)==today).ToList();return(current.Select(x=>x.DailyOrderNumber).DefaultIfEmpty(0).Max()+1,walkIn?current.Where(x=>x.WalkInNumber!=null).Select(x=>x.WalkInNumber!.Value).DefaultIfEmpty(0).Max()+1:null);}
     static Guid StaffId(ClaimsPrincipal p)=>Guid.TryParse(p.FindFirstValue(ClaimTypes.NameIdentifier),out var id)?id:Guid.Empty;
     static bool HasRole(ClaimsPrincipal p,params string[] roles)=>p.Claims.Any(c=>(c.Type==ClaimTypes.Role||c.Type=="role"||c.Type.EndsWith("/role",StringComparison.OrdinalIgnoreCase))&&roles.Contains(c.Value,StringComparer.OrdinalIgnoreCase));
     static bool IsManager(ClaimsPrincipal p)=>HasRole(p,"Owner","Manager");
@@ -244,5 +247,5 @@ public static class BillEndpoints
     static BillRevision Revision(Sale sale,Guid staffId,string action,string reason)=>new(){SaleId=sale.Id,Revision=sale.Revision,StaffId=staffId,Action=action,Reason=reason,SnapshotJson=JsonSerializer.Serialize(new{sale.CustomerId,sale.Status,sale.Discount,sale.Total,Items=sale.Items.Select(x=>new{x.ProductId,x.ProductName,x.Quantity,x.UnitPrice,x.Discount})})};
     static AuditEvent Audit(ClaimsPrincipal p,string action,Sale sale,string details,string? device)=>Audit(p,action,sale.Id,"Sale",details,device);
     static AuditEvent Audit(ClaimsPrincipal p,string action,Guid id,string type,string details,string? device=null)=>new(){StaffId=StaffId(p),Actor=p.Identity?.Name??"System",Action=action,EntityType=type,EntityId=id.ToString(),Details=details,DeviceId=device};
-    static object BillView(Sale x,string? customer,string? cashier)=>new{x.Id,x.DeviceTransactionId,x.ReceiptNumber,x.CustomerId,customerName=customer,x.StaffId,cashierName=cashier,x.Status,x.Discount,x.Total,x.OccurredAt,x.DueAt,x.PostedAt,x.Revision,x.Notes,paid=x.Payments.Sum(p=>p.Amount),balance=Math.Max(0,x.Total-x.Payments.Sum(p=>p.Amount)),items=x.Items.OrderBy(i=>i.CreatedAt),payments=x.Payments.OrderBy(p=>p.PaidAt),revisions=x.Revisions.OrderByDescending(r=>r.Revision)};
+    static object BillView(Sale x,string? customer,string? cashier)=>new{x.Id,x.DeviceTransactionId,x.ReceiptNumber,x.DailyOrderNumber,x.WalkInNumber,x.CustomerId,customerName=customer,x.StaffId,cashierName=cashier,x.Status,x.Discount,x.Total,x.OccurredAt,x.DueAt,x.PostedAt,x.Revision,x.Notes,paid=x.Payments.Sum(p=>p.Amount),balance=Math.Max(0,x.Total-x.Payments.Sum(p=>p.Amount)),items=x.Items.OrderBy(i=>i.CreatedAt),payments=x.Payments.OrderBy(p=>p.PaidAt),revisions=x.Revisions.OrderByDescending(r=>r.Revision)};
 }

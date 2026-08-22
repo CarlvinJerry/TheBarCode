@@ -96,14 +96,18 @@ export default function App() {
   async function ensureHeld(openPrint=false){
     if(!cart.length)return;
     try{
-      const wasNew=!activeBill;const saved=activeBill?await updateBill(activeBill.id,{...billPayload(),reason:"Updated from active POS order",expectedRevision:activeBill.revision}):await holdBill(billPayload());setActiveBill(saved);if(wasNew)setNotifications(x=>({...x,Sell:(x.Sell||0)+1,Bills:(x.Bills||0)+1}));getNotifications().then(setNotifications).catch(()=>0);
-      const unpaid=buildSaleReceipt({id:String(saved.receiptNumber||saved.deviceTransactionId),customerName:selectedCustomer?.name||"Walk-in customer",cashierName:user.name,method:"Unpaid",status:"UNPAID",credit:true,items:cart.map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
+      const saved=activeBill?await updateBill(activeBill.id,{...billPayload(),reason:"Updated from active POS order",expectedRevision:activeBill.revision}):await holdBill(billPayload());setActiveBill(saved);getNotifications().then(setNotifications).catch(()=>0);
+      const unpaid=buildSaleReceipt({id:String(saved.receiptNumber||saved.deviceTransactionId),dailyOrderNumber:saved.dailyOrderNumber,walkInNumber:saved.walkInNumber,customerName:selectedCustomer?.name||"Walk-in customer",cashierName:user.name,method:"Unpaid",status:"UNPAID",credit:true,items:cart.map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
       if(openPrint){setReceiptKind("Unpaid");setReceipt(`${unpaid}\nREVISION: ${saved.revision||1}`)}
       setMessage(`Bill #${saved.receiptNumber} is held and awaiting payment or credit${openPrint?" · confirm Print Unpaid Bill":""}`);return saved;
     }catch(error){setMessage(error instanceof Error?`Could not hold bill: ${error.message}`:"Could not hold bill on the shared server");}
   }
   async function checkout(method: string) {
     if (!cart.length) return;
+    if (!activeBill) {
+      setMessage("Print or hold the unpaid bill before posting payment or credit");
+      return;
+    }
     if (method === "Credit" && !selectedCustomer) {
       setCustomerOpen(true);
       setMessage("Choose or register a customer before recording credit");
@@ -112,10 +116,10 @@ export default function App() {
     const id = crypto.randomUUID(), credit = method === "Credit",
       customerName = selectedCustomer?.name || "Walk-in customer";
     try{
-      const held=activeBill?await updateBill(activeBill.id,{...billPayload(),reason:"Final POS revision before posting",expectedRevision:activeBill.revision}):await holdBill({...billPayload(),deviceTransactionId:id});
+      const held=await updateBill(activeBill.id,{...billPayload(),reason:"Final POS revision before posting",expectedRevision:activeBill.revision});
       const dueAt=credit?new Date(Date.now()+7*86400000).toISOString():undefined;
       const posted=await postBill(held.id,{status:credit?"Credit":"Paid",method,amountPaid:credit?0:total,dueAt,notes:credit?"Credit approved at POS":"Paid at POS",deviceId:localStorage.getItem("device_id")??"windows-pos-01"});
-      const receiptText=buildSaleReceipt({id:String(posted.receiptNumber||id),customerName,cashierName:user.name,method,status:credit?"CREDIT":"PAID",credit,items:cart.map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
+      const receiptText=buildSaleReceipt({id:String(posted.receiptNumber||id),dailyOrderNumber:posted.dailyOrderNumber,walkInNumber:posted.walkInNumber,customerName,cashierName:user.name,method,status:credit?"CREDIT":"PAID",credit,items:cart.map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
       const receiptConfig=cachedReceiptSettings();setReceiptKind(credit?"Credit":"Paid");setReceipt(receiptText);if((!credit&&receiptConfig.autoPrintPaidSale)||(credit&&receiptConfig.creditSalePrintMode==="Automatic"))for(let copy=0;copy<receiptConfig.copies;copy++)await printReceiptText(receiptText);
       setCart([]);setSelectedCustomer(undefined);setActiveBill(undefined);setMessage(credit?"Credit invoice posted and added to follow-up":"Sale, payment and stock posted together");getNotifications().then(setNotifications).catch(()=>0);bootstrap().catch(()=>0);return;
     }catch(error){if(navigator.onLine){setMessage(error instanceof Error?error.message:"Sale could not be posted");return;}}
@@ -166,7 +170,7 @@ export default function App() {
     "Item Setup": "＋",
     Settings: "⚙",
   };
-  const alertKeys:Record<string,string>={Sell:"Sell",Bills:"Bills",Inventory:"Inventory",Customers:"Customers",Expenses:"Expenses",Expense:"Expenses","Audit trail":"AuditTrail",Settings:"Settings"};
+  const alertKeys:Record<string,string>={Bills:"Bills",Inventory:"Inventory",Customers:"Customers",Expenses:"Expenses",Expense:"Expenses","Audit trail":"AuditTrail",Settings:"Settings"};
   const today = new Intl.DateTimeFormat("en-GB", {
     weekday: "long",
     day: "numeric",
@@ -251,8 +255,7 @@ export default function App() {
             <span className={online ? "online" : "offline"}>
               {online ? "● Online" : "● Offline ready"} · {queued} queued
             </span>
-            <button className="notification-bell" onClick={()=>setAlertsOpen(x=>!x)} aria-label="Open notifications">♢<em>{Object.values(notifications).reduce((a,b)=>a+b,0)}</em></button>
-            <button className="held-status" onClick={()=>setView("Bills")}>◫ {notifications.Sell||0} held</button>
+            <button className="notification-bell" onClick={()=>setAlertsOpen(x=>!x)} aria-label="Open notifications">♢<em>{["Bills","Inventory","Customers","Expenses","AuditTrail","Approvals","Settings"].reduce((sum,key)=>sum+(notifications[key]||0),0)}</em></button>
             {alertsOpen&&<div className="notification-panel"><h3>Needs attention</h3><button onClick={()=>{setView("Inventory");setAlertsOpen(false)}}><b>{notifications.Inventory||0} stock alerts</b><small>Low or projected to run low</small></button><button onClick={()=>{setView("Bills");setAlertsOpen(false)}}><b>{notifications.Bills||0} pending bills</b><small>Held, credit or partly paid</small></button>{(notifications.Approvals||0)>0&&<button onClick={()=>{setView("Bills");setAlertsOpen(false)}}><b>{notifications.Approvals} approval requests</b><small>Held-bill changes need review</small></button>}</div>}
           </div>
         </header>
@@ -299,7 +302,7 @@ export default function App() {
               </div>
               <div className="products">
                 {filtered.map((p) => (
-                  <button onClick={() => add(p)} key={p.id}>
+                  <button className={p.stock<=0?"out-of-stock":""} disabled={p.stock<=0} onClick={() => add(p)} key={p.id}>
                     <span
                       className={`tile ${p.stock <= p.minStock ? "low" : ""}`}
                     >
@@ -314,6 +317,7 @@ export default function App() {
                     <span className="product-price">
                       <strong>{money(p.sellingPrice)}</strong>
                       <em>{p.stock} in stock</em>
+                      {p.stock<=0&&<em className="stock-out-label">Out of stock</em>}
                     </span>
                   </button>
                 ))}
@@ -323,7 +327,7 @@ export default function App() {
               <div className="bill-title">
                 <span>
                   <small>CURRENT ORDER</small>
-                  <h2>Bill #{1048}</h2>
+                  <h2>{activeBill ? `Order #${activeBill.dailyOrderNumber} · Rev ${activeBill.revision}` : "New order"}</h2>
                 </span>
                 <button onClick={() => setCart([])}>⌫</button>
               </div>
@@ -374,9 +378,9 @@ export default function App() {
                 <b>{money(total)}</b>
               </div>
               <div className="pay">
-                <button onClick={() => checkout("Cash")}>▣ Post as Paid · Cash</button>
-                <button onClick={() => checkout("M-Pesa")}>▤ Post as Paid · M-Pesa</button>
-                <button className="credit" onClick={() => checkout("Credit")}>
+                <button disabled={!activeBill} title={!activeBill?"Hold or print the unpaid bill first":undefined} onClick={() => checkout("Cash")}>▣ Post as Paid · Cash</button>
+                <button disabled={!activeBill} title={!activeBill?"Hold or print the unpaid bill first":undefined} onClick={() => checkout("M-Pesa")}>▤ Post as Paid · M-Pesa</button>
+                <button disabled={!activeBill} title={!activeBill?"Hold or print the unpaid bill first":undefined} className="credit" onClick={() => checkout("Credit")}>
                   ◴ Post as Credit
                 </button>
               </div>
