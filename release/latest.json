@@ -3,7 +3,7 @@
   "channel": "local-windows",
   "summary": "Verified Windows service setup and branded Dukora desktop launcher.",
   "downloadUrl": "",
-  "sha256": "7046900E9D2A02EC3262E1E34A1CD387D0D96C384555DD46695B2FC3284F4CD0",
+  "sha256": "41829DE12649E060CEF5626593EF7D8E2E9C058BDE89699564FA178BB6055CAA",
   "publishedAt": "2026-08-22T00:00:00+03:00",
   "notes": [
     "Kept installer configuration elevated and verify the local API health endpoint before launch.",
