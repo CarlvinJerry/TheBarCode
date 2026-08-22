@@ -61,8 +61,12 @@ public static class BillEndpoints
             var products = await Products(r.Items, db,Security.IsDemo(principal));
             if (products is null) return Results.BadRequest(new { error = "One or more items are unavailable in the requested quantity" });
             await using var tx=await db.Database.BeginTransactionAsync();
-            var oldItems=sale.Items.ToList();db.SaleItems.RemoveRange(oldItems);sale.Items.Clear();
+            var oldItems=sale.Items.ToList();
+            await db.SaleItems.Where(x=>x.SaleId==sale.Id).ExecuteDeleteAsync();
+            foreach(var oldItem in oldItems)db.Entry(oldItem).State=EntityState.Detached;
+            sale.Items.Clear();
             ReplaceLines(sale, r.Items, products);
+            db.SaleItems.AddRange(sale.Items);
             sale.CustomerId = r.CustomerId;
             sale.Discount = Math.Max(0, r.Discount);
             sale.Notes = r.Notes?.Trim();
@@ -107,7 +111,7 @@ public static class BillEndpoints
             var change=JsonSerializer.Deserialize<UpdateBillRequest>(request.SnapshotJson);if(change is null)return Results.BadRequest(new{error="The requested change is invalid"});
             if(sale.Status!="PendingApproval"||sale.Revision!=change.ExpectedRevision)return Results.Conflict(new{error="The bill changed after this request. Reject it and review the current bill."});
             var products=await Products(change.Items,db,Security.IsDemo(principal));if(products is null)return Results.BadRequest(new{error="One or more items are unavailable in the requested quantity"});
-            await using var tx=await db.Database.BeginTransactionAsync();var oldTotal=sale.Total;var oldItems=sale.Items.ToList();db.SaleItems.RemoveRange(oldItems);sale.Items.Clear();ReplaceLines(sale,change.Items,products);sale.CustomerId=change.CustomerId;sale.Discount=Math.Max(0,change.Discount);sale.Notes=change.Notes?.Trim();sale.Total=Total(sale);sale.Status="Held";sale.Revision++;sale.UpdatedAt=DateTimeOffset.UtcNow;request.Action="Approved";request.UpdatedAt=DateTimeOffset.UtcNow;db.BillRevisions.Add(Revision(sale,StaffId(principal),"Approved",$"Request {request.Id} · {r.Reason}"));db.AuditEvents.Add(Audit(principal,"Approved",sale,$"Bill {sale.ReceiptNumber} · {oldTotal} to {sale.Total} · {r.Reason}",r.DeviceId));await db.SaveChangesAsync();await tx.CommitAsync();return Results.Ok(BillView(sale,null,principal.Identity?.Name));
+            await using var tx=await db.Database.BeginTransactionAsync();var oldTotal=sale.Total;var oldItems=sale.Items.ToList();await db.SaleItems.Where(x=>x.SaleId==sale.Id).ExecuteDeleteAsync();foreach(var oldItem in oldItems)db.Entry(oldItem).State=EntityState.Detached;sale.Items.Clear();ReplaceLines(sale,change.Items,products);db.SaleItems.AddRange(sale.Items);sale.CustomerId=change.CustomerId;sale.Discount=Math.Max(0,change.Discount);sale.Notes=change.Notes?.Trim();sale.Total=Total(sale);sale.Status="Held";sale.Revision++;sale.UpdatedAt=DateTimeOffset.UtcNow;request.Action="Approved";request.UpdatedAt=DateTimeOffset.UtcNow;db.BillRevisions.Add(Revision(sale,StaffId(principal),"Approved",$"Request {request.Id} · {r.Reason}"));db.AuditEvents.Add(Audit(principal,"Approved",sale,$"Bill {sale.ReceiptNumber} · {oldTotal} to {sale.Total} · {r.Reason}",r.DeviceId));await db.SaveChangesAsync();await tx.CommitAsync();return Results.Ok(BillView(sale,null,principal.Identity?.Name));
         }).RequireAuthorization(p=>p.RequireRole("Owner","Manager"));
 
         api.MapPost("/bills/{id:guid}/post", async (Guid id, PostBillRequest r, AppDbContext db, ClaimsPrincipal principal) =>
@@ -241,7 +245,7 @@ public static class BillEndpoints
 
     static async Task<Dictionary<Guid, Product>?> Products(IEnumerable<BillLineRequest> lines, AppDbContext db,bool demo)
     { var requested=lines.GroupBy(x=>x.ProductId).ToDictionary(g=>g.Key,g=>g.Sum(x=>x.Quantity));var ids=requested.Keys.ToList();var rows=await db.Products.Where(x=>ids.Contains(x.Id)&&x.Active&&x.IsDemo==demo).ToDictionaryAsync(x=>x.Id);return rows.Count==ids.Count&&requested.All(x=>rows[x.Key].Stock>=x.Value)?rows:null; }
-    static void ReplaceLines(Sale sale,IEnumerable<BillLineRequest> lines,IReadOnlyDictionary<Guid,Product> products){foreach(var line in lines){var p=products[line.ProductId];sale.Items.Add(new SaleItem{ProductId=p.Id,ProductName=p.Name,Quantity=line.Quantity,UnitPrice=line.UnitPrice,UnitCost=p.CostPrice,Discount=Math.Max(0,line.Discount)});}}
+    static void ReplaceLines(Sale sale,IEnumerable<BillLineRequest> lines,IReadOnlyDictionary<Guid,Product> products){foreach(var line in lines){var p=products[line.ProductId];sale.Items.Add(new SaleItem{SaleId=sale.Id,ProductId=p.Id,ProductName=p.Name,Quantity=line.Quantity,UnitPrice=line.UnitPrice,UnitCost=p.CostPrice,Discount=Math.Max(0,line.Discount)});}}
     static decimal Total(Sale sale)=>Math.Max(0,sale.Items.Sum(x=>x.Quantity*x.UnitPrice-x.Discount)-sale.Discount);
     static async Task<long> NextNumber(AppDbContext db)=>(await db.Sales.MaxAsync(x=>(long?)x.ReceiptNumber)??1000)+1;
     static async Task<(int Order,int? WalkIn)> NextDailyNumbers(AppDbContext db,bool walkIn,bool demo){var today=DateOnly.FromDateTime(DateTime.Today);var rows=await db.Sales.AsNoTracking().Where(x=>x.IsDemo==demo).Select(x=>new{x.OccurredAt,x.DailyOrderNumber,x.WalkInNumber}).ToListAsync();var current=rows.Where(x=>DateOnly.FromDateTime(x.OccurredAt.LocalDateTime)==today).ToList();return(current.Select(x=>x.DailyOrderNumber).DefaultIfEmpty(0).Max()+1,walkIn?current.Where(x=>x.WalkInNumber!=null).Select(x=>x.WalkInNumber!.Value).DefaultIfEmpty(0).Max()+1:null);}

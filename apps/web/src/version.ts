@@ -1,6 +1,8 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.8";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.9";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Fixed the second-action 500 affecting held-bill save, print, paid and credit actions",
+  "Transactional line replacement with explicit bill ownership and reload-tested persistence",
   "Authoritative held-bill revisions persisted before saving, posting or printing",
   "Cash and M-Pesa selection when revised held bills are posted as paid",
   "System messages displayed above every active dialog and workspace",
