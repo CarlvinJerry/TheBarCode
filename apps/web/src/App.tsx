@@ -11,6 +11,7 @@ import {
 } from "./db";
 import { Management } from "./Management";
 import { printReceiptText } from "./receiptPrinter";
+import { APP_VERSION } from "./version";
 import "./App.css";
 
 type CartLine = Product & { quantity: number };
@@ -30,8 +31,14 @@ export default function App() {
     [online, setOnline] = useState(navigator.onLine),
     [receipt, setReceipt] = useState<string>(),
     [selectedCustomer, setSelectedCustomer] = useState<Customer>(),
-    [customerOpen, setCustomerOpen] = useState(false);
+    [customerOpen, setCustomerOpen] = useState(false),
+    [collapsed, setCollapsed] = useState(
+      localStorage.getItem("sidebar_collapsed") === "true",
+    );
   useEffect(() => {
+    document.documentElement.dataset.theme = (
+      localStorage.getItem("theme") || "Forest"
+    ).toLowerCase();
     bootstrap().catch(() => setMessage("Offline mode · using saved catalogue"));
     const change = () => setOnline(navigator.onLine);
     addEventListener("online", change);
@@ -142,8 +149,19 @@ export default function App() {
     .format(new Date())
     .toUpperCase();
   const pageTitle = view === "Sell" ? "New sale" : view;
+  function logout() {
+    session.clear();
+    setCart([]);
+    setSelectedCustomer(undefined);
+    setUser(null);
+  }
+  function toggleSidebar() {
+    const next = !collapsed;
+    setCollapsed(next);
+    localStorage.setItem("sidebar_collapsed", String(next));
+  }
   return (
-    <div className="shell">
+    <div className={`shell ${collapsed ? "sidebar-collapsed" : ""}`}>
       <aside>
         <div className="brand">
           <i>B</i>
@@ -151,6 +169,13 @@ export default function App() {
             <b>The BarCode</b>
             <small>Smart bar operations</small>
           </span>
+          <button
+            className="collapse-sidebar"
+            onClick={toggleSidebar}
+            title={collapsed ? "Expand navigation" : "Collapse navigation"}
+          >
+            ☰
+          </button>
         </div>
         <nav aria-label="Main navigation">
           {views.map((x) => (
@@ -179,7 +204,14 @@ export default function App() {
               {user.name === "Demo User" ? " · Demo" : ""}
             </small>
           </p>
-          <button>•••</button>
+          <button className="logout-button" onClick={logout} title="Sign out">
+            ↪ <b>Sign out</b>
+          </button>
+        </div>
+        <div className="builder-signoff">
+          <span>Built by</span>
+          <b>Beyond Raw Data</b>
+          <small>v{APP_VERSION}</small>
         </div>
       </aside>
       <main>

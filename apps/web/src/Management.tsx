@@ -20,6 +20,7 @@ import {
   printReceiptText,
   testReceiptText,
 } from "./receiptPrinter";
+import { APP_CHANNEL, APP_VERSION, RELEASE_NOTES } from "./version";
 import {
   bootstrap,
   createProduct,
@@ -1096,6 +1097,10 @@ function Settings({
   const [printer, setPrinter] = useState(localStorage.getItem("receipt_printer") || "");
   const [silent, setSilent] = useState(localStorage.getItem("silent_print") === "true");
   const [bridgeReady, setBridgeReady] = useState(false);
+  const [outlet, setOutlet] = useState(localStorage.getItem("outlet_name") || "Main outlet");
+  const [deviceName, setDeviceName] = useState(localStorage.getItem("device_id") || `POS-${crypto.randomUUID().slice(0, 6).toUpperCase()}`);
+  const [apiUrl, setApiUrl] = useState(localStorage.getItem("api_url") || "/api");
+  const [updateUrl, setUpdateUrl] = useState(localStorage.getItem("update_manifest_url") || "");
   useEffect(() => {
     listSilentPrinters()
       .then((items) => {
@@ -1114,6 +1119,23 @@ function Settings({
     localStorage.setItem("business_name", name);
     localStorage.setItem("receipt_footer", foot);
     notify("Receipt identity saved on this terminal");
+  }
+  function saveTerminal() {
+    localStorage.setItem("outlet_name", outlet);
+    localStorage.setItem("device_id", deviceName);
+    localStorage.setItem("api_url", apiUrl);
+    localStorage.setItem("update_manifest_url", updateUrl);
+    notify("Institution, outlet and terminal connection saved");
+  }
+  async function checkUpdates() {
+    if (!updateUrl) { notify(`Version ${APP_VERSION} · add an update manifest URL when hosting is ready`); return; }
+    try {
+      const manifest = await fetch(updateUrl, { cache: "no-store" }).then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.json();
+      });
+      notify(manifest.version === APP_VERSION ? `TheBarcode ${APP_VERSION} is current` : `Update ${manifest.version} is available: ${manifest.summary || "New release"}`);
+    } catch { notify("Could not reach the update service"); }
   }
   async function restore() {
     await resetDemo();
@@ -1151,6 +1173,26 @@ function Settings({
           ))}
         </div>
       </Panel>
+      <Two>
+        <Panel title="Institution, outlet & terminal">
+          <div className="settings-fields">
+            <Field label="Institution"><input value={business} onChange={(e) => setBusiness(e.target.value)} /></Field>
+            <Field label="Outlet / branch"><input value={outlet} onChange={(e) => setOutlet(e.target.value)} /></Field>
+            <Field label="Unique terminal name"><input value={deviceName} onChange={(e) => setDeviceName(e.target.value)} /></Field>
+            <Field label="Shared local or hosted API URL"><input value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} placeholder="/api or https://api.example.com/api" /></Field>
+            <button className="outline-button" onClick={saveTerminal}>Save terminal connection</button>
+          </div>
+        </Panel>
+        <Panel title={`TheBarcode ${APP_VERSION}`}>
+          <div className="release-card">
+            <p><b>Channel:</b> {APP_CHANNEL}</p>
+            <ul>{RELEASE_NOTES.map((note) => <li key={note}>{note}</li>)}</ul>
+            <Field label="Update manifest URL"><input value={updateUrl} onChange={(e) => setUpdateUrl(e.target.value)} placeholder="https://…/latest.json" /></Field>
+            <div className="button-row"><button onClick={saveTerminal}>Save update channel</button><button onClick={checkUpdates}>Check for updates</button></div>
+            <small>Built and maintained by Beyond Raw Data</small>
+          </div>
+        </Panel>
+      </Two>
       <Two>
         <Panel title="Receipt printer">
           <div className="device-row">
