@@ -36,6 +36,7 @@ export default function App() {
     [activeBill, setActiveBill] = useState<any>(),
     [notifications, setNotifications] = useState<Record<string, number>>({}),
     [alertsOpen,setAlertsOpen]=useState(false),
+    [navigationLayout,setNavigationLayout]=useState(localStorage.getItem("navigation_layout")||"Vertical"),
     [expandedGroups,setExpandedGroups]=useState<Record<string,boolean>>({Operations:false,"Data & Setup":false}),
     [collapsed, setCollapsed] = useState(
       localStorage.getItem("sidebar_collapsed") === "true",
@@ -50,12 +51,14 @@ export default function App() {
     addEventListener("offline", change);
     const refreshNotifications=()=>getNotifications().then(setNotifications).catch(()=>0);
     const attention=()=>void refreshNotifications();addEventListener("dukora:attention",attention);
+    const navigationChanged=(event:Event)=>setNavigationLayout((event as CustomEvent<string>).detail);addEventListener("dukora:navigation-layout",navigationChanged);
     void refreshNotifications();
     const timer = setInterval(() => {syncOutbox().catch(() => 0);refreshNotifications()}, 15000);
     return () => {
       removeEventListener("online", change);
       removeEventListener("offline", change);
       removeEventListener("dukora:attention",attention);
+      removeEventListener("dukora:navigation-layout",navigationChanged);
       clearInterval(timer);
     };
   }, []);
@@ -185,7 +188,7 @@ export default function App() {
   }
   async function toggleFullscreen(){if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();}
   return (
-    <div className={`shell ${collapsed ? "sidebar-collapsed" : ""}`}>
+    <div className={`shell ${collapsed ? "sidebar-collapsed" : ""} ${navigationLayout==="Horizontal"?"nav-horizontal":""}`}>
       <aside>
         <div className="brand">
           <img className="brand-lockup" src="/dukora-full-logo.png" alt="Dukora — Smarter Business Operations" />

@@ -999,6 +999,7 @@ function Settings({
   notify: (x: string) => void;
 }) {
   const [theme, setTheme] = useState(localStorage.getItem("theme") ?? "Forest");
+  const [navigationLayout,setNavigationLayout]=useState(localStorage.getItem("navigation_layout")??"Vertical");
   const [displayScale, setDisplayScale] = useState<DisplayScaleName>(storedDisplayScale());
   const [organization,setOrganization]=useState<OrganizationSettings>(defaultOrganizationSettings);
   const [receiptConfig,setReceiptConfig]=useState<ReceiptSettings>(defaultReceiptSettings);
@@ -1036,6 +1037,7 @@ function Settings({
     saveDisplayScale(x);
     notify(`${x} display size saved on this terminal`);
   }
+  function chooseNavigationLayout(value:string){setNavigationLayout(value);localStorage.setItem("navigation_layout",value);dispatchEvent(new CustomEvent("dukora:navigation-layout",{detail:value}));notify(`${value} navigation saved on this terminal`)}
   function saveTerminal() {
     localStorage.setItem("device_id", deviceName);
     localStorage.setItem("api_url", apiUrl);
@@ -1110,6 +1112,10 @@ function Settings({
             </button>
           ))}
         </div>
+      </Panel>
+      <Panel title="Navigation layout">
+        <p className="display-scale-help">Choose a traditional left sidebar or a horizontal top menu. The choice persists on this terminal.</p>
+        <div className="navigation-layout-grid">{["Vertical","Horizontal"].map(value=><button className={navigationLayout===value?"active":""} onClick={()=>chooseNavigationLayout(value)} key={value}><b>{value==="Vertical"?"▥":"▤"}</b><span>{value}</span></button>)}</div>
       </Panel>
       <Two>
         <Panel title="Business profile">

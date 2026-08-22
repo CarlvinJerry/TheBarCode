@@ -25,6 +25,7 @@ internal static class Program
             var paths = AppPaths.Create();
             var configuration = LiteConfiguration.Load(paths.ConfigFile) ?? FirstRun(paths.ConfigFile);
             if (configuration is null) return;
+            BackupDatabase(paths);
             await EnsureApi(paths, configuration);
             StartPrintBridge(paths);
             Application.Run(new DukoraWindow(AppUrl, paths.WebViewData, paths.DesktopLog));
@@ -86,6 +87,15 @@ internal static class Program
         var executable = Path.Combine(AppContext.BaseDirectory, "print-bridge", "TheBarcode.PrintBridge.exe");
         if (!File.Exists(executable)) return;
         bridge = Process.Start(new ProcessStartInfo(executable, "--urls http://127.0.0.1:17777") { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Path.GetDirectoryName(executable)! });
+    }
+
+    static void BackupDatabase(AppPaths paths)
+    {
+        if (!File.Exists(paths.DatabaseFile) || new FileInfo(paths.DatabaseFile).Length == 0) return;
+        Directory.CreateDirectory(paths.BackupDir);
+        var daily = Path.Combine(paths.BackupDir, $"dukora-{DateTime.Today:yyyyMMdd}.db");
+        if (!File.Exists(daily)) File.Copy(paths.DatabaseFile, daily);
+        foreach (var old in Directory.GetFiles(paths.BackupDir, "dukora-*.db").OrderByDescending(File.GetCreationTimeUtc).Skip(14)) File.Delete(old);
     }
 
     static async Task<bool> IsHealthy()
@@ -162,13 +172,13 @@ internal sealed class PinDialog : Form
     }
 }
 
-internal sealed record AppPaths(string Root, string ConfigFile, string DatabaseFile, string ApiLog, string DesktopLog, string WebViewData)
+internal sealed record AppPaths(string Root, string ConfigFile, string DatabaseFile, string ApiLog, string DesktopLog, string WebViewData,string BackupDir)
 {
     public static AppPaths Create()
     {
         var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Beyond Raw Data", "Dukora Lite");
         Directory.CreateDirectory(root); var logs = Path.Combine(root, "Logs"); Directory.CreateDirectory(logs);
-        return new(root, Path.Combine(root,"configuration.json"), Path.Combine(root,"dukora.db"), Path.Combine(logs,"api.log"), Path.Combine(logs,"desktop.log"), Path.Combine(root,"WebView2"));
+        return new(root, Path.Combine(root,"configuration.json"), Path.Combine(root,"dukora.db"), Path.Combine(logs,"api.log"), Path.Combine(logs,"desktop.log"), Path.Combine(root,"WebView2"),Path.Combine(root,"Backups"));
     }
 }
 
