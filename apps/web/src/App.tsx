@@ -164,11 +164,8 @@ export default function App() {
     <div className={`shell ${collapsed ? "sidebar-collapsed" : ""}`}>
       <aside>
         <div className="brand">
-          <i>B</i>
-          <span>
-            <b>The BarCode</b>
-            <small>Smart bar operations</small>
-          </span>
+          <img className="brand-lockup" src="/dukora-full-logo.png" alt="Dukora — Smarter Business Operations" />
+          <img className="brand-logo" src="/dukora-logo.png" alt="Dukora" />
           <button
             className="collapse-sidebar"
             onClick={toggleSidebar}
@@ -435,9 +432,7 @@ function Login({
   return (
     <div className="login">
       <form onSubmit={submit}>
-        <div className="login-brand">B</div>
-        <h1>The BarCode</h1>
-        <p>Smart bar operations</p>
+        <img className="login-lockup" src="/dukora-full-logo.png" alt="Dukora — Smarter Business Operations" />
         <label>
           Staff
           <select value={staffId} onChange={(e) => setStaffId(e.target.value)}>

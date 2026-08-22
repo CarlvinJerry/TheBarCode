@@ -1,11 +1,13 @@
 {
-  "version": "1.2.0",
+  "version": "1.3.0",
   "channel": "local-windows",
-  "summary": "Shared business profiles, branches, terminals and configurable receipt policies.",
+  "summary": "Dukora rebrand with transparent theme-ready artwork and Smarter Business Operations identity.",
   "downloadUrl": "",
-  "sha256": "45BE422FEFEDF8E1A770CCB053B1E1CD81C316864E98A58756511FACC7EC4D6F",
+  "sha256": "DF578E017C74F81620258B8E33F220D430876298DB97C241434DFFFCC41A4609",
   "publishedAt": "2026-08-22T00:00:00+03:00",
   "notes": [
+    "Rebranded the product and Windows installer as Dukora.",
+    "Integrated the transparent Dukora icon and Smarter Business Operations tagline.",
     "Added PostgreSQL-backed organization, branch and terminal configuration.",
     "Added 58 mm and 80 mm receipt layouts with configurable fields and print policies.",
     "Added native Windows installation profile while preserving Docker deployment.",

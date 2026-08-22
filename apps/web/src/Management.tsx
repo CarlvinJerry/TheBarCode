@@ -1144,7 +1144,7 @@ function Settings({
       });
       if (manifest.version === APP_VERSION) {
         setAvailableUpdate(undefined);
-        notify(`TheBarcode ${APP_VERSION} is current`);
+        notify(`Dukora ${APP_VERSION} is current`);
       } else {
         setAvailableUpdate(manifest);
         notify(`Update ${manifest.version} is available: ${manifest.summary || "New release"}`);
@@ -1203,13 +1203,13 @@ function Settings({
             <button className="outline-button" onClick={persistOrganization}>Save shared business profile</button>
           </div>
         </Panel>
-        <Panel title={`TheBarcode ${APP_VERSION}`}>
+        <Panel title={`Dukora ${APP_VERSION}`}>
           <div className="release-card">
             <p><b>Channel:</b> {APP_CHANNEL}</p>
             <ul>{RELEASE_NOTES.map((note) => <li key={note}>{note}</li>)}</ul>
             <Field label="Update manifest URL"><input value={updateUrl} onChange={(e) => setUpdateUrl(e.target.value)} placeholder="https://…/latest.json" /></Field>
             <div className="button-row"><button onClick={saveTerminal}>Save update channel</button><button onClick={checkUpdates}>Check for updates</button></div>
-            {availableUpdate?.downloadUrl && <a className="update-download" href={availableUpdate.downloadUrl}>Download TheBarcode {availableUpdate.version}</a>}
+            {availableUpdate?.downloadUrl && <a className="update-download" href={availableUpdate.downloadUrl}>Download Dukora {availableUpdate.version}</a>}
             <small>Built and maintained by Beyond Raw Data</small>
           </div>
         </Panel>
@@ -1334,7 +1334,7 @@ function downloadExcel() {
   a.href = URL.createObjectURL(
     new Blob([data], { type: "application/vnd.ms-excel" }),
   );
-  a.download = "TheBarcode-management-pack.xls";
+  a.download = "Dukora-management-pack.xls";
   a.click();
   URL.revokeObjectURL(a.href);
 }

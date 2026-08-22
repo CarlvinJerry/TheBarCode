@@ -18,7 +18,7 @@ if (-not $hasXprinter -and (Test-Path -LiteralPath $driver)) {
 
 $postgres = Get-Service 'postgresql*' -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
 if (-not $postgres) {
-  if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw 'PostgreSQL is missing and winget is unavailable. Install PostgreSQL 17 or 18, then rerun Configure TheBarcode.' }
+  if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw 'PostgreSQL is missing and winget is unavailable. Install PostgreSQL 17 or 18, then rerun Configure Dukora.' }
   Write-Host 'Installing PostgreSQL 18. Record the postgres administrator password selected by its installer.' -ForegroundColor Yellow
   winget install --id PostgreSQL.PostgreSQL.18 --exact --interactive --accept-source-agreements --accept-package-agreements
   if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL installation did not complete.' }
@@ -29,7 +29,7 @@ if ($postgres.Status -ne 'Running') { Start-Service $postgres.Name }
 
 $psql = Get-ChildItem 'C:\Program Files\PostgreSQL' -Filter psql.exe -Recurse -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
 if (-not $psql) { throw 'psql.exe was not found.' }
-$ownerPin = Read-Host 'Choose TheBarcode owner PIN (at least 6 characters)' -AsSecureString
+$ownerPin = Read-Host 'Choose Dukora owner PIN (at least 6 characters)' -AsSecureString
 $ownerPinText = [Net.NetworkCredential]::new('', $ownerPin).Password
 if ($ownerPinText.Length -lt 6) { throw 'Owner PIN must contain at least 6 characters.' }
 $pgSecret = Read-Host 'Enter the PostgreSQL postgres administrator password' -AsSecureString
@@ -57,8 +57,8 @@ $config | Set-Content -LiteralPath (Join-Path $InstallRoot 'server\appsettings.P
 $api = Join-Path $InstallRoot 'server\TheBarcode.Api.exe'
 & sc.exe stop TheBarcodeApi 2>$null | Out-Null
 & sc.exe delete TheBarcodeApi 2>$null | Out-Null
-& sc.exe create TheBarcodeApi binPath= "`"$api`" --urls http://0.0.0.0:8088" start= auto DisplayName= "TheBarcode Local Server" | Out-Null
-& sc.exe description TheBarcodeApi 'Local API and shared outlet data service for TheBarcode' | Out-Null
+& sc.exe create TheBarcodeApi binPath= "`"$api`" --urls http://0.0.0.0:8088" start= auto DisplayName= "Dukora Local Server" | Out-Null
+& sc.exe description TheBarcodeApi 'Local API and shared business data service for Dukora' | Out-Null
 & sc.exe start TheBarcodeApi | Out-Null
 & netsh.exe advfirewall firewall delete rule name='TheBarcode Local Server' 2>$null | Out-Null
 & netsh.exe advfirewall firewall add rule name='TheBarcode Local Server' dir=in action=allow protocol=TCP localport=8088 profile=private | Out-Null
@@ -68,6 +68,6 @@ $startup = Join-Path ([Environment]::GetFolderPath('Startup')) 'TheBarcode Print
 "@echo off`r`nstart `"`" /min `"$bridge`" --urls http://127.0.0.1:17777" | Set-Content -LiteralPath $startup -Encoding ascii
 Start-Process -FilePath $bridge -ArgumentList '--urls http://127.0.0.1:17777' -WindowStyle Hidden
 
-Write-Host 'TheBarcode native installation is configured.' -ForegroundColor Green
+Write-Host 'Dukora native installation is configured.' -ForegroundColor Green
 Write-Host 'Other terminals on this outlet network can use this computer IP on port 8088.' -ForegroundColor Cyan
 Read-Host 'Press Enter to close'

@@ -2,7 +2,7 @@ const bridgeUrl = "http://127.0.0.1:17777";
 export type ReceiptSettings = {paperWidthMm:number;showBusinessDetails:boolean;showCustomer:boolean;showCashier:boolean;showTax:boolean;showCustomerBalance:boolean;showPoweredBy:boolean;autoPrintPaidSale:boolean;creditSalePrintMode:string;paymentReceiptPrintMode:string;copies:number;footer:string;receiptPrefix:string;invoicePrefix:string;paymentPrefix:string};
 export type OrganizationSettings = {name:string;legalName?:string;industryProfile:string;currency:string;phone?:string;email?:string;address?:string;taxPin?:string;vatNumber?:string;tagline?:string};
 export const defaultReceiptSettings:ReceiptSettings={paperWidthMm:80,showBusinessDetails:true,showCustomer:true,showCashier:true,showTax:false,showCustomerBalance:true,showPoweredBy:true,autoPrintPaidSale:false,creditSalePrintMode:"Optional",paymentReceiptPrintMode:"Optional",copies:1,footer:"Thank you for your business.",receiptPrefix:"RCP",invoicePrefix:"INV",paymentPrefix:"PAY"};
-export const defaultOrganizationSettings:OrganizationSettings={name:"The BarCode",industryProfile:"BarCafe",currency:"KES",tagline:"Smart business operations"};
+export const defaultOrganizationSettings:OrganizationSettings={name:"Dukora",industryProfile:"BarCafe",currency:"KES",tagline:"Smarter Business Operations"};
 export function cachedReceiptSettings():ReceiptSettings{try{return {...defaultReceiptSettings,...JSON.parse(localStorage.getItem("receipt_configuration")||"{}")} }catch{return defaultReceiptSettings}}
 export function cachedOrganizationSettings():OrganizationSettings{try{return {...defaultOrganizationSettings,...JSON.parse(localStorage.getItem("organization_profile")||"{}")} }catch{return defaultOrganizationSettings}}
 
@@ -76,7 +76,7 @@ function printReceiptPreview(text: string) {
 
 export function testReceiptText() {
   const organization=cachedOrganizationSettings(),receipt=cachedReceiptSettings(),line="-".repeat(receipt.paperWidthMm===58?32:48);
-  return `${organization.name.toUpperCase()}\nPRINTER TEST\n${new Date().toLocaleString()}\n${line}\nCONFIGURED ${receipt.paperWidthMm} MM\nDIRECT ESC/POS TEST\n${line}\n${receipt.footer}${receipt.showPoweredBy?"\nPowered by Beyond Raw Data":""}`;
+  return `${organization.name.toUpperCase()}\nPRINTER TEST\n${new Date().toLocaleString()}\n${line}\nCONFIGURED ${receipt.paperWidthMm} MM\nDIRECT ESC/POS TEST\n${line}\n${receipt.footer}${receipt.showPoweredBy?"\nPowered by Dukora · Beyond Raw Data":""}`;
 }
 
 export function buildSaleReceipt(input:{id:string;customerName:string;cashierName:string;method:string;credit:boolean;items:{name:string;quantity:number;unitPrice:number}[];total:number}){
@@ -86,5 +86,5 @@ export function buildSaleReceipt(input:{id:string;customerName:string;cashierNam
  rows.push(line,input.credit?"CREDIT SALE":"SALES RECEIPT",`${cfg.receiptPrefix}-${input.id.slice(0,8).toUpperCase()}`,new Date().toLocaleString(),`Till: ${terminal}`);
  if(cfg.showCashier)rows.push(`Cashier: ${input.cashierName}`);if(cfg.showCustomer)rows.push(`Customer: ${input.customerName}`);rows.push(line);
  for(const item of input.items){rows.push(item.name);rows.push(`${item.quantity} x ${money(item.unitPrice)}  ${money(item.quantity*item.unitPrice)}`)}
- rows.push(line,`TOTAL: ${money(input.total)}`,input.credit?`PAID: ${money(0)}\nBALANCE: ${money(input.total)}\nSTATUS: UNPAID / CREDIT`:`PAYMENT: ${input.method.toUpperCase()}\nSTATUS: PAID`,line,cfg.footer);if(cfg.showPoweredBy)rows.push("Powered by Beyond Raw Data");return rows.join("\n");
+ rows.push(line,`TOTAL: ${money(input.total)}`,input.credit?`PAID: ${money(0)}\nBALANCE: ${money(input.total)}\nSTATUS: UNPAID / CREDIT`:`PAYMENT: ${input.method.toUpperCase()}\nSTATUS: PAID`,line,cfg.footer);if(cfg.showPoweredBy)rows.push("Powered by Dukora · Beyond Raw Data");return rows.join("\n");
 }

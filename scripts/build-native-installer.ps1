@@ -19,7 +19,13 @@ if (Test-Path -LiteralPath $stage) {
 New-Item -ItemType Directory -Force -Path "$stage\api\wwwroot","$stage\print-bridge","$stage\tools","$stage\driver","$stage\release" | Out-Null
 
 Push-Location $web
-try { $env:VITE_APP_VERSION=$Version; npm ci; npm run build } finally { Remove-Item Env:VITE_APP_VERSION -ErrorAction SilentlyContinue; Pop-Location }
+try {
+  $env:VITE_APP_VERSION=$Version
+  npm ci
+  if ($LASTEXITCODE -ne 0) { throw 'Web dependency installation failed; installer build stopped.' }
+  npm run build
+  if ($LASTEXITCODE -ne 0) { throw 'Web production build failed; installer build stopped.' }
+} finally { Remove-Item Env:VITE_APP_VERSION -ErrorAction SilentlyContinue; Pop-Location }
 dotnet publish (Join-Path $root 'apps\api\TheBarcode.Api.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\api"
 dotnet publish (Join-Path $root 'apps\print-bridge\TheBarcode.PrintBridge.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\print-bridge"
 Copy-Item -Path "$web\dist\*" -Destination "$stage\api\wwwroot" -Recurse -Force
@@ -35,7 +41,7 @@ if (-not $iscc) {
 if (-not $isccPath) { throw 'Inno Setup 6 is required to compile the final installer. Install it with: winget install JRSoftware.InnoSetup' }
 & $isccPath "/DAppVersion=$Version" (Join-Path $root 'installer\TheBarcode.iss')
 if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
-$installer = Join-Path $root "installer\output\TheBarcode-Setup-$Version-x64.exe"
+$installer = Join-Path $root "installer\output\Dukora-Setup-$Version-x64.exe"
 if (-not (Test-Path -LiteralPath $installer)) { throw 'Installer output was not created.' }
 $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash
 Write-Host "Installer created: $installer" -ForegroundColor Green

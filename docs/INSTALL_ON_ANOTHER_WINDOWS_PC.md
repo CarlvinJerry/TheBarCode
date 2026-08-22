@@ -1,6 +1,6 @@
-# Install TheBarcode on another Windows computer
+# Install Dukora on another Windows computer
 
-This guide installs a complete standalone copy of TheBarcode on a Windows 10 or Windows 11 computer. The computer will run the web interface, API and PostgreSQL database locally, so sales can continue when the internet is unavailable.
+This guide installs a complete standalone copy of Dukora on a Windows 10 or Windows 11 computer. The computer will run the web interface, API and PostgreSQL database locally, so sales can continue when the internet is unavailable.
 
 ## 1. Check the computer
 

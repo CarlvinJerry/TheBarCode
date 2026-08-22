@@ -1,4 +1,4 @@
-# TheBarcode native Windows edition
+# Dukora native Windows edition
 
 ## Release discipline
 
@@ -13,7 +13,7 @@ The native edition runs without Docker. It packages the touchscreen web interfac
 Build output:
 
 ```text
-installer\output\TheBarcode-Setup-1.2.0-x64.exe
+installer\output\Dukora-Setup-1.3.0-x64.exe
 ```
 
 The build script prints the SHA-256 checksum for each newly generated installer. Publish that checksum with the matching release rather than reusing a previous version's checksum.
@@ -22,9 +22,9 @@ The setup executable requires administrator rights. During configuration it:
 
 1. Checks for an installed Xprinter/XP-80 queue and opens the bundled signed vendor driver when missing.
 2. Checks for PostgreSQL. If missing, it invokes the official PostgreSQL 18 package through Windows Package Manager.
-3. Requests the PostgreSQL administrator password and a private TheBarcode owner PIN.
+3. Requests the PostgreSQL administrator password and a private Dukora owner PIN.
 4. Creates an isolated `thebarcode` role and database.
-5. Installs the self-contained API as the automatic **TheBarcode Local Server** Windows service.
+5. Installs the self-contained API as the automatic **Dukora Local Server** Windows service.
 6. Adds a Private-network firewall rule for TCP 8088.
 7. Starts the local XP-80 print bridge and registers it at Windows sign-in.
 8. Creates desktop and Start-menu shortcuts.
