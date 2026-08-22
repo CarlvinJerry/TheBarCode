@@ -26,7 +26,7 @@ Copy `.env.example` to `.env` and replace every value. Never commit `.env`. The 
 .\scripts\setup-windows.ps1
 ```
 
-The touchscreen app opens at `http://localhost:8088`. See `docs/WINDOWS_INSTALLATION.md` and `docs/P510_PRINTER_TEST.md` for installation, offline use and receipt acceptance testing.
+The touchscreen app opens at `http://localhost:8088`. See `docs/WINDOWS_INSTALLATION.md`, `docs/INSTALL_ON_ANOTHER_WINDOWS_PC.md` and `docs/P510_PRINTER_TEST.md` for installation, transfer to another computer, offline use and receipt acceptance testing.
 
 ## Development
 
