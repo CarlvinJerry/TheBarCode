@@ -28,7 +28,7 @@ internal static class Program
             BackupDatabase(paths);
             await EnsureApi(paths, configuration);
             StartPrintBridge(paths);
-            Application.Run(new DukoraWindow(AppUrl, paths.WebViewData, paths.DesktopLog));
+            Application.Run(new DukoraWindow(AppUrl, paths));
         }
         catch (Exception ex)
         {
@@ -117,11 +117,10 @@ internal sealed class DukoraWindow : Form
 {
     readonly WebView2 browser = new() { Dock = DockStyle.Fill };
     readonly string url;
-    readonly string userData;
-    readonly string errorLog;
-    public DukoraWindow(string url, string userData, string errorLog)
+    readonly AppPaths paths;
+    public DukoraWindow(string url, AppPaths paths)
     {
-        this.url = url; this.userData = userData; this.errorLog = errorLog;
+        this.url = url; this.paths = paths;
         Text = "Dukora — Smarter Business Operations";
         Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "dukora.ico"));
         MinimumSize = new Size(960, 640);
@@ -134,15 +133,16 @@ internal sealed class DukoraWindow : Form
         try
         {
             _ = CoreWebView2Environment.GetAvailableBrowserVersionString();
-            var environment = await CoreWebView2Environment.CreateAsync(null, userData);
+            var environment = await CoreWebView2Environment.CreateAsync(null, paths.WebViewData);
             await browser.EnsureCoreWebView2Async(environment);
             browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
             browser.CoreWebView2.Settings.IsStatusBarEnabled = false;
+            browser.CoreWebView2.WebMessageReceived += HandleWebMessage;
             browser.CoreWebView2.Navigate(url);
         }
         catch (Exception ex)
         {
-            await File.AppendAllTextAsync(errorLog, $"{DateTimeOffset.Now:O} WebView2 initialization failed: {ex}{Environment.NewLine}");
+            await File.AppendAllTextAsync(paths.DesktopLog, $"{DateTimeOffset.Now:O} WebView2 initialization failed: {ex}{Environment.NewLine}");
             browser.Visible = false;
             var message = new Label { Text = "Dukora is running, but its embedded desktop view could not start.\nThe same interface has been opened in your default browser.\n\nClose this window when you finish using Dukora.", AutoSize = true, Font = new Font(Font.FontFamily, 13), TextAlign = ContentAlignment.MiddleCenter };
             var open = new Button { Text = "Open Dukora in browser", AutoSize = true, Padding = new Padding(16,8,16,8) };
@@ -152,6 +152,30 @@ internal sealed class DukoraWindow : Form
             open.PerformClick();
         }
     }
+    async void HandleWebMessage(object? sender,CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        if(!Uri.TryCreate(e.Source,UriKind.Absolute,out var source)||source.Host!="127.0.0.1"||source.Port!=8090)return;
+        UpdateCommand? command;try{command=JsonSerializer.Deserialize<UpdateCommand>(e.WebMessageAsJson,new JsonSerializerOptions{PropertyNameCaseInsensitive=true});}catch{return;}
+        if(command?.Command!="installUpdate")return;
+        try
+        {
+            if(MessageBox.Show($"Install Dukora {command.Version}?\n\nDukora will verify the download, back up your database, close, install the update and reopen.","Dukora update",MessageBoxButtons.YesNo,MessageBoxIcon.Information)!=DialogResult.Yes){Reply(false,"Update cancelled");return;}
+            if(!Uri.TryCreate(command.DownloadUrl,UriKind.Absolute,out var download)||download.Scheme!="https"||!TrustedReleaseHost(download.Host))throw new InvalidOperationException("The release URL is not an approved Beyond Raw Data HTTPS address.");
+            if(string.IsNullOrWhiteSpace(command.Sha256)||command.Sha256.Length!=64)throw new InvalidOperationException("The release manifest does not contain a valid SHA-256 checksum.");
+            var updates=Path.Combine(paths.Root,"Updates");Directory.CreateDirectory(updates);var installer=Path.Combine(updates,$"Dukora-Lite-Setup-{SafeVersion(command.Version)}-x64.exe");
+            using(var client=new HttpClient{Timeout=TimeSpan.FromMinutes(15)})await using(var input=await client.GetStreamAsync(download))await using(var output=File.Create(installer)){await input.CopyToAsync(output);}
+            await using(var stream=File.OpenRead(installer)){var actual=Convert.ToHexString(await SHA256.HashDataAsync(stream));if(!actual.Equals(command.Sha256,StringComparison.OrdinalIgnoreCase)){File.Delete(installer);throw new InvalidOperationException("The downloaded installer failed checksum verification and was deleted.");}}
+            if(File.Exists(paths.DatabaseFile)){Directory.CreateDirectory(paths.BackupDir);File.Copy(paths.DatabaseFile,Path.Combine(paths.BackupDir,$"dukora-before-update-{DateTime.Now:yyyyMMdd-HHmmss}.db"),true);}
+            Reply(true,$"Dukora {command.Version} verified. Windows will now request permission to install it.");
+            Process.Start(new ProcessStartInfo(installer,"/SILENT /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS"){UseShellExecute=true,Verb="runas",WorkingDirectory=updates});
+            await Task.Delay(700);BeginInvoke(Application.Exit);
+        }
+        catch(Exception ex){await File.AppendAllTextAsync(paths.DesktopLog,$"{DateTimeOffset.Now:O} Update failed: {ex}{Environment.NewLine}");Reply(false,ex.Message);}
+    }
+    void Reply(bool ok,string message)=>browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new{type="dukoraUpdate",ok,message}));
+    static bool TrustedReleaseHost(string host)=>host.Equals("beyondrawdata.com",StringComparison.OrdinalIgnoreCase)||host.EndsWith(".beyondrawdata.com",StringComparison.OrdinalIgnoreCase)||host.Equals("beyondrawdata.co.ke",StringComparison.OrdinalIgnoreCase)||host.EndsWith(".beyondrawdata.co.ke",StringComparison.OrdinalIgnoreCase);
+    static string SafeVersion(string value)=>string.Concat(value.Where(x=>char.IsAsciiLetterOrDigit(x)||x is '.' or '-' or '_'));
+    sealed record UpdateCommand(string Command,string Version,string DownloadUrl,string Sha256);
 }
 
 internal sealed class PinDialog : Form

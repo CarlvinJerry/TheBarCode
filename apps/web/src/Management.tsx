@@ -1002,6 +1002,8 @@ function Settings({
   user: Props["user"];
   notify: (x: string) => void;
 }) {
+  const primaryUpdateManifest="https://dukora.beyondrawdata.com/releases/lite/latest.json";
+  const fallbackUpdateManifest="https://dukora.beyondrawdata.co.ke/releases/lite/latest.json";
   const [theme, setTheme] = useState(localStorage.getItem("theme") ?? "Forest");
   const [navigationLayout,setNavigationLayout]=useState(localStorage.getItem("navigation_layout")??"Vertical");
   const [displayScale, setDisplayScale] = useState<DisplayScaleName>(storedDisplayScale());
@@ -1017,8 +1019,9 @@ function Settings({
   const [terminalName,setTerminalName]=useState(localStorage.getItem("terminal_name")||"Front counter");
   const [branchId,setBranchId]=useState(localStorage.getItem("branch_id")||"");
   const [apiUrl, setApiUrl] = useState(localStorage.getItem("api_url") || "/api");
-  const [updateUrl, setUpdateUrl] = useState(localStorage.getItem("update_manifest_url") || "");
-  const [availableUpdate, setAvailableUpdate] = useState<{ version: string; downloadUrl: string; summary?: string }>();
+  const [updateUrl, setUpdateUrl] = useState(localStorage.getItem("update_manifest_url") || primaryUpdateManifest);
+  const [availableUpdate, setAvailableUpdate] = useState<{ version: string; downloadUrl: string; sha256:string; summary?: string }>();
+  const [updateBusy,setUpdateBusy]=useState(false);
   const [insightsConfig,setInsightsConfig]=useState({enabled:false,endpoint:"https://api.openai.com/v1/chat/completions",model:"gpt-5-mini",apiKey:"",apiKeyConfigured:false,clearApiKey:false,allowUserNames:false});
   useEffect(() => {
     getSettings().then((data)=>{setOrganization(data.organization);setReceiptConfig(data.receipt);setBranches(data.branches);setTerminals(data.terminals);localStorage.setItem("organization_profile",JSON.stringify(data.organization));localStorage.setItem("receipt_configuration",JSON.stringify(data.receipt));if(!branchId&&data.branches.length)setBranchId(data.branches[0].id)}).catch(()=>notify("Shared settings unavailable · using saved terminal configuration"));
@@ -1053,22 +1056,26 @@ function Settings({
   async function persistInsights(){try{const saved=await saveInsightsSettings(insightsConfig);setInsightsConfig(current=>({...current,...saved,apiKey:"",clearApiKey:false}));notify(saved.enabled&&saved.apiKeyConfigured?"AI insights provider saved and encrypted":"Rule-based Smart Insights remains active")}catch(e){notify(e instanceof Error?e.message:"Owner authorization is required")}}
   async function persistBranch(){try{const saved=await saveBranch(branchForm);const data=await getSettings();setBranches(data.branches);setBranchForm({name:"",code:"",address:"",phone:"",active:true});if(!branchId)setBranchId(saved.id);notify("Branch saved")}catch(e){notify(e instanceof Error?e.message:"Branch could not be saved")}}
   async function persistTerminal(){if(!branchId){notify("Select or create a branch first");return}try{const existing=terminals.find(x=>x.deviceKey===deviceName);const saved=await saveTerminalConfiguration({id:existing?.id,branchId,name:terminalName,deviceKey:deviceName,active:true});localStorage.setItem("device_id",saved.deviceKey);localStorage.setItem("terminal_name",saved.name);localStorage.setItem("branch_id",saved.branchId);localStorage.setItem("branch_name",branches.find(x=>x.id===saved.branchId)?.name||"");setTerminals((await getSettings()).terminals);notify("This terminal is registered to the selected branch")}catch(e){notify(e instanceof Error?e.message:"Terminal registration could not be saved")}}
-  async function checkUpdates() {
-    if (!updateUrl) { notify(`Version ${APP_VERSION} · add an update manifest URL when hosting is ready`); return; }
+  async function checkUpdates(silent=false) {
+    if (!updateUrl) { if(!silent)notify(`Version ${APP_VERSION} · add an HTTPS update manifest URL`); return; }
+    setUpdateBusy(true);
     try {
-      const manifest = await fetch(updateUrl, { cache: "no-store" }).then((r) => {
-        if (!r.ok) throw new Error(String(r.status));
-        return r.json();
-      });
-      if (manifest.version === APP_VERSION) {
+      const candidates=updateUrl===primaryUpdateManifest?[primaryUpdateManifest,fallbackUpdateManifest]:[updateUrl];let manifest:any;
+      for(const candidate of candidates){try{const parsed=new URL(candidate);if(parsed.protocol!=="https:")throw new Error("HTTPS is required");const response=await fetch(parsed,{cache:"no-store"});if(!response.ok)throw new Error(String(response.status));manifest=await response.json();break}catch{}}
+      if(!manifest?.version||!manifest?.downloadUrl||!manifest?.sha256)throw new Error("Invalid release manifest");
+      if (compareVersions(manifest.version,APP_VERSION)<=0) {
         setAvailableUpdate(undefined);
-        notify(`Dukora ${APP_VERSION} is current`);
+        if(!silent)notify(`Dukora ${APP_VERSION} is current`);
       } else {
         setAvailableUpdate(manifest);
         notify(`Update ${manifest.version} is available: ${manifest.summary || "New release"}`);
       }
-    } catch { notify("Could not reach the update service"); }
+    } catch { if(!silent)notify("Could not reach the update service"); }
+    finally{setUpdateBusy(false)}
   }
+  function installUpdate(){if(!availableUpdate)return;if(user.role!=="Owner"){notify("Only the Owner can install application updates");return}const desktop=(window as any).chrome?.webview;if(!desktop){window.open(availableUpdate.downloadUrl,"_blank","noopener");notify("Installer download opened; run it after the download completes");return}setUpdateBusy(true);desktop.postMessage({command:"installUpdate",version:availableUpdate.version,downloadUrl:availableUpdate.downloadUrl,sha256:availableUpdate.sha256})}
+  useEffect(()=>{const desktop=(window as any).chrome?.webview;if(!desktop)return;const receive=(event:any)=>{const result=event.data;if(result?.type!=="dukoraUpdate")return;setUpdateBusy(false);notify(result.ok?result.message:`Update failed: ${result.message}`)};desktop.addEventListener("message",receive);return()=>desktop.removeEventListener("message",receive)},[]);
+  useEffect(()=>{if(user.role!=="Owner")return;const timer=setTimeout(()=>void checkUpdates(true),5000);return()=>clearTimeout(timer)},[]);
   async function restore() {
     await resetDemo();
     await bootstrap();
@@ -1142,8 +1149,8 @@ function Settings({
             <p><b>Channel:</b> {APP_CHANNEL}</p>
             <ul>{RELEASE_NOTES.map((note) => <li key={note}>{note}</li>)}</ul>
             <Field label="Update manifest URL"><input value={updateUrl} onChange={(e) => setUpdateUrl(e.target.value)} placeholder="https://…/latest.json" /></Field>
-            <div className="button-row"><button onClick={saveTerminal}>Save update channel</button><button onClick={checkUpdates}>Check for updates</button></div>
-            {availableUpdate?.downloadUrl && <a className="update-download" href={availableUpdate.downloadUrl}>Download Dukora {availableUpdate.version}</a>}
+            <div className="button-row"><button onClick={saveTerminal}>Save update channel</button><button disabled={updateBusy} onClick={()=>void checkUpdates(false)}>{updateBusy?"Checking…":"Check for updates"}</button></div>
+            {availableUpdate?.downloadUrl && <button className="update-download" disabled={updateBusy} onClick={installUpdate}>{updateBusy?"Preparing update…":`Install Dukora ${availableUpdate.version}`}</button>}
             <small>Built and maintained by Beyond Raw Data</small>
           </div>
         </Panel>
@@ -1281,6 +1288,7 @@ function downloadPdfReport({from,to,summary,detail}:{from:string;to:string;summa
   autoTable(doc,{startY:(doc as any).lastAutoTable.finalY+7,head:[["Expense","Category","Amount","Paid","Method"]],body:(detail.expenseRecords||[]).slice(0,30).map((x:any)=>[x.description,x.category,fmt(Number(x.amount)),fmt(Number(x.paidAmount)),x.method]),theme:"grid",headStyles:{fillColor:green},styles:{fontSize:7}});
   const pages=doc.getNumberOfPages();for(let p=1;p<=pages;p++){doc.setPage(p);doc.setFontSize(7);doc.setTextColor(110);doc.text(`Dukora - ${org.name} - Page ${p} of ${pages}`,105,291,{align:"center"})}doc.save(`Dukora-report-${from}-to-${to}.pdf`);
 }
+function compareVersions(left:string,right:string){const a=left.replace(/^v/i,"").split(/[.-]/).map(x=>Number.parseInt(x,10)||0),b=right.replace(/^v/i,"").split(/[.-]/).map(x=>Number.parseInt(x,10)||0);for(let i=0;i<Math.max(a.length,b.length);i++){const difference=(a[i]||0)-(b[i]||0);if(difference)return difference}return 0}
 const inventoryUnits=["item","piece","bottle","can","pack","tray","bag","portion","serving","shot","glass","ml","L","g","kg"];
 const measureUnits=["item","piece","bottle","can","pack","tray","bag","portion","serving","shot","glass","ml","L","g","kg"];
 const productTemplateHeaders=["name","category","brand","barcode_sku","stock_unit","package_quantity","package_unit","tracking_mode","cost_price","selling_price","opening_stock","minimum_stock","supplier","tax_rate","sellable"];

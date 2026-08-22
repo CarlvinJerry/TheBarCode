@@ -43,7 +43,7 @@ Name: "{group}\Install Xprinter Driver"; Filename: "{app}\Dukora.DriverInstaller
 [Run]
 Filename: "{tmp}\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; Parameters: "/silent /install"; StatusMsg: "Installing the Microsoft desktop runtime..."; Flags: runhidden waituntilterminated
 Filename: "{app}\Dukora.DriverInstaller.exe"; StatusMsg: "Installing Xprinter receipt-printer support..."; Flags: waituntilterminated; Tasks: printerdriver
-Filename: "{app}\Dukora.Desktop.exe"; Description: "Open Dukora Lite"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\Dukora.Desktop.exe"; Description: "Open Dukora Lite"; Flags: postinstall nowait
 
 [Code]
 function InitializeSetup(): Boolean;
