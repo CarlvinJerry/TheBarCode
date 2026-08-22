@@ -2,6 +2,12 @@
 
 The browser currently prints a 58 mm receipt through the normal Windows printer queue. This is the safest first integration for either USB or Bluetooth because Windows owns the device driver and pairing.
 
+The same procedure applies to the Xprinter XP-P5. In its Windows Printing Preferences, select 58 mm receipt paper, disable banner/header/footer pages, and use continuous receipt/roll media rather than label or black-mark mode.
+
+If paper feeds continuously, cancel the job in the Windows printer queue and power-cycle the printer. Confirm the driver paper type and sensor mode before retrying. TheBarcode now creates an isolated receipt-only print document; it no longer sends the full application page.
+
+Silent direct printing is not available to an ordinary browser by default. The planned production option is a small localhost Windows print bridge that accepts a receipt only from TheBarcode and writes ESC/POS to the configured printer queue. This removes print preview while retaining USB and Bluetooth support.
+
 1. Pair or connect the P510 and install the manufacturer driver.
 2. In Windows printer settings, print a test page and set the paper width to 58 mm.
 3. Make the P510 the default printer for the test session.
