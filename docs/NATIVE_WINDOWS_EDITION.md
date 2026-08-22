@@ -67,9 +67,9 @@ The client already supports a configurable API base URL and durable device-side 
 1. Publish a tenant-aware HTTPS API backed by managed PostgreSQL.
 2. Put its address into **Shared local or hosted API URL**.
 3. Register the institution, outlet and device against the hosted service.
-4. Publish `release/latest.json` at a stable HTTPS URL and enter it as the update manifest URL.
+4. Publish the Lite manifest at `https://dukora.beyondrawdata.com/releases/lite/latest.json` and the matching installer under the same `/releases/lite/` directory. Dukora falls back to `https://dukora.beyondrawdata.co.ke/releases/lite/latest.json` when the primary endpoint is unavailable. Custom HTTPS manifest endpoints can still be saved in Settings.
 
-The release manifest contains the latest version, summary, download URL, SHA-256 and release notes. The Windows edition can check that manifest without changing the local database design. Production updates should be signed installers, downloaded over HTTPS and installed only after an authorized user approves the upgrade.
+The release manifest contains the latest version, summary, download URL, SHA-256 and release notes. Dukora compares semantic versions, accepts installer downloads only from Beyond Raw Data HTTPS domains, verifies SHA-256, creates a pre-update database backup and requests Owner and Windows approval before installing and restarting. Sign production installers with the Beyond Raw Data Authenticode certificate when available.
 
 ## Deployment profiles
 

@@ -12,7 +12,7 @@ Dukora Lite is the low-resource, offline-first Windows edition. It uses the same
 
 ## Installation
 
-Installer: `installer\output\Dukora-Lite-Setup-1.8.3-x64.exe`
+Installer: `installer\output\Dukora-Lite-Setup-1.8.4-x64.exe`
 
 Upgrades replace application binaries only. Institution data and configuration remain under `%LOCALAPPDATA%\Beyond Raw Data\Dukora Lite`, outside the installation directory, and are never deleted by setup or uninstall. Dukora creates a daily pre-start database backup and retains the latest 14 backups. Data removal occurs only through an explicit authorized action inside Dukora.
 
