@@ -1,6 +1,9 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.11";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.12";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Permanent Keep held and start new control on Sell without receipt printing",
+  "Reload and open controls for restarting or managing any held Sell order",
+  "Separate Cash and M-Pesa paid-posting buttons with immediate paid-receipt printing",
   "Live sales collection rate replaces the hard-coded dashboard percentage",
   "Separate period-sales collection and actual cash-received measures across dashboard, reports, PDF and insights",
   "Persistent proportional Font & interface size settings across the complete application",
