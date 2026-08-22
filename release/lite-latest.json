@@ -4,7 +4,7 @@
   "channel": "lite-windows",
   "summary": "Validated bulk inventory setup with precise package variants and reversible import batches.",
   "downloadUrl": "",
-  "sha256": "PENDING_BUILD",
+  "sha256": "B9901371E1FAEB268AFDE0E8CBA529778B7BC335443EB3DDCCB829E268CFA5DE",
   "publishedAt": "2026-08-22T00:00:00+03:00",
   "notes": [
     "Adds an Excel-compatible bulk item template, file preview and row-level validation.",
