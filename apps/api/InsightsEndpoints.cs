@@ -33,7 +33,7 @@ public static class InsightsEndpoints
             var startDate = from ?? endDate.AddDays(-29);
             var snapshot = await BuildSnapshot(db, startDate, endDate);
             return Results.Ok(await service.Generate(snapshot, ct));
-        }).RequireAuthorization(p => p.RequireRole("Owner", "Manager"));
+        }).RequireAuthorization(p => p.RequireRole("Owner", "Manager", "Auditor"));
     }
 
     public static async Task<OperationalSnapshot> BuildSnapshot(AppDbContext db, DateOnly from, DateOnly to)
@@ -41,13 +41,14 @@ public static class InsightsEndpoints
         if (to < from) (from, to) = (to, from);
         var start = from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var end = to.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-        var sales = (await db.Sales.AsNoTracking().Where(x => x.Status == "Paid" || x.Status == "Credit" || x.Status == "PartiallyPaid").Include(x => x.Items).Include(x => x.Payments).ToListAsync()).Where(x => x.OccurredAt >= start && x.OccurredAt < end).ToList();
+        var allSales=await db.Sales.AsNoTracking().Where(x=>x.Status=="Paid"||x.Status=="Credit"||x.Status=="PartiallyPaid").Include(x=>x.Items).Include(x=>x.Payments).ToListAsync();
+        var sales=allSales.Where(x=>x.OccurredAt>=start&&x.OccurredAt<end).ToList();
         var expenses = await db.Expenses.AsNoTracking().Where(x => x.Date >= from && x.Date <= to).ToListAsync();
         var products = await db.Products.AsNoTracking().Where(x => x.Active).ToListAsync();
-        var velocityStart=DateTimeOffset.UtcNow.AddDays(-30);var recentSales=(await db.Sales.AsNoTracking().Where(x=>x.Status=="Paid"||x.Status=="Credit"||x.Status=="PartiallyPaid").Include(x=>x.Items).ToListAsync()).Where(x=>(x.PostedAt??x.OccurredAt)>=velocityStart).ToList();var recentLines=recentSales.SelectMany(x=>x.Items).GroupBy(x=>x.ProductId).ToDictionary(x=>x.Key,x=>x.Sum(line=>line.Quantity)/30m);
-        var customerSales = await db.Sales.AsNoTracking().Where(x => x.CustomerId != null && (x.Status == "Paid" || x.Status == "Credit" || x.Status == "PartiallyPaid")).Include(x => x.Payments).ToListAsync();
-        var rangePayments=(await db.Payments.AsNoTracking().ToListAsync()).Where(x=>x.PaidAt>=start&&x.PaidAt<end).ToList();
-        var activity = (await db.AuditEvents.AsNoTracking().Take(500).ToListAsync()).OrderByDescending(x => x.OccurredAt).Take(12).ToList();
+        var velocityStart=DateTimeOffset.UtcNow.AddDays(-30);var recentSales=allSales.Where(x=>(x.PostedAt??x.OccurredAt)>=velocityStart).ToList();var recentLines=recentSales.SelectMany(x=>x.Items).GroupBy(x=>x.ProductId).ToDictionary(x=>x.Key,x=>x.Sum(line=>line.Quantity)/30m);
+        var customerSales=allSales.Where(x=>x.CustomerId!=null).ToList();
+        var rangePayments=allSales.SelectMany(x=>x.Payments).Where(x=>x.PaidAt>=start&&x.PaidAt<end).ToList();
+        var activity=(await db.AuditEvents.AsNoTracking().Take(500).ToListAsync()).OrderByDescending(x=>x.OccurredAt).Take(12).ToList();
         var revenue = sales.Sum(x => x.Total);
         var cost = sales.SelectMany(x => x.Items).Sum(x => x.UnitCost * x.Quantity);
         var paid = customerSales.SelectMany(x => x.Payments).Sum(x => x.Amount);

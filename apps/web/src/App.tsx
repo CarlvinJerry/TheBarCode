@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { bootstrap, getNotifications, holdBill, login, postBill, session, syncOutbox, updateBill } from "./api";
 import {
@@ -34,13 +34,14 @@ export default function App() {
     [selectedCustomer, setSelectedCustomer] = useState<Customer>(),
     [customerOpen, setCustomerOpen] = useState(false),
     [activeBill, setActiveBill] = useState<any>(),
-    [notifications, setNotifications] = useState<Record<string, number>>({}),
+    [notifications, setNotifications] = useState<Record<string, any>>({Total:0,Details:{}}),
     [alertsOpen,setAlertsOpen]=useState(false),
     [navigationLayout,setNavigationLayout]=useState(localStorage.getItem("navigation_layout")||"Vertical"),
     [expandedGroups,setExpandedGroups]=useState<Record<string,boolean>>({Operations:false,"Data & Setup":false}),
     [collapsed, setCollapsed] = useState(
       localStorage.getItem("sidebar_collapsed") === "true",
     );
+  const notificationRequest=useRef(0);
   useEffect(() => {
     document.documentElement.dataset.theme = (
       localStorage.getItem("theme") || "Forest"
@@ -49,19 +50,16 @@ export default function App() {
     const change = () => setOnline(navigator.onLine);
     addEventListener("online", change);
     addEventListener("offline", change);
-    const refreshNotifications=()=>getNotifications().then(setNotifications).catch(()=>0);
-    const attention=()=>void refreshNotifications();addEventListener("dukora:attention",attention);
     const navigationChanged=(event:Event)=>setNavigationLayout((event as CustomEvent<string>).detail);addEventListener("dukora:navigation-layout",navigationChanged);
-    void refreshNotifications();
-    const timer = setInterval(() => {syncOutbox().catch(() => 0);refreshNotifications()}, 15000);
+    const timer = setInterval(() => syncOutbox().catch(() => 0), 15000);
     return () => {
       removeEventListener("online", change);
       removeEventListener("offline", change);
-      removeEventListener("dukora:attention",attention);
       removeEventListener("dukora:navigation-layout",navigationChanged);
       clearInterval(timer);
     };
   }, []);
+  useEffect(()=>{if(!user)return;const refresh=async()=>{const request=++notificationRequest.current;try{const current=await getNotifications();if(request===notificationRequest.current)setNotifications(current)}catch{}};const attention=()=>void refresh();const visible=()=>{if(document.visibilityState==="visible")void refresh()};addEventListener("dukora:attention",attention);addEventListener("focus",attention);document.addEventListener("visibilitychange",visible);void refresh();const timer=setInterval(refresh,10000);return()=>{removeEventListener("dukora:attention",attention);removeEventListener("focus",attention);document.removeEventListener("visibilitychange",visible);clearInterval(timer)}},[user?.id]);
   useEffect(()=>{if(!message)return;const timer=setTimeout(()=>setMessage(""),5000);return()=>clearTimeout(timer)},[message]);
   const messageIsError=/unable|failed|failure|could not|cannot|invalid|error|required|permission|expired|unavailable|refused|correction/i.test(message);
   const visibleProducts = products.filter((p) =>
@@ -96,7 +94,7 @@ export default function App() {
   async function ensureHeld(openPrint=false){
     if(!cart.length)return;
     try{
-      const saved=activeBill?await updateBill(activeBill.id,{...billPayload(),reason:"Updated from active POS order",expectedRevision:activeBill.revision}):await holdBill(billPayload());setActiveBill(saved);getNotifications().then(setNotifications).catch(()=>0);
+      const saved=activeBill?await updateBill(activeBill.id,{...billPayload(),reason:"Updated from active POS order",expectedRevision:activeBill.revision}):await holdBill(billPayload());setActiveBill(saved);dispatchEvent(new Event("dukora:attention"));
       const unpaid=buildSaleReceipt({id:String(saved.receiptNumber||saved.deviceTransactionId),dailyOrderNumber:saved.dailyOrderNumber,walkInNumber:saved.walkInNumber,customerName:selectedCustomer?.name||"Walk-in customer",cashierName:user.name,method:"Unpaid",status:"UNPAID",credit:true,items:cart.map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
       if(openPrint){setReceiptKind("Unpaid");setReceipt(`${unpaid}\nREVISION: ${saved.revision||1}`)}
       setMessage(`Bill #${saved.receiptNumber} is held and awaiting payment or credit${openPrint?" · confirm Print Unpaid Bill":""}`);return saved;
@@ -121,7 +119,7 @@ export default function App() {
       const posted=await postBill(held.id,{status:credit?"Credit":"Paid",method,amountPaid:credit?0:total,dueAt,notes:credit?"Credit approved at POS":"Paid at POS",deviceId:localStorage.getItem("device_id")??"windows-pos-01"});
       const receiptText=buildSaleReceipt({id:String(posted.receiptNumber||id),dailyOrderNumber:posted.dailyOrderNumber,walkInNumber:posted.walkInNumber,customerName,cashierName:user.name,method,status:credit?"CREDIT":"PAID",credit,items:cart.map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
       const receiptConfig=cachedReceiptSettings();setReceiptKind(credit?"Credit":"Paid");setReceipt(receiptText);if((!credit&&receiptConfig.autoPrintPaidSale)||(credit&&receiptConfig.creditSalePrintMode==="Automatic"))for(let copy=0;copy<receiptConfig.copies;copy++)await printReceiptText(receiptText);
-      setCart([]);setSelectedCustomer(undefined);setActiveBill(undefined);setMessage(credit?"Credit invoice posted and added to follow-up":"Sale, payment and stock posted together");getNotifications().then(setNotifications).catch(()=>0);bootstrap().catch(()=>0);return;
+      setCart([]);setSelectedCustomer(undefined);setActiveBill(undefined);setMessage(credit?"Credit invoice posted and added to follow-up":"Sale, payment and stock posted together");dispatchEvent(new Event("dukora:attention"));bootstrap().catch(()=>0);return;
     }catch(error){if(navigator.onLine){setMessage(error instanceof Error?error.message:"Sale could not be posted");return;}}
     await queueSale({
       deviceTransactionId: id,
@@ -255,8 +253,8 @@ export default function App() {
             <span className={online ? "online" : "offline"}>
               {online ? "● Online" : "● Offline ready"} · {queued} queued
             </span>
-            <button className="notification-bell" onClick={()=>setAlertsOpen(x=>!x)} aria-label="Open notifications">♢<em>{["Bills","Inventory","Customers","Expenses","AuditTrail","Approvals","Settings"].reduce((sum,key)=>sum+(notifications[key]||0),0)}</em></button>
-            {alertsOpen&&<div className="notification-panel"><h3>Needs attention</h3><button onClick={()=>{setView("Inventory");setAlertsOpen(false)}}><b>{notifications.Inventory||0} stock alerts</b><small>Low or projected to run low</small></button><button onClick={()=>{setView("Bills");setAlertsOpen(false)}}><b>{notifications.Bills||0} pending bills</b><small>Held, credit or partly paid</small></button>{(notifications.Approvals||0)>0&&<button onClick={()=>{setView("Bills");setAlertsOpen(false)}}><b>{notifications.Approvals} approval requests</b><small>Held-bill changes need review</small></button>}</div>}
+            <button className="notification-bell" onClick={()=>setAlertsOpen(x=>!x)} aria-label="Open notifications">♢{Number(notifications.Total||0)>0&&<em>{notifications.Total}</em>}</button>
+            {alertsOpen&&<div className="notification-panel"><h3>Needs attention · {notifications.Total||0}</h3>{Number(notifications.Approvals||0)>0&&<button onClick={()=>{setView("Bills");setAlertsOpen(false)}}><b>{notifications.Approvals} approval requests</b><small>{notifications.Details?.approvals?.slice(0,2).map((x:any)=>x.label).join(" · ")||"Held-bill changes need review"}</small></button>}{Number(notifications.Bills||0)>0&&<button onClick={()=>{setView("Bills");setAlertsOpen(false)}}><b>{notifications.Bills} unresolved bills</b><small>{notifications.Details?.bills?.slice(0,3).map((x:any)=>`${x.label} ${x.status}`).join(" · ")}</small></button>}{Number(notifications.Inventory||0)>0&&<button onClick={()=>{setView("Inventory");setAlertsOpen(false)}}><b>{notifications.Inventory} stock alerts</b><small>{notifications.Details?.inventory?.slice(0,3).map((x:any)=>x.label).join(" · ")}</small></button>}{Number(notifications.Expenses||0)>0&&<button onClick={()=>{setView("Expense");setAlertsOpen(false)}}><b>{notifications.Expenses} unpaid expenses</b><small>{notifications.Details?.expenses?.slice(0,3).map((x:any)=>x.label).join(" · ")}</small></button>}{Number(notifications.Total||0)===0&&<p className="notification-empty">All caught up. No unresolved issues.</p>}</div>}
           </div>
         </header>
         {view === "Sell" ? (

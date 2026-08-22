@@ -36,7 +36,7 @@ export async function postBill(id:string,value:Record<string,unknown>){return re
 export async function payBill(id:string,value:Record<string,unknown>){return request(`/bills/${id}/payments`,{method:'POST',body:JSON.stringify(value)});}
 export async function cancelBill(id:string,reason:string,deviceId?:string){return request(`/bills/${id}/cancel?reason=${encodeURIComponent(reason)}&deviceId=${encodeURIComponent(deviceId||'')}`,{method:'POST'});}
 export async function refundBill(id:string,reason:string,deviceId?:string){return request(`/bills/${id}/refund?reason=${encodeURIComponent(reason)}&deviceId=${encodeURIComponent(deviceId||'')}`,{method:'POST'});}
-export async function getNotifications(){return request('/notifications');}
+export async function getNotifications(){const x=await request('/notifications');return {Total:x.total??x.Total??0,Sell:x.sell??x.Sell??0,Bills:x.bills??x.Bills??0,Customers:x.customers??x.Customers??0,Inventory:x.inventory??x.Inventory??0,Approvals:x.approvals??x.Approvals??0,Expenses:x.expenses??x.Expenses??0,AuditTrail:x.auditTrail??x.AuditTrail??0,Settings:x.settings??x.Settings??0,Details:x.details??x.Details??{}};}
 export async function updateProduct(id:string,value:Record<string,unknown>){return request(`/products/${id}`,{method:'PUT',body:JSON.stringify(value)});}
 export async function updateCustomer(id:string,value:Record<string,unknown>){return request(`/customers/${id}`,{method:'PUT',body:JSON.stringify(value)});}
 export async function updateStaff(id:string,value:Record<string,unknown>){return request(`/staff/${id}`,{method:'PUT',body:JSON.stringify(value)});}
