@@ -4,7 +4,7 @@
   "channel": "lite-windows",
   "summary": "Verified role-aware CRUD, clear mutation feedback, theme-aware login and refined receipt branding.",
   "downloadUrl": "",
-  "sha256": "PENDING_BUILD",
+  "sha256": "8559BDD7FE676320C493E0F1FB53D92C877526D28BD7948C5819DE0C5BCB5504",
   "publishedAt": "2026-08-22T00:00:00+03:00",
   "notes": [
     "Fixes item-edit authorization for Owner, Manager and Storekeeper roles with readable denial reasons.",
