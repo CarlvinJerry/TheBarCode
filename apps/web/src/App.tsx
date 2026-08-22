@@ -59,6 +59,8 @@ export default function App() {
       clearInterval(timer);
     };
   }, []);
+  useEffect(()=>{if(!message)return;const timer=setTimeout(()=>setMessage(""),5000);return()=>clearTimeout(timer)},[message]);
+  const messageIsError=/unable|failed|failure|could not|cannot|invalid|error|required|permission|expired|unavailable|refused|correction/i.test(message);
   const visibleProducts = products.filter((p) =>
     user?.name === "Demo User" ? p.isDemo : !p.isDemo,
   );
@@ -396,7 +398,7 @@ export default function App() {
         )}{" "}
       </main>
       {message && (
-        <div className="toast" onClick={() => setMessage("")}>
+        <div className={`toast ${messageIsError?"error":"success"}`} role="status" onClick={() => setMessage("")}>
           {message}
         </div>
       )}
@@ -417,7 +419,7 @@ export default function App() {
               ×
             </button>
             <pre id="receipt">{receipt}</pre>
-            <button className="print" onClick={() => printReceiptText(receipt)}>
+            <button className="print" onClick={async()=>{try{await printReceiptText(receipt);setReceipt(undefined);setMessage(`${receiptKind} bill sent to the configured printer`)}catch(e){setMessage(e instanceof Error?e.message:"Receipt printing failed")}}}>
               Print {receiptKind} Bill
             </button>
           </section>
@@ -479,6 +481,7 @@ function Login({
           <b>Demo account</b>
           <span>Demo User · PIN 123456</span>
         </div>
+        <div className="login-signoff"><span>Built by</span><b>Beyond Raw Data</b></div>
         {(error || message) && <small>{error || message}</small>}
       </form>
     </div>

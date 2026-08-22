@@ -10,7 +10,7 @@ internal static class EscPosReceipt {
     var lines = normalized.Replace("\r", "").Split('\n').SelectMany(line => Wrap(line, columns));
     using var stream = new MemoryStream();
     stream.Write([0x1B, 0x40]); // ESC @: initialize once.
-    foreach(var line in lines){var bold=line.Trim() is "UNPAID" or "PAID" or "CREDIT";if(bold)stream.Write([0x1B,0x45,0x01]);stream.Write(Encoding.ASCII.GetBytes(line+"\n"));if(bold)stream.Write([0x1B,0x45,0x00]);}
+    foreach(var line in lines){var trimmed=line.Trim();var bold=trimmed is "UNPAID" or "PAID" or "CREDIT";var signoff=trimmed=="Powered by Dukora | Beyond Raw Data";if(bold)stream.Write([0x1B,0x45,0x01]);if(signoff)stream.Write([0x1B,0x4D,0x01]);stream.Write(Encoding.ASCII.GetBytes(line+"\n"));if(bold)stream.Write([0x1B,0x45,0x00]);if(signoff)stream.Write([0x1B,0x4D,0x00]);}
     stream.Write([0x1B, 0x64, 0x04]); // Feed four lines, then stop.
     if (cut) stream.Write([0x1D, 0x56, 0x42, 0x00]);
     return stream.ToArray();

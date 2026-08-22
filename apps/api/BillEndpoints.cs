@@ -54,7 +54,7 @@ public static class BillEndpoints
             var oldQty = sale.Items.Sum(x => x.Quantity);
             var newQty = r.Items.Sum(x => x.Quantity);
             var lowersValue = newQty < oldQty || r.Discount > sale.Discount || r.Items.Any(n => sale.Items.FirstOrDefault(o => o.ProductId == n.ProductId) is { } old && (n.Quantity < old.Quantity || n.UnitPrice < old.UnitPrice));
-            if (lowersValue && !IsManager(principal)) return Results.Forbid();
+            if (lowersValue && !IsManager(principal)) return Denied("Only an Owner or Manager can reduce a held bill. Submit it for approval instead.");
             if (lowersValue && string.IsNullOrWhiteSpace(r.Reason)) return Results.BadRequest(new { error = "An owner/manager reason is required when reducing a held bill" });
             var products = await Products(r.Items, db);
             if (products is null) return Results.BadRequest(new { error = "One or more products no longer exist" });
@@ -163,7 +163,7 @@ public static class BillEndpoints
 
         api.MapPost("/bills/{id:guid}/cancel", async (Guid id, string reason, string? deviceId, AppDbContext db, ClaimsPrincipal principal) =>
         {
-            if (!IsManager(principal)) return Results.Forbid();
+            if (!IsManager(principal)) return Denied("Only an Owner or Manager can cancel a held bill.");
             if (string.IsNullOrWhiteSpace(reason)) return Results.BadRequest(new { error = "A cancellation reason is required" });
             var sale = await db.Sales.Include(x => x.Items).Include(x => x.Payments).Include(x => x.Revisions).SingleOrDefaultAsync(x => x.Id == id);
             if (sale is null) return Results.NotFound();
@@ -177,7 +177,7 @@ public static class BillEndpoints
 
         api.MapPost("/bills/{id:guid}/refund", async (Guid id, string reason, string? deviceId, AppDbContext db, ClaimsPrincipal principal) =>
         {
-            if (!IsManager(principal)) return Results.Forbid();
+            if (!IsManager(principal)) return Denied("Only an Owner or Manager can refund a posted bill.");
             if (string.IsNullOrWhiteSpace(reason)) return Results.BadRequest(new { error = "A refund reason is required" });
             var sale=await db.Sales.Include(x=>x.Items).Include(x=>x.Payments).Include(x=>x.Revisions).SingleOrDefaultAsync(x=>x.Id==id);
             if(sale is null)return Results.NotFound();if(!PostedStatuses.Contains(sale.Status))return Results.Conflict(new{error="Only a posted sale can be refunded"});
@@ -211,7 +211,7 @@ public static class BillEndpoints
 
         api.MapPut("/products/{id:guid}", async (Guid id, ProductUpdateRequest r, AppDbContext db, ClaimsPrincipal principal) =>
         {
-            if (!IsInventoryManager(principal)) return Results.Forbid();
+            if (!IsInventoryManager(principal)) return Denied("Item changes require an Owner, Manager or Storekeeper account.");
             var x = await db.Products.FindAsync(id); if (x is null) return Results.NotFound();
             if (string.IsNullOrWhiteSpace(r.Reason)) return Results.BadRequest(new { error = "A reason is required" });
             var before = JsonSerializer.Serialize(new { x.Name, x.SellingPrice, x.CostPrice, x.Active });
@@ -227,7 +227,7 @@ public static class BillEndpoints
 
         api.MapPut("/staff/{id:guid}", async (Guid id, StaffUpdateRequest r, AppDbContext db, ClaimsPrincipal principal) =>
         {
-            if (!principal.IsInRole("Owner")) return Results.Forbid();var x=await db.Staff.FindAsync(id);if(x is null)return Results.NotFound();if(string.IsNullOrWhiteSpace(r.Reason))return Results.BadRequest(new{error="A reason is required"});x.Name=r.Name.Trim();x.Role=r.Role;x.Active=r.Active;if(!string.IsNullOrWhiteSpace(r.NewPin)){if(r.NewPin.Length<6)return Results.BadRequest(new{error="PIN must be at least 6 characters"});x.PinHash=Security.HashPin(r.NewPin);}x.UpdatedAt=DateTimeOffset.UtcNow;db.AuditEvents.Add(Audit(principal,"Updated",x.Id,"Staff",r.Reason));await db.SaveChangesAsync();return Results.Ok(new{x.Id,x.Name,x.Role,x.Active,x.UpdatedAt});
+            if (!HasRole(principal,"Owner")) return Denied("Only the Owner can change staff accounts and roles.");var x=await db.Staff.FindAsync(id);if(x is null)return Results.NotFound();if(string.IsNullOrWhiteSpace(r.Reason))return Results.BadRequest(new{error="A reason is required"});x.Name=r.Name.Trim();x.Role=r.Role;x.Active=r.Active;if(!string.IsNullOrWhiteSpace(r.NewPin)){if(r.NewPin.Length<6)return Results.BadRequest(new{error="PIN must be at least 6 characters"});x.PinHash=Security.HashPin(r.NewPin);}x.UpdatedAt=DateTimeOffset.UtcNow;db.AuditEvents.Add(Audit(principal,"Updated",x.Id,"Staff",r.Reason));await db.SaveChangesAsync();return Results.Ok(new{x.Id,x.Name,x.Role,x.Active,x.UpdatedAt});
         });
     }
 
@@ -237,8 +237,10 @@ public static class BillEndpoints
     static decimal Total(Sale sale)=>Math.Max(0,sale.Items.Sum(x=>x.Quantity*x.UnitPrice-x.Discount)-sale.Discount);
     static async Task<long> NextNumber(AppDbContext db)=>(await db.Sales.MaxAsync(x=>(long?)x.ReceiptNumber)??1000)+1;
     static Guid StaffId(ClaimsPrincipal p)=>Guid.TryParse(p.FindFirstValue(ClaimTypes.NameIdentifier),out var id)?id:Guid.Empty;
-    static bool IsManager(ClaimsPrincipal p)=>p.IsInRole("Owner")||p.IsInRole("Manager");
-    static bool IsInventoryManager(ClaimsPrincipal p)=>IsManager(p)||p.IsInRole("Storekeeper");
+    static bool HasRole(ClaimsPrincipal p,params string[] roles)=>p.Claims.Any(c=>(c.Type==ClaimTypes.Role||c.Type=="role"||c.Type.EndsWith("/role",StringComparison.OrdinalIgnoreCase))&&roles.Contains(c.Value,StringComparer.OrdinalIgnoreCase));
+    static bool IsManager(ClaimsPrincipal p)=>HasRole(p,"Owner","Manager");
+    static bool IsInventoryManager(ClaimsPrincipal p)=>HasRole(p,"Owner","Manager","Storekeeper");
+    static IResult Denied(string reason)=>Results.Json(new{error=reason},statusCode:StatusCodes.Status403Forbidden);
     static BillRevision Revision(Sale sale,Guid staffId,string action,string reason)=>new(){SaleId=sale.Id,Revision=sale.Revision,StaffId=staffId,Action=action,Reason=reason,SnapshotJson=JsonSerializer.Serialize(new{sale.CustomerId,sale.Status,sale.Discount,sale.Total,Items=sale.Items.Select(x=>new{x.ProductId,x.ProductName,x.Quantity,x.UnitPrice,x.Discount})})};
     static AuditEvent Audit(ClaimsPrincipal p,string action,Sale sale,string details,string? device)=>Audit(p,action,sale.Id,"Sale",details,device);
     static AuditEvent Audit(ClaimsPrincipal p,string action,Guid id,string type,string details,string? device=null)=>new(){StaffId=StaffId(p),Actor=p.Identity?.Name??"System",Action=action,EntityType=type,EntityId=id.ToString(),Details=details,DeviceId=device};

@@ -87,7 +87,7 @@ export function Management({ view, products, user, notify, navigate }: Props) {
   if (view === "Bills") return <Bills products={products} user={user} notify={notify} />;
   if (view === "Inventory")
     return <Inventory products={products} user={user} notify={notify} />;
-  if (view === "Customers") return <Customers />;
+  if (view === "Customers") return <Customers notify={notify} />;
   if (view === "Expenses" || view === "Expense") return <Expenses />;
   if (view === "Reports") return <Reports />;
   if (view === "Smart Insights" || view === "Smart insights") return <SmartInsights />;
@@ -192,9 +192,9 @@ function Bills({products,user,notify}:{products:Product[];user:{id:string;name:s
   const open=(x:any)=>{setSelected(x);setLines(x.items.map((i:any)=>({productId:i.productId,productName:i.productName,quantity:Number(i.quantity),unitPrice:Number(i.unitPrice),discount:Number(i.discount||0)})));setPayment({method:"Cash",amount:Number(x.balance||0),reference:""})};
   const saveHeld=async()=>{const payload={customerId:selected.customerId,discount:selected.discount||0,notes:selected.notes,reason:"Held bill change requested from bill workspace",deviceId:localStorage.getItem("device_id"),expectedRevision:selected.revision,items:lines.map(x=>({productId:x.productId,quantity:x.quantity,unitPrice:x.unitPrice,discount:x.discount}))};const lowers=lines.reduce((s,x)=>s+x.quantity*x.unitPrice-x.discount,0)<Number(selected.total);try{if(lowers&&!canApprove){await requestBillApproval(selected.id,payload);notify(`Bill #${selected.receiptNumber} change sent to owner/manager for approval`);dispatchEvent(new Event("dukora:attention"));return}const saved=await updateBill(selected.id,payload);setSelected(saved);notify(`Bill #${saved.receiptNumber} revision ${saved.revision} saved`);await load()}catch(e){notify(e instanceof Error?e.message:"Owner or manager approval is required")}};
   const resolveApproval=async(item:any,approve:boolean)=>{const reason=prompt(`${approve?"Approve":"Reject"} change to bill #${item.receiptNumber}: reason`);if(!reason)return;try{await resolveBillApproval(item.id,{approve,reason,deviceId:localStorage.getItem("device_id")});notify(`Bill #${item.receiptNumber} change ${approve?"approved":"rejected"}`);dispatchEvent(new Event("dukora:attention"));await load()}catch(e){notify(e instanceof Error?e.message:"Approval could not be completed")}};
-  const post=async(kind:"Paid"|"Credit",customerId?:string,customerName?:string)=>{if(kind==="Credit"&&!customerId&&!selected.customerId){setCreditOpen(true);return}try{const revised=await updateBill(selected.id,{customerId:customerId||selected.customerId,discount:selected.discount||0,notes:selected.notes,reason:"Final bill revision before posting",deviceId:localStorage.getItem("device_id"),expectedRevision:selected.revision,items:lines.map(x=>({productId:x.productId,quantity:x.quantity,unitPrice:x.unitPrice,discount:x.discount||0}))});const saved=await postBill(selected.id,{status:kind,method:"Cash",amountPaid:kind==="Paid"?revised.total:0,dueAt:kind==="Credit"?new Date(Date.now()+7*86400000).toISOString():undefined,notes:"Posted from bill workspace",deviceId:localStorage.getItem("device_id")});setSelected({...saved,customerName:customerName||selected.customerName});notify(`${kind} bill posted; stock, counters and reports updated`);dispatchEvent(new Event("dukora:attention"));await load()}catch(e){notify(e instanceof Error?e.message:"Bill could not be posted")}};
+  const post=async(kind:"Paid"|"Credit",customerId?:string)=>{if(kind==="Credit"&&!customerId&&!selected.customerId){setCreditOpen(true);return}try{const revised=await updateBill(selected.id,{customerId:customerId||selected.customerId,discount:selected.discount||0,notes:selected.notes,reason:"Final bill revision before posting",deviceId:localStorage.getItem("device_id"),expectedRevision:selected.revision,items:lines.map(x=>({productId:x.productId,quantity:x.quantity,unitPrice:x.unitPrice,discount:x.discount||0}))});await postBill(selected.id,{status:kind,method:"Cash",amountPaid:kind==="Paid"?revised.total:0,dueAt:kind==="Credit"?new Date(Date.now()+7*86400000).toISOString():undefined,notes:"Posted from bill workspace",deviceId:localStorage.getItem("device_id")});setSelected(undefined);setCreditOpen(false);notify(`${kind} bill posted; stock, counters and reports updated`);dispatchEvent(new Event("dukora:attention"));await load()}catch(e){notify(e instanceof Error?e.message:"Bill could not be posted")}};
   const addLine=()=>{const p=products.find(x=>x.id===addProductId);if(!p)return;setLines(current=>current.some(x=>x.productId===p.id)?current.map(x=>x.productId===p.id?{...x,quantity:x.quantity+1}:x):[...current,{productId:p.id,productName:p.name,quantity:1,unitPrice:p.sellingPrice,discount:0}]);setAddProductId("")};
-  const chooseCreditCustomer=(customer:any)=>{setCreditOpen(false);void post("Credit",customer.id,customer.name)};
+  const chooseCreditCustomer=(customer:any)=>{setCreditOpen(false);void post("Credit",customer.id)};
   const createCreditCustomer=async(e:FormEvent)=>{e.preventDefault();const customer={id:crypto.randomUUID(),...newCustomer,notes:"Created while posting credit bill"};await queueCustomer(customer);await syncOutbox();chooseCreditCustomer(customer)};
   const recordPayment=async()=>{try{const saved=await payBill(selected.id,{...payment,deviceId:localStorage.getItem("device_id")});setSelected(saved);notify(`Payment recorded; balance ${money(saved.balance)}`);dispatchEvent(new Event("dukora:attention"));await load()}catch(e){notify(e instanceof Error?e.message:"Payment could not be recorded")}};
   const cancel=async()=>{const reason=prompt("Owner/manager cancellation reason");if(!reason)return;try{await cancelBill(selected.id,reason,localStorage.getItem("device_id")||undefined);setSelected(undefined);notify("Held bill cancelled with audit record");dispatchEvent(new Event("dukora:attention"));await load()}catch{notify("Owner or manager authorization is required")}};
@@ -420,7 +420,7 @@ function Inventory({
     </Page>
   );
 }
-function Customers() {
+function Customers({notify}:{notify:(x:string)=>void}) {
   const stored = useLiveQuery(() => db.customers.toArray(), []) ?? [];
   const sales = useLiveQuery(() => db.sales.toArray(), []) ?? [];
   const [remote, setRemote] = useState<any[]>([]),
@@ -465,8 +465,10 @@ function Customers() {
     });
     syncOutbox().catch(() => 0);
     setOpen(false);
+    setForm({name:"",phone:"",creditLimit:0});
+    notify("Customer created successfully");
   }
-  async function saveEdit(e:FormEvent){e.preventDefault();try{await updateCustomer(editing.id,{name:editing.name,phone:editing.phone,creditLimit:editing.creditLimit,notes:editing.notes,active:editing.active!==false,reason:editing.reason});setEditing(undefined);setRemote(await getCustomerSummary())}catch{alert("A reason and authorized session are required")}}
+  async function saveEdit(e:FormEvent){e.preventDefault();try{await updateCustomer(editing.id,{name:editing.name,phone:editing.phone,creditLimit:editing.creditLimit,notes:editing.notes,active:editing.active!==false,reason:editing.reason});setEditing(undefined);setRemote(await getCustomerSummary());notify("Customer changes saved and audited")}catch(e){notify(e instanceof Error?e.message:"Customer changes could not be saved")}}
   return (
     <Page>
       <Intro
@@ -749,11 +751,11 @@ function Staff({ notify }: { notify: (x: string) => void }) {
       await load();
       setOpen(false);
       notify("Staff account created");
-    } catch {
-      notify("Owner authorization is required");
+    } catch (e) {
+      notify(e instanceof Error?e.message:"Staff account could not be created");
     }
   }
-  async function saveEdit(e:FormEvent){e.preventDefault();try{await updateStaff(editing.id,{name:editing.name,role:editing.role,active:editing.active,newPin:editing.newPin||null,reason:editing.reason});setEditing(undefined);await load();notify("Staff access updated and audited")}catch{notify("Owner authorization, reason and valid PIN are required")}}
+  async function saveEdit(e:FormEvent){e.preventDefault();try{await updateStaff(editing.id,{name:editing.name,role:editing.role,active:editing.active,newPin:editing.newPin||null,reason:editing.reason});setEditing(undefined);await load();notify("Staff access updated and audited")}catch(e){notify(e instanceof Error?e.message:"Staff access could not be updated")}}
   return (
     <Page>
       <Intro
@@ -841,12 +843,12 @@ function ItemSetup({ products,user,notify }: {products:Product[];user:{role:stri
     try {
       const p = await createProduct(form);
       await db.products.put(p);
-      notify("Item saved");
-    } catch {
-      notify("Manager connection required");
+      setForm({name:"",category:"Beer",barcode:"",unit:"item",packageQuantity:1,packageUnit:"item",trackingMode:"Discrete",brand:"",supplier:"",taxRate:0,costPrice:0,sellingPrice:0,stock:0,minStock:0,sellable:true});notify("Item created successfully");
+    } catch (e) {
+      notify(e instanceof Error?e.message:"Item could not be created");
     }
   }
-  async function saveEdit(e:FormEvent){e.preventDefault();try{const saved=await updateProduct(editing.id,{...editing,reason:"Item details updated from setup"});await db.products.put(saved);setEditing(undefined);notify("Item updated with audit history")}catch(e){notify(e instanceof Error?e.message:"Inventory permission required")}}
+  async function saveEdit(e:FormEvent){e.preventDefault();try{const saved=await updateProduct(editing.id,{...editing,reason:editing.reason});await db.products.put(saved);setEditing(undefined);notify("Item updated with audit history")}catch(e){notify(e instanceof Error?e.message:"Item changes could not be saved")}}
   async function chooseBulkFile(file?:File){if(!file)return;try{const rows=parseProductCsv(await file.text());const errors=validateProductRows(rows);setBulkRows(rows);setBulkErrors(errors);setBulkResult(undefined);notify(errors.length?`${errors.length} rows require correction`:`${rows.length} valid rows ready to import`)}catch(e){setBulkRows([]);setBulkErrors([{row:1,errors:[e instanceof Error?e.message:"The CSV could not be read"]}])}}
   async function importBulk(){if(!bulkRows.length||bulkErrors.length)return;setImporting(true);try{const result=await bulkImportProducts({duplicatePolicy,deviceId:localStorage.getItem("device_id")||"local-terminal",rows:bulkRows});setBulkResult(result);await bootstrap();await loadBatches();notify(`Import complete · ${result.created} created · ${result.updated} updated · ${result.skipped} skipped`)}catch(e){notify(e instanceof Error?e.message:"Import failed without changing inventory")}finally{setImporting(false)}}
   async function reverseBatch(id:string){if(!confirm("Reverse this import? Dukora will refuse if any later sale, stock movement or controlled edit depends on it."))return;try{await reverseProductImport(id);await bootstrap();await loadBatches();notify("Bulk import safely reversed and audited")}catch(e){notify(e instanceof Error?e.message:"This batch cannot be reversed")}}
@@ -1040,11 +1042,11 @@ function Settings({
     localStorage.setItem("update_manifest_url", updateUrl);
     notify("Terminal connection and update channel saved");
   }
-  async function persistOrganization(){const saved=await saveOrganization(organization);setOrganization(saved);localStorage.setItem("organization_profile",JSON.stringify(saved));localStorage.setItem("business_name",saved.name);notify("Shared business profile saved");}
-  async function persistReceipt(){const saved=await saveReceiptConfiguration(receiptConfig);setReceiptConfig(saved);localStorage.setItem("receipt_configuration",JSON.stringify(saved));localStorage.setItem("receipt_footer",saved.footer);notify("Shared receipt configuration saved");}
+  async function persistOrganization(){try{const saved=await saveOrganization(organization);setOrganization(saved);localStorage.setItem("organization_profile",JSON.stringify(saved));localStorage.setItem("business_name",saved.name);notify("Shared business profile saved")}catch(e){notify(e instanceof Error?e.message:"Business profile could not be saved")}}
+  async function persistReceipt(){try{const saved=await saveReceiptConfiguration(receiptConfig);setReceiptConfig(saved);localStorage.setItem("receipt_configuration",JSON.stringify(saved));localStorage.setItem("receipt_footer",saved.footer);notify("Shared receipt configuration saved")}catch(e){notify(e instanceof Error?e.message:"Receipt configuration could not be saved")}}
   async function persistInsights(){try{const saved=await saveInsightsSettings(insightsConfig);setInsightsConfig(current=>({...current,...saved,apiKey:"",clearApiKey:false}));notify(saved.enabled&&saved.apiKeyConfigured?"AI insights provider saved and encrypted":"Rule-based Smart Insights remains active")}catch(e){notify(e instanceof Error?e.message:"Owner authorization is required")}}
-  async function persistBranch(){const saved=await saveBranch(branchForm);const data=await getSettings();setBranches(data.branches);setBranchForm({name:"",code:"",address:"",phone:"",active:true});if(!branchId)setBranchId(saved.id);notify("Branch saved");}
-  async function persistTerminal(){if(!branchId){notify("Select or create a branch first");return}const existing=terminals.find(x=>x.deviceKey===deviceName);const saved=await saveTerminalConfiguration({id:existing?.id,branchId,name:terminalName,deviceKey:deviceName,active:true});localStorage.setItem("device_id",saved.deviceKey);localStorage.setItem("terminal_name",saved.name);localStorage.setItem("branch_id",saved.branchId);localStorage.setItem("branch_name",branches.find(x=>x.id===saved.branchId)?.name||"");setTerminals((await getSettings()).terminals);notify("This terminal is registered to the selected branch");}
+  async function persistBranch(){try{const saved=await saveBranch(branchForm);const data=await getSettings();setBranches(data.branches);setBranchForm({name:"",code:"",address:"",phone:"",active:true});if(!branchId)setBranchId(saved.id);notify("Branch saved")}catch(e){notify(e instanceof Error?e.message:"Branch could not be saved")}}
+  async function persistTerminal(){if(!branchId){notify("Select or create a branch first");return}try{const existing=terminals.find(x=>x.deviceKey===deviceName);const saved=await saveTerminalConfiguration({id:existing?.id,branchId,name:terminalName,deviceKey:deviceName,active:true});localStorage.setItem("device_id",saved.deviceKey);localStorage.setItem("terminal_name",saved.name);localStorage.setItem("branch_id",saved.branchId);localStorage.setItem("branch_name",branches.find(x=>x.id===saved.branchId)?.name||"");setTerminals((await getSettings()).terminals);notify("This terminal is registered to the selected branch")}catch(e){notify(e instanceof Error?e.message:"Terminal registration could not be saved")}}
   async function checkUpdates() {
     if (!updateUrl) { notify(`Version ${APP_VERSION} · add an update manifest URL when hosting is ready`); return; }
     try {
