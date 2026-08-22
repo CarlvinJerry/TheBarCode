@@ -1,5 +1,7 @@
 # TheBarcode
 
+Current version: **1.2.0** (see `VERSION`). Native installers must be rebuilt after every releasable change so the installer always contains the current UI, API, database initialization and print bridge.
+
 Windows-first, offline-capable point of sale and inventory system for a bar, café, food counter, and kitchen. The repository replaces the Shiny proof of concept while preserving its operational workflows.
 
 ## Architecture

@@ -1,11 +1,13 @@
 {
-  "version": "1.1.0",
+  "version": "1.2.0",
   "channel": "local-windows",
-  "summary": "Native Windows installer, XP-80 printing, multi-terminal readiness and interface controls.",
+  "summary": "Shared business profiles, branches, terminals and configurable receipt policies.",
   "downloadUrl": "",
-  "sha256": "ABAD488D16DD238331627FF795ED8DDF1D20DEA1FF9E4F09FFE821AF19A87D3F",
+  "sha256": "45BE422FEFEDF8E1A770CCB053B1E1CD81C316864E98A58756511FACC7EC4D6F",
   "publishedAt": "2026-08-22T00:00:00+03:00",
   "notes": [
+    "Added PostgreSQL-backed organization, branch and terminal configuration.",
+    "Added 58 mm and 80 mm receipt layouts with configurable fields and print policies.",
     "Added native Windows installation profile while preserving Docker deployment.",
     "Added version display, update checks, logout, themes and collapsible navigation.",
     "Added institution, outlet, terminal and shared API configuration.",

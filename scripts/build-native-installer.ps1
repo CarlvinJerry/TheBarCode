@@ -1,7 +1,10 @@
 [CmdletBinding()]
-param([string]$Version = '1.1.0')
+param([string]$Version)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+$versionFile = Join-Path $root 'VERSION'
+if (-not $Version) { $Version = (Get-Content -Raw -LiteralPath $versionFile).Trim() }
+if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'VERSION must use semantic versioning, for example 1.2.0.' }
 $stage = Join-Path $root 'installer\stage'
 $web = Join-Path $root 'apps\web'
 $driver = Join-Path $root 'installer\vendor\Xprinter-Receipt-Driver-2025.12.22.01.exe'
@@ -16,9 +19,9 @@ if (Test-Path -LiteralPath $stage) {
 New-Item -ItemType Directory -Force -Path "$stage\api\wwwroot","$stage\print-bridge","$stage\tools","$stage\driver","$stage\release" | Out-Null
 
 Push-Location $web
-try { npm ci; npm run build } finally { Pop-Location }
-dotnet publish (Join-Path $root 'apps\api\TheBarcode.Api.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o "$stage\api"
-dotnet publish (Join-Path $root 'apps\print-bridge\TheBarcode.PrintBridge.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o "$stage\print-bridge"
+try { $env:VITE_APP_VERSION=$Version; npm ci; npm run build } finally { Remove-Item Env:VITE_APP_VERSION -ErrorAction SilentlyContinue; Pop-Location }
+dotnet publish (Join-Path $root 'apps\api\TheBarcode.Api.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\api"
+dotnet publish (Join-Path $root 'apps\print-bridge\TheBarcode.PrintBridge.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\print-bridge"
 Copy-Item -Path "$web\dist\*" -Destination "$stage\api\wwwroot" -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $root 'installer\configure-native.ps1') -Destination "$stage\tools\configure-native.ps1"
 Copy-Item -LiteralPath $driver -Destination "$stage\driver\Xprinter-Receipt-Driver-2025.12.22.01.exe"
@@ -32,4 +35,8 @@ if (-not $iscc) {
 if (-not $isccPath) { throw 'Inno Setup 6 is required to compile the final installer. Install it with: winget install JRSoftware.InnoSetup' }
 & $isccPath "/DAppVersion=$Version" (Join-Path $root 'installer\TheBarcode.iss')
 if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
-Write-Host "Installer created under installer\output" -ForegroundColor Green
+$installer = Join-Path $root "installer\output\TheBarcode-Setup-$Version-x64.exe"
+if (-not (Test-Path -LiteralPath $installer)) { throw 'Installer output was not created.' }
+$hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash
+Write-Host "Installer created: $installer" -ForegroundColor Green
+Write-Host "SHA256: $hash" -ForegroundColor Green

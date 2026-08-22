@@ -1,5 +1,11 @@
 # TheBarcode native Windows edition
 
+## Release discipline
+
+`VERSION` is the authoritative application version. Always run `scripts\build-native-installer.ps1` after application changes intended for release. The build compiles the current web UI, API and print bridge, bundles the verified Xprinter driver and produces a versioned installer. Do not distribute an older file from `installer\output` after changing source code.
+
+The first launch creates the shared organization, main branch and receipt defaults in PostgreSQL. Owners or managers can then configure business identity, industry profile, branches, terminals and receipt behaviour from Settings. Windows printer selection remains terminal-specific.
+
 The native edition runs without Docker. It packages the touchscreen web interface, a self-contained ASP.NET local server, the PostgreSQL data connection, the XP-80 ESC/POS print bridge, and the verified Xprinter receipt-driver installer.
 
 ## Installer
@@ -7,14 +13,10 @@ The native edition runs without Docker. It packages the touchscreen web interfac
 Build output:
 
 ```text
-installer\output\TheBarcode-Setup-1.1.0-x64.exe
+installer\output\TheBarcode-Setup-1.2.0-x64.exe
 ```
 
-SHA-256 for the current local build:
-
-```text
-ABAD488D16DD238331627FF795ED8DDF1D20DEA1FF9E4F09FFE821AF19A87D3F
-```
+The build script prints the SHA-256 checksum for each newly generated installer. Publish that checksum with the matching release rather than reusing a previous version's checksum.
 
 The setup executable requires administrator rights. During configuration it:
 
