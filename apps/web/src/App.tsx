@@ -84,16 +84,11 @@ export default function App() {
     [cart],
   );
   if (!user) return <Login staff={staff} onLogin={setUser} message={message} />;
-  const add = (p: Product) =>
-    setCart((c) =>
-      c.some((x) => x.id === p.id)
-        ? c.map((x) => (x.id === p.id ? { ...x, quantity: x.quantity + 1 } : x))
-        : [...c, { ...p, quantity: 1 }],
-    );
+  const add = (p: Product) => setCart((c) => {const current=c.find(x=>x.id===p.id)?.quantity||0;if(current>=p.stock){setMessage(`${p.name} is limited to ${p.stock} available unit${p.stock===1?"":"s"}`);return c}return c.some(x=>x.id===p.id)?c.map(x=>x.id===p.id?{...x,quantity:Math.min(p.stock,x.quantity+1)}:x):[...c,{...p,quantity:1}]});
   const qty = (id: string, d: number) =>
     setCart((c) =>
       c
-        .map((x) => (x.id === id ? { ...x, quantity: x.quantity + d } : x))
+        .map((x) => (x.id === id ? { ...x, quantity: Math.max(0,Math.min(x.stock,x.quantity + d)) } : x))
         .filter((x) => x.quantity > 0),
     );
   const billPayload=()=>({deviceTransactionId:activeBill?.deviceTransactionId||crypto.randomUUID(),customerId:selectedCustomer?.id,staffId:user.id,discount:0,notes:"POS order",deviceId:localStorage.getItem("device_id")??"windows-pos-01",items:cart.map(x=>({productId:x.id,quantity:x.quantity,unitPrice:x.sellingPrice,discount:0}))});

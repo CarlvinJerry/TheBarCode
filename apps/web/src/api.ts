@@ -27,6 +27,7 @@ export async function getExpenses(from:string,to:string,category='All'){return r
 export async function getProductionExpenses(from:string,to:string,category='All',status='All'){return request(`/expenses/production?from=${from}&to=${to}&category=${encodeURIComponent(category)}&status=${encodeURIComponent(status)}`);}
 export async function createProductionExpense(value:Record<string,unknown>){return request('/expenses/production',{method:'POST',body:JSON.stringify(value)});}
 export async function payExpense(id:string,value:Record<string,unknown>){return request(`/expenses/${id}/payments`,{method:'POST',body:JSON.stringify(value)});}
+export async function approveExpense(id:string){return request(`/expenses/${id}/approve`,{method:'POST'});}
 export async function updateExpense(id:string,value:Record<string,unknown>){return request(`/expenses/${id}`,{method:'PUT',body:JSON.stringify(value)});}
 export async function getInsights(from:string,to:string){return request(`/insights?from=${from}&to=${to}`);}
 export async function getSettings(){return request('/settings');}

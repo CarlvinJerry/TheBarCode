@@ -32,7 +32,7 @@ public static class BillEndpoints
             var duplicate = await db.Sales.Include(x => x.Items).Include(x => x.Payments).SingleOrDefaultAsync(x => x.DeviceTransactionId == r.DeviceTransactionId);
             if (duplicate is not null) return Results.Ok(BillView(duplicate, null, null));
             var products = await Products(r.Items, db,Security.IsDemo(principal));
-            if (products is null) return Results.BadRequest(new { error = "One or more products no longer exist" });
+            if (products is null) return Results.BadRequest(new { error = "One or more items are unavailable in the requested quantity" });
             await using var tx=await db.Database.BeginTransactionAsync();var numbering=await NextDailyNumbers(db,r.CustomerId is null,Security.IsDemo(principal));
             var sale = new Sale { DeviceTransactionId = r.DeviceTransactionId, ReceiptNumber = await NextNumber(db), DailyOrderNumber=numbering.Order,WalkInNumber=numbering.WalkIn,CustomerId = r.CustomerId, StaffId = r.StaffId, Status = "Held", Discount = Math.Max(0, r.Discount), Notes = r.Notes?.Trim(), OccurredAt = DateTimeOffset.Now,IsDemo=Security.IsDemo(principal) };
             ReplaceLines(sale, r.Items, products);
@@ -59,7 +59,7 @@ public static class BillEndpoints
             if (lowersValue && !IsManager(principal)) return Denied("Only an Owner or Manager can reduce a held bill. Submit it for approval instead.");
             if (lowersValue && string.IsNullOrWhiteSpace(r.Reason)) return Results.BadRequest(new { error = "An owner/manager reason is required when reducing a held bill" });
             var products = await Products(r.Items, db,Security.IsDemo(principal));
-            if (products is null) return Results.BadRequest(new { error = "One or more products no longer exist" });
+            if (products is null) return Results.BadRequest(new { error = "One or more items are unavailable in the requested quantity" });
             await using var tx=await db.Database.BeginTransactionAsync();
             var oldItems=sale.Items.ToList();await db.SaleItems.Where(x=>x.SaleId==sale.Id).ExecuteDeleteAsync();foreach(var oldItem in oldItems)db.Entry(oldItem).State=EntityState.Detached;sale.Items=[];
             ReplaceLines(sale, r.Items, products);
@@ -85,7 +85,7 @@ public static class BillEndpoints
             if(r.ExpectedRevision!=sale.Revision)return Results.Conflict(new{error=$"Bill changed on another terminal. Reload revision {sale.Revision}."});
             if(r.Items.Count==0||r.Items.Any(x=>x.Quantity<=0||x.Quantity!=decimal.Truncate(x.Quantity)||x.UnitPrice<0))return Results.BadRequest(new{error="Bill quantities must be positive whole units"});
             if(string.IsNullOrWhiteSpace(r.Reason))return Results.BadRequest(new{error="Explain why this bill change is required"});
-            if(await Products(r.Items,db,Security.IsDemo(principal)) is null)return Results.BadRequest(new{error="One or more products no longer exist"});
+            if(await Products(r.Items,db,Security.IsDemo(principal)) is null)return Results.BadRequest(new{error="One or more items are unavailable in the requested quantity"});
             var pending=new BillRevision{SaleId=sale.Id,Revision=sale.Revision,StaffId=StaffId(principal),Action="ApprovalRequested",Reason=r.Reason.Trim(),SnapshotJson=JsonSerializer.Serialize(r)};
             sale.Status="PendingApproval";sale.UpdatedAt=DateTimeOffset.UtcNow;db.BillRevisions.Add(pending);db.AuditEvents.Add(Audit(principal,"ApprovalRequested",sale,$"Bill {sale.ReceiptNumber} revision {sale.Revision} · {r.Reason}",r.DeviceId));await db.SaveChangesAsync();
             return Results.Accepted($"/api/bill-approvals/{pending.Id}",new{pending.Id,saleId=sale.Id,sale.ReceiptNumber,pending.Reason,pending.CreatedAt});
@@ -107,7 +107,7 @@ public static class BillEndpoints
             if(!r.Approve){request.Action="Rejected";request.UpdatedAt=DateTimeOffset.UtcNow;sale.Status="Held";sale.UpdatedAt=DateTimeOffset.UtcNow;db.AuditEvents.Add(Audit(principal,"Rejected",sale,$"Change request {request.Id} · {r.Reason}",r.DeviceId));await db.SaveChangesAsync();return Results.Ok(new{status="Rejected"});}
             var change=JsonSerializer.Deserialize<UpdateBillRequest>(request.SnapshotJson);if(change is null)return Results.BadRequest(new{error="The requested change is invalid"});
             if(sale.Status!="PendingApproval"||sale.Revision!=change.ExpectedRevision)return Results.Conflict(new{error="The bill changed after this request. Reject it and review the current bill."});
-            var products=await Products(change.Items,db,Security.IsDemo(principal));if(products is null)return Results.BadRequest(new{error="One or more products no longer exist"});
+            var products=await Products(change.Items,db,Security.IsDemo(principal));if(products is null)return Results.BadRequest(new{error="One or more items are unavailable in the requested quantity"});
             await using var tx=await db.Database.BeginTransactionAsync();var oldTotal=sale.Total;var oldItems=sale.Items.ToList();await db.SaleItems.Where(x=>x.SaleId==sale.Id).ExecuteDeleteAsync();foreach(var oldItem in oldItems)db.Entry(oldItem).State=EntityState.Detached;sale.Items=[];ReplaceLines(sale,change.Items,products);foreach(var line in sale.Items)db.SaleItems.Add(line);sale.CustomerId=change.CustomerId;sale.Discount=Math.Max(0,change.Discount);sale.Notes=change.Notes?.Trim();sale.Total=Total(sale);sale.Status="Held";sale.Revision++;sale.UpdatedAt=DateTimeOffset.UtcNow;request.Action="Approved";request.UpdatedAt=DateTimeOffset.UtcNow;db.BillRevisions.Add(Revision(sale,StaffId(principal),"Approved",$"Request {request.Id} · {r.Reason}"));db.AuditEvents.Add(Audit(principal,"Approved",sale,$"Bill {sale.ReceiptNumber} · {oldTotal} to {sale.Total} · {r.Reason}",r.DeviceId));await db.SaveChangesAsync();await tx.CommitAsync();return Results.Ok(BillView(sale,null,principal.Identity?.Name));
         }).RequireAuthorization(p=>p.RequireRole("Owner","Manager"));
 
@@ -194,7 +194,7 @@ public static class BillEndpoints
             var demo=Security.IsDemo(principal);var bills=(await db.Sales.AsNoTracking().Where(x=>x.IsDemo==demo&&(x.Status=="Held"||x.Status=="PendingApproval"||x.Status=="Credit"||x.Status=="PartiallyPaid")).Select(x=>new{x.Id,x.ReceiptNumber,x.Status,x.Total,x.DueAt,x.CustomerId}).ToListAsync()).OrderByDescending(x=>x.Total).ToList();
             var billIds=bills.Select(x=>x.Id).ToHashSet();var approvalRows=IsManager(principal)?(await db.BillRevisions.AsNoTracking().Where(x=>x.Action=="ApprovalRequested").Select(x=>new{x.Id,x.SaleId,x.Reason,x.CreatedAt}).ToListAsync()).Where(x=>billIds.Contains(x.SaleId)).OrderBy(x=>x.CreatedAt).ToList():[];
             var lowStock=(await db.Products.AsNoTracking().Where(x=>x.IsDemo==demo&&x.Active&&x.Stock<=x.MinStock*1.5m).Select(x=>new{x.Id,x.Name,x.Stock,x.MinStock}).ToListAsync()).OrderBy(x=>x.Stock).ToList();
-            var unpaidExpenses=(await db.Expenses.AsNoTracking().Where(x=>x.IsDemo==demo&&x.Active&&x.Status=="Approved"&&x.PaidAmount<x.Amount).Select(x=>new{x.Id,x.Description,x.Amount,x.PaidAmount}).ToListAsync()).OrderByDescending(x=>x.Amount-x.PaidAmount).ToList();
+            var unpaidExpenses=(await db.Expenses.AsNoTracking().Where(x=>x.IsDemo==demo&&x.Active&&(x.Status=="PendingApproval"||(x.Status=="Approved"&&x.PaidAmount<x.Amount))).Select(x=>new{x.Id,x.Description,x.Amount,x.PaidAmount,x.Status}).ToListAsync()).OrderBy(x=>x.Status=="PendingApproval"?0:1).ThenByDescending(x=>x.Amount-x.PaidAmount).ToList();
             var customerIds=bills.Where(x=>x.CustomerId!=null).Select(x=>x.CustomerId!.Value).Distinct().ToList();var customers=await db.Customers.AsNoTracking().Where(x=>customerIds.Contains(x.Id)).ToDictionaryAsync(x=>x.Id,x=>x.Name);
             var overdue=bills.Where(x=>x.DueAt<now).ToList();var billCount=bills.Count;var inventoryCount=lowStock.Count;var expenseCount=unpaidExpenses.Count;
             return Results.Ok(new
@@ -205,7 +205,7 @@ public static class BillEndpoints
                     approvals=approvalRows.Take(8).Select(x=>new{x.Id,label=bills.FirstOrDefault(b=>b.Id==x.SaleId) is {} bill?$"Bill #{bill.ReceiptNumber}":"Held bill",x.Reason,x.CreatedAt}),
                     inventory=lowStock.Take(8).Select(x=>new{x.Id,label=x.Name,x.Stock,x.MinStock}),
                     customers=overdue.Take(8).Select(x=>new{x.Id,label=x.CustomerId is Guid id?customers.GetValueOrDefault(id,"Customer"):"Customer",x.DueAt,x.Total}),
-                    expenses=unpaidExpenses.Take(8).Select(x=>new{x.Id,label=x.Description,balance=x.Amount-x.PaidAmount})
+                    expenses=unpaidExpenses.Take(8).Select(x=>new{x.Id,label=x.Description,balance=x.Amount-x.PaidAmount,x.Status})
                 }
             });
         });
@@ -224,7 +224,7 @@ public static class BillEndpoints
             var x = await db.Products.SingleOrDefaultAsync(x=>x.Id==id&&x.IsDemo==Security.IsDemo(principal)); if (x is null) return Results.NotFound();
             if (string.IsNullOrWhiteSpace(r.Reason)) return Results.BadRequest(new { error = "A reason is required" });
             var before = JsonSerializer.Serialize(new { x.Name, x.SellingPrice, x.CostPrice, x.Active });
-            var validation=ProductImportRules.Validate([new(1,r.Name,r.Category,r.Brand,r.Barcode,r.Unit,r.PackageQuantity,r.PackageUnit??r.Unit,r.TrackingMode,r.CostPrice,r.SellingPrice,0,r.MinStock,r.Supplier,r.TaxRate,r.Sellable)]);if(validation.Count>0)return Results.BadRequest(new{error="Invalid product",errors=validation});
+            var messages=new List<string>();if(string.IsNullOrWhiteSpace(r.Name))messages.Add("Item name is required");if(string.IsNullOrWhiteSpace(r.Category))messages.Add("Category is required");if(string.IsNullOrWhiteSpace(r.Unit))messages.Add("Stock unit is required");if(r.PackageQuantity<=0)messages.Add("Package quantity must be greater than zero");if(r.CostPrice<0||r.SellingPrice<0||r.MinStock<0)messages.Add("Prices and minimum stock cannot be negative");if(r.TaxRate is <0 or >100)messages.Add("Tax rate must be between 0 and 100");if(ProductImportRules.Mode(r.TrackingMode)=="Discrete"&&r.MinStock!=decimal.Truncate(r.MinStock))messages.Add("Discrete minimum stock must be a whole quantity");if(messages.Count>0)return Results.BadRequest(new{error=string.Join("; ",messages)});if(!string.IsNullOrWhiteSpace(r.Barcode)&&await db.Products.AnyAsync(p=>p.Id!=id&&p.Barcode==r.Barcode.Trim()))return Results.Conflict(new{error="That barcode or SKU is already assigned to another item"});
             x.Name=r.Name.Trim();x.Category=r.Category.Trim();x.Brand=r.Brand?.Trim();x.Barcode=string.IsNullOrWhiteSpace(r.Barcode)?null:r.Barcode.Trim();x.Unit=ProductImportRules.Unit(r.Unit);x.PackageQuantity=r.PackageQuantity;x.PackageUnit=ProductImportRules.Unit(r.PackageUnit??r.Unit);x.TrackingMode=ProductImportRules.Mode(r.TrackingMode);x.Supplier=r.Supplier?.Trim();x.TaxRate=r.TaxRate;x.CostPrice=r.CostPrice;x.SellingPrice=r.SellingPrice;x.MinStock=r.MinStock;x.Sellable=r.Sellable;x.Active=r.Active;x.UpdatedAt=DateTimeOffset.UtcNow;
             db.AuditEvents.Add(Audit(principal,"Updated",x.Id,"Product",$"{r.Reason} · before {before}")); await db.SaveChangesAsync(); return Results.Ok(x);
         });
@@ -241,7 +241,7 @@ public static class BillEndpoints
     }
 
     static async Task<Dictionary<Guid, Product>?> Products(IEnumerable<BillLineRequest> lines, AppDbContext db,bool demo)
-    { var ids=lines.Select(x=>x.ProductId).Distinct().ToList();var rows=await db.Products.Where(x=>ids.Contains(x.Id)&&x.Active&&x.IsDemo==demo).ToDictionaryAsync(x=>x.Id);return rows.Count==ids.Count?rows:null; }
+    { var requested=lines.GroupBy(x=>x.ProductId).ToDictionary(g=>g.Key,g=>g.Sum(x=>x.Quantity));var ids=requested.Keys.ToList();var rows=await db.Products.Where(x=>ids.Contains(x.Id)&&x.Active&&x.IsDemo==demo).ToDictionaryAsync(x=>x.Id);return rows.Count==ids.Count&&requested.All(x=>rows[x.Key].Stock>=x.Value)?rows:null; }
     static void ReplaceLines(Sale sale,IEnumerable<BillLineRequest> lines,IReadOnlyDictionary<Guid,Product> products){foreach(var line in lines){var p=products[line.ProductId];sale.Items.Add(new SaleItem{ProductId=p.Id,ProductName=p.Name,Quantity=line.Quantity,UnitPrice=line.UnitPrice,UnitCost=p.CostPrice,Discount=Math.Max(0,line.Discount)});}}
     static decimal Total(Sale sale)=>Math.Max(0,sale.Items.Sum(x=>x.Quantity*x.UnitPrice-x.Discount)-sale.Discount);
     static async Task<long> NextNumber(AppDbContext db)=>(await db.Sales.MaxAsync(x=>(long?)x.ReceiptNumber)??1000)+1;

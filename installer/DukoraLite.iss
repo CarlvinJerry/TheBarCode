@@ -1,5 +1,5 @@
 #ifndef AppVersion
-#define AppVersion "1.8.6"
+#define AppVersion "1.8.7"
 #endif
 #define StageDir "stage-lite"
 
@@ -41,11 +41,27 @@ Name: "{autodesktop}\Dukora Lite"; Filename: "{app}\Dukora.Desktop.exe"; IconFil
 Name: "{group}\Install Xprinter Driver"; Filename: "{app}\Dukora.DriverInstaller.exe"; IconFilename: "{app}\dukora.ico"
 
 [Run]
-Filename: "{tmp}\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; Parameters: "/silent /install"; StatusMsg: "Installing the Microsoft desktop runtime..."; Flags: runhidden waituntilterminated
+Filename: "{tmp}\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; Parameters: "/silent /install"; StatusMsg: "Installing the Microsoft Edge WebView2 desktop runtime..."; Flags: runhidden waituntilterminated; Check: NeedsWebView2
 Filename: "{app}\Dukora.DriverInstaller.exe"; StatusMsg: "Installing Xprinter receipt-printer support..."; Flags: waituntilterminated; Tasks: printerdriver
 Filename: "{app}\Dukora.Desktop.exe"; Description: "Open Dukora Lite"; Flags: postinstall nowait
 
 [Code]
+function WebView2Installed(): Boolean;
+var
+  Version: String;
+  ClientKey: String;
+begin
+  ClientKey := 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
+  Result :=
+    (RegQueryStringValue(HKLM32, ClientKey, 'pv', Version) and (Version <> '') and (Version <> '0.0.0.0')) or
+    (RegQueryStringValue(HKCU32, ClientKey, 'pv', Version) and (Version <> '') and (Version <> '0.0.0.0'));
+end;
+
+function NeedsWebView2(): Boolean;
+begin
+  Result := not WebView2Installed();
+end;
+
 function InitializeSetup(): Boolean;
 begin
   Result := IsWin64;
