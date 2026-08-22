@@ -1101,6 +1101,7 @@ function Settings({
   const [deviceName, setDeviceName] = useState(localStorage.getItem("device_id") || `POS-${crypto.randomUUID().slice(0, 6).toUpperCase()}`);
   const [apiUrl, setApiUrl] = useState(localStorage.getItem("api_url") || "/api");
   const [updateUrl, setUpdateUrl] = useState(localStorage.getItem("update_manifest_url") || "");
+  const [availableUpdate, setAvailableUpdate] = useState<{ version: string; downloadUrl: string; summary?: string }>();
   useEffect(() => {
     listSilentPrinters()
       .then((items) => {
@@ -1134,7 +1135,13 @@ function Settings({
         if (!r.ok) throw new Error(String(r.status));
         return r.json();
       });
-      notify(manifest.version === APP_VERSION ? `TheBarcode ${APP_VERSION} is current` : `Update ${manifest.version} is available: ${manifest.summary || "New release"}`);
+      if (manifest.version === APP_VERSION) {
+        setAvailableUpdate(undefined);
+        notify(`TheBarcode ${APP_VERSION} is current`);
+      } else {
+        setAvailableUpdate(manifest);
+        notify(`Update ${manifest.version} is available: ${manifest.summary || "New release"}`);
+      }
     } catch { notify("Could not reach the update service"); }
   }
   async function restore() {
@@ -1189,6 +1196,7 @@ function Settings({
             <ul>{RELEASE_NOTES.map((note) => <li key={note}>{note}</li>)}</ul>
             <Field label="Update manifest URL"><input value={updateUrl} onChange={(e) => setUpdateUrl(e.target.value)} placeholder="https://…/latest.json" /></Field>
             <div className="button-row"><button onClick={saveTerminal}>Save update channel</button><button onClick={checkUpdates}>Check for updates</button></div>
+            {availableUpdate?.downloadUrl && <a className="update-download" href={availableUpdate.downloadUrl}>Download TheBarcode {availableUpdate.version}</a>}
             <small>Built and maintained by Beyond Raw Data</small>
           </div>
         </Panel>

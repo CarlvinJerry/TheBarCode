@@ -13,7 +13,7 @@ installer\output\TheBarcode-Setup-1.1.0-x64.exe
 SHA-256 for the current local build:
 
 ```text
-B2C298CD6D6E36A006481DB7F0A071FEC265D73A9CA25D317DA71F5ED33C713C
+ABAD488D16DD238331627FF795ED8DDF1D20DEA1FF9E4F09FFE821AF19A87D3F
 ```
 
 The setup executable requires administrator rights. During configuration it:
