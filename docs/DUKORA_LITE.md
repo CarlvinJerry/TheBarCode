@@ -12,7 +12,16 @@ Dukora Lite is the low-resource, offline-first Windows edition. It uses the same
 
 ## Installation
 
-Installer: `installer\output\Dukora-Lite-Setup-1.6.0-x64.exe`
+Installer: `installer\output\Dukora-Lite-Setup-1.7.0-x64.exe`
+
+## Bulk item setup
+
+- Item Setup provides an Excel-compatible CSV template and validates every row before importing.
+- A product's stock unit is stored separately from its package quantity and package unit: for example, `24 bottle` stock with a `500 ml` package size.
+- Discrete stock (bottles, bags, pieces and packs) requires whole quantities. Measured stock (kg, g, L and ml) supports three decimal places.
+- Separate sizes remain separate product variants with independent SKU/barcode, prices, cost, stock and reorder thresholds.
+- Duplicate handling is explicit: skip the existing variant, update details only, or update details and add opening stock.
+- Every import is recorded as a batch. Owners and Managers may reverse it only while no later sale, stock movement or controlled item edit depends on the imported records.
 
 ## Governed bill workflow
 

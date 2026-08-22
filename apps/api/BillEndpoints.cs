@@ -176,7 +176,8 @@ public static class BillEndpoints
             var x = await db.Products.FindAsync(id); if (x is null) return Results.NotFound();
             if (string.IsNullOrWhiteSpace(r.Reason)) return Results.BadRequest(new { error = "A reason is required" });
             var before = JsonSerializer.Serialize(new { x.Name, x.SellingPrice, x.CostPrice, x.Active });
-            x.Name=r.Name.Trim();x.Category=r.Category.Trim();x.Barcode=string.IsNullOrWhiteSpace(r.Barcode)?null:r.Barcode.Trim();x.Unit=r.Unit.Trim();x.CostPrice=r.CostPrice;x.SellingPrice=r.SellingPrice;x.MinStock=r.MinStock;x.Sellable=r.Sellable;x.Active=r.Active;x.UpdatedAt=DateTimeOffset.UtcNow;
+            var validation=ProductImportRules.Validate([new(1,r.Name,r.Category,r.Brand,r.Barcode,r.Unit,r.PackageQuantity,r.PackageUnit??r.Unit,r.TrackingMode,r.CostPrice,r.SellingPrice,0,r.MinStock,r.Supplier,r.TaxRate,r.Sellable)]);if(validation.Count>0)return Results.BadRequest(new{error="Invalid product",errors=validation});
+            x.Name=r.Name.Trim();x.Category=r.Category.Trim();x.Brand=r.Brand?.Trim();x.Barcode=string.IsNullOrWhiteSpace(r.Barcode)?null:r.Barcode.Trim();x.Unit=ProductImportRules.Unit(r.Unit);x.PackageQuantity=r.PackageQuantity;x.PackageUnit=ProductImportRules.Unit(r.PackageUnit??r.Unit);x.TrackingMode=ProductImportRules.Mode(r.TrackingMode);x.Supplier=r.Supplier?.Trim();x.TaxRate=r.TaxRate;x.CostPrice=r.CostPrice;x.SellingPrice=r.SellingPrice;x.MinStock=r.MinStock;x.Sellable=r.Sellable;x.Active=r.Active;x.UpdatedAt=DateTimeOffset.UtcNow;
             db.AuditEvents.Add(Audit(principal,"Updated",x.Id,"Product",$"{r.Reason} · before {before}")); await db.SaveChangesAsync(); return Results.Ok(x);
         });
 

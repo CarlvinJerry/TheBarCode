@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
-export type Product={id:string;name:string;category:string;barcode?:string;unit:string;costPrice:number;sellingPrice:number;stock:number;minStock:number;sellable:boolean;active:boolean;isDemo?:boolean};
+export type Product={id:string;name:string;category:string;brand?:string;barcode?:string;unit:string;packageQuantity:number;packageUnit:string;trackingMode:"Discrete"|"Measured";supplier?:string;taxRate:number;costPrice:number;sellingPrice:number;stock:number;minStock:number;sellable:boolean;active:boolean;isDemo?:boolean};
 export type Customer={id:string;name:string;phone?:string;creditLimit:number;notes?:string;active?:boolean;isDemo?:boolean};
 export type Staff={id:string;name:string;role:string;isDemo?:boolean};
 export type SaleLine={productId:string;productName:string;quantity:number;unitPrice:number;unitCost:number;discount:number};

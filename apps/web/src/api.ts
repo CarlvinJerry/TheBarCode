@@ -5,7 +5,10 @@ async function request(path:string,init?:RequestInit){const response=await fetch
 export async function bootstrap(){const data=await request('/bootstrap');await saveBootstrap(data);return data;}
 export async function login(staffId:string,pin:string){const result=await request('/auth/login',{method:'POST',body:JSON.stringify({staffId,pin})});session.set(result.token,result.user);return result.user;}
 export async function syncOutbox(){if(!navigator.onLine||!session.token)return 0;const rows=await db.outbox.toArray();let synced=0;for(const row of rows){try{if(row.type==='sale')await request('/sales/sync',{method:'POST',body:JSON.stringify({...row.payload,items:row.payload.items.map((x:any)=>({productId:x.productId,quantity:x.quantity,unitPrice:x.unitPrice,discount:x.discount}))})});if(row.type==='customer')await request('/customers',{method:'POST',body:JSON.stringify(row.payload)});if(row.type==='stock')await request('/stock-movements',{method:'POST',body:JSON.stringify(row.payload)});await db.outbox.delete(row.id!);if(row.type==='sale')await db.sales.update(row.payload.deviceTransactionId,{synced:true});synced++;}catch(error){await db.outbox.update(row.id!,{attempts:row.attempts+1,lastError:String(error)})}}return synced;}
-export async function createProduct(product:Record<string,unknown>){return request('/products',{method:'POST',body:JSON.stringify(product)});}
+export async function createProduct(product:Record<string,unknown>){return request('/products/single',{method:'POST',body:JSON.stringify(product)});}
+export async function bulkImportProducts(value:Record<string,unknown>){return request('/products/bulk-import',{method:'POST',body:JSON.stringify(value)});}
+export async function getProductImportBatches(){return request('/products/import-batches');}
+export async function reverseProductImport(id:string){return request(`/products/import-batches/${id}/reverse`,{method:'POST'});}
 export async function getSummary(from:string,to:string){return request(`/reports/accurate?from=${from}&to=${to}`);}
 export async function createExpense(expense:Record<string,unknown>){return request('/expenses',{method:'POST',body:JSON.stringify(expense)});}
 export async function getAudit(){return request('/audit/live?take=500');}

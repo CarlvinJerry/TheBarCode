@@ -32,6 +32,7 @@ import { APP_CHANNEL, APP_VERSION, RELEASE_NOTES } from "./version";
 import { displayScales, saveDisplayScale, storedDisplayScale, type DisplayScaleName } from "./displayScale";
 import {
   bootstrap,
+  bulkImportProducts,
   createProduct,
   createStaff,
   getAudit,
@@ -40,6 +41,7 @@ import {
   getInsights,
   getInsightsSettings,
   getOperationalOverview,
+  getProductImportBatches,
   getSummary,
   getStaff,
   getSettings,
@@ -48,6 +50,7 @@ import {
   postBill,
   cancelBill,
   refundBill,
+  reverseProductImport,
   updateBill,
   updateProduct,
   updateCustomer,
@@ -88,7 +91,7 @@ export function Management({ view, products, user, notify, navigate }: Props) {
   if (view === "Audit" || view === "Audit trail") return <Audit user={user} />;
   if (["Staff", "Users & roles", "Staff & roles"].includes(view))
     return <Staff notify={notify} />;
-  if (view === "Item setup") return <ItemSetup products={products} notify={notify} />;
+  if (view === "Item setup") return <ItemSetup products={products} user={user} notify={notify} />;
   return <Settings user={user} notify={notify} />;
 }
 function Dashboard({ products,navigate }: { products: Product[]; navigate:(x:string)=>void }) {
@@ -795,13 +798,21 @@ function Staff({ notify }: { notify: (x: string) => void }) {
     </Page>
   );
 }
-function ItemSetup({ products,notify }: {products:Product[]; notify: (x: string) => void }) {
+function ItemSetup({ products,user,notify }: {products:Product[];user:{role:string}; notify: (x: string) => void }) {
   const [editing,setEditing]=useState<any>();
+  const [bulkRows,setBulkRows]=useState<any[]>([]),[bulkErrors,setBulkErrors]=useState<{row:number;errors:string[]}[]>([]),[duplicatePolicy,setDuplicatePolicy]=useState("Skip"),[importing,setImporting]=useState(false),[bulkResult,setBulkResult]=useState<any>();
+  const [importBatches,setImportBatches]=useState<any[]>([]);const loadBatches=()=>getProductImportBatches().then(setImportBatches).catch(()=>setImportBatches([]));useEffect(()=>{void loadBatches()},[]);
   const [form, setForm] = useState({
     name: "",
     category: "Beer",
     barcode: "",
-    unit: "",
+    unit: "item",
+    packageQuantity: 1,
+    packageUnit: "item",
+    trackingMode: "Discrete",
+    brand: "",
+    supplier: "",
+    taxRate: 0,
     costPrice: 0,
     sellingPrice: 0,
     stock: 0,
@@ -819,6 +830,9 @@ function ItemSetup({ products,notify }: {products:Product[]; notify: (x: string)
     }
   }
   async function saveEdit(e:FormEvent){e.preventDefault();try{const saved=await updateProduct(editing.id,{...editing,reason:"Item details updated from setup"});await db.products.put(saved);setEditing(undefined);notify("Item updated with audit history")}catch(e){notify(e instanceof Error?e.message:"Inventory permission required")}}
+  async function chooseBulkFile(file?:File){if(!file)return;try{const rows=parseProductCsv(await file.text());const errors=validateProductRows(rows);setBulkRows(rows);setBulkErrors(errors);setBulkResult(undefined);notify(errors.length?`${errors.length} rows require correction`:`${rows.length} valid rows ready to import`)}catch(e){setBulkRows([]);setBulkErrors([{row:1,errors:[e instanceof Error?e.message:"The CSV could not be read"]}])}}
+  async function importBulk(){if(!bulkRows.length||bulkErrors.length)return;setImporting(true);try{const result=await bulkImportProducts({duplicatePolicy,deviceId:localStorage.getItem("device_id")||"local-terminal",rows:bulkRows});setBulkResult(result);await bootstrap();await loadBatches();notify(`Import complete · ${result.created} created · ${result.updated} updated · ${result.skipped} skipped`)}catch(e){notify(e instanceof Error?e.message:"Import failed without changing inventory")}finally{setImporting(false)}}
+  async function reverseBatch(id:string){if(!confirm("Reverse this import? Dukora will refuse if any later sale, stock movement or controlled edit depends on it."))return;try{await reverseProductImport(id);await bootstrap();await loadBatches();notify("Bulk import safely reversed and audited")}catch(e){notify(e instanceof Error?e.message:"This batch cannot be reversed")}}
   return (
     <Page>
       <Intro
@@ -861,11 +875,13 @@ function ItemSetup({ products,notify }: {products:Product[]; notify: (x: string)
               />
             </Field>
             <Field label="Unit or serving">
-              <input
-                value={form.unit}
-                onChange={(e) => setForm({ ...form, unit: e.target.value })}
-              />
+              <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}>{inventoryUnits.map(x=><option key={x}>{x}</option>)}</select>
             </Field>
+            <Field label="Package size"><div className="button-row"><input type="number" min=".001" step=".001" value={form.packageQuantity} onChange={e=>setForm({...form,packageQuantity:+e.target.value})}/><select value={form.packageUnit} onChange={e=>setForm({...form,packageUnit:e.target.value})}>{measureUnits.map(x=><option key={x}>{x}</option>)}</select></div></Field>
+            <Field label="Stock tracking"><select value={form.trackingMode} onChange={e=>setForm({...form,trackingMode:e.target.value})}><option>Discrete</option><option>Measured</option></select></Field>
+            <Field label="Brand"><input value={form.brand} onChange={e=>setForm({...form,brand:e.target.value})}/></Field>
+            <Field label="Supplier"><input value={form.supplier} onChange={e=>setForm({...form,supplier:e.target.value})}/></Field>
+            <Field label="Tax rate %"><input type="number" min="0" max="100" step=".01" value={form.taxRate} onChange={e=>setForm({...form,taxRate:+e.target.value})}/></Field>
             <Field label="Cost price">
               <input
                 type="number"
@@ -942,10 +958,17 @@ function ItemSetup({ products,notify }: {products:Product[]; notify: (x: string)
           </div>
         </Panel>
       </Two>
-      <Panel title="All items · edit or archive">
-        <div className="spec-table-wrap"><table className="spec-table"><thead><tr>{["Item","Category","Stock","Cost","Price","POS","Status","Action"].map(x=><th key={x}>{x}</th>)}</tr></thead><tbody>{products.map(x=><tr key={x.id}><td>{x.name}</td><td>{x.category}</td><td>{x.stock}</td><td>{money(x.costPrice)}</td><td>{money(x.sellingPrice)}</td><td>{x.sellable?"Yes":"No"}</td><td>{x.active?"Active":"Archived"}</td><td><button className="table-action" onClick={()=>setEditing({...x,reason:""})}>Edit</button></td></tr>)}</tbody></table></div>
+      <Panel title="Bulk item upload · Excel-compatible CSV">
+        <div className="export-card"><i>⇧</i><p>Download the controlled template, add up to 5,000 variants, then upload it for row-by-row validation. Separate sizes such as 500 ml and 1 L remain separate stock records.</p><button onClick={downloadProductTemplate}>⇩ Download item template</button><label className="outline-button">Choose completed CSV<input hidden type="file" accept=".csv,text/csv" onChange={e=>void chooseBulkFile(e.target.files?.[0])}/></label></div>
+        {bulkRows.length>0&&<><div className="kpi-strip"><span><small>Rows</small><b>{bulkRows.length}</b></span><span><small>Valid</small><b>{bulkRows.length-bulkErrors.length}</b></span><span><small>Needs correction</small><b>{bulkErrors.length}</b></span></div><Filter><label>When an item/SKU already exists</label><select value={duplicatePolicy} onChange={e=>setDuplicatePolicy(e.target.value)}><option value="Skip">Skip existing</option><option value="Update">Update details only</option><option value="AddStock">Update details and add opening stock</option></select><button disabled={bulkErrors.length>0||importing} onClick={importBulk}>{importing?"Importing…":"Import validated rows"}</button></Filter>
+        {bulkErrors.length>0&&<Panel title="Corrections required"><Table heads={["CSV row","Validation issue"]} rows={bulkErrors.map(x=>[String(x.row),x.errors.join("; ")])}/></Panel>}
+        <div className="spec-table-wrap"><table className="spec-table"><thead><tr>{["Row","Item variant","SKU","Stock unit","Package size","Tracking","Opening stock","Cost","Price"].map(x=><th key={x}>{x}</th>)}</tr></thead><tbody>{bulkRows.slice(0,100).map(x=><tr key={x.rowNumber} className={bulkErrors.some(e=>e.row===x.rowNumber)?"debt":""}><td>{x.rowNumber}</td><td>{x.name} · {x.category}</td><td>{x.barcode||"—"}</td><td>{x.stockUnit}</td><td>{x.packageQuantity} {x.packageUnit}</td><td>{x.trackingMode}</td><td>{x.openingStock}</td><td>{money(x.costPrice)}</td><td>{money(x.sellingPrice)}</td></tr>)}</tbody></table></div>{bulkRows.length>100&&<p className="muted">Preview shows the first 100 rows. All {bulkRows.length} rows will be validated and imported.</p>}{bulkResult&&<p className="insight-summary">Batch {bulkResult.batchId}: {bulkResult.created} created, {bulkResult.updated} updated, {bulkResult.stockAdded} stock additions and {bulkResult.skipped} skipped.</p>}</>}
       </Panel>
-      {editing&&<div className="modal record-editor"><section><button className="close" onClick={()=>setEditing(undefined)}>×</button><h2>Edit item</h2><form className="item-form" onSubmit={saveEdit}><Field label="Name"><input required value={editing.name} onChange={e=>setEditing({...editing,name:e.target.value})}/></Field><Field label="Category"><input required value={editing.category} onChange={e=>setEditing({...editing,category:e.target.value})}/></Field><Field label="Barcode / SKU"><input value={editing.barcode||""} onChange={e=>setEditing({...editing,barcode:e.target.value})}/></Field><Field label="Unit"><input required value={editing.unit} onChange={e=>setEditing({...editing,unit:e.target.value})}/></Field><Field label="Cost price"><input type="number" min="0" value={editing.costPrice} onChange={e=>setEditing({...editing,costPrice:+e.target.value})}/></Field><Field label="Selling price"><input type="number" min="0" value={editing.sellingPrice} onChange={e=>setEditing({...editing,sellingPrice:+e.target.value})}/></Field><Field label="Minimum stock"><input type="number" min="0" value={editing.minStock} onChange={e=>setEditing({...editing,minStock:+e.target.value})}/></Field><Field label="Reason"><input required value={editing.reason} onChange={e=>setEditing({...editing,reason:e.target.value})}/></Field><div className="checks"><label><input type="checkbox" checked={editing.sellable} onChange={e=>setEditing({...editing,sellable:e.target.checked})}/> Sellable</label><label><input type="checkbox" checked={editing.active} onChange={e=>setEditing({...editing,active:e.target.checked})}/> Active (clear to archive)</label></div><button>Save controlled change</button></form></section></div>}
+      <Panel title="Recent import batches"><Table heads={["Imported","Rows","Policy","Created","Updated","Skipped","Status","Action"]} rows={importBatches.map(x=>[new Date(x.createdAt).toLocaleString(),String(x.totalRows),x.duplicatePolicy,String(x.createdCount),String(x.updatedCount),String(x.skippedCount),x.status,x.status==="Completed"&&["Owner","Manager"].includes(user.role)?<button className="table-action" onClick={()=>void reverseBatch(x.id)}>Reverse safely</button>:"—"])}/></Panel>
+      <Panel title="All items · edit or archive">
+        <div className="spec-table-wrap"><table className="spec-table"><thead><tr>{["Item","Variant","Category","Stock","Cost","Price","POS","Status","Action"].map(x=><th key={x}>{x}</th>)}</tr></thead><tbody>{products.map(x=><tr key={x.id}><td>{x.name}</td><td>{x.packageQuantity||1} {x.packageUnit||x.unit}</td><td>{x.category}</td><td>{x.stock} {x.unit}</td><td>{money(x.costPrice)}</td><td>{money(x.sellingPrice)}</td><td>{x.sellable?"Yes":"No"}</td><td>{x.active?"Active":"Archived"}</td><td><button className="table-action" onClick={()=>setEditing({...x,packageQuantity:x.packageQuantity||1,packageUnit:x.packageUnit||x.unit,trackingMode:x.trackingMode||"Discrete",taxRate:x.taxRate||0,reason:""})}>Edit</button></td></tr>)}</tbody></table></div>
+      </Panel>
+      {editing&&<div className="modal record-editor"><section><button className="close" onClick={()=>setEditing(undefined)}>×</button><h2>Edit item</h2><form className="item-form" onSubmit={saveEdit}><Field label="Name"><input required value={editing.name} onChange={e=>setEditing({...editing,name:e.target.value})}/></Field><Field label="Category"><input required value={editing.category} onChange={e=>setEditing({...editing,category:e.target.value})}/></Field><Field label="Brand"><input value={editing.brand||""} onChange={e=>setEditing({...editing,brand:e.target.value})}/></Field><Field label="Barcode / SKU"><input value={editing.barcode||""} onChange={e=>setEditing({...editing,barcode:e.target.value})}/></Field><Field label="Stock unit"><select value={editing.unit} onChange={e=>setEditing({...editing,unit:e.target.value})}>{inventoryUnits.map(x=><option key={x}>{x}</option>)}</select></Field><Field label="Package size"><div className="button-row"><input type="number" min=".001" step=".001" value={editing.packageQuantity} onChange={e=>setEditing({...editing,packageQuantity:+e.target.value})}/><select value={editing.packageUnit} onChange={e=>setEditing({...editing,packageUnit:e.target.value})}>{measureUnits.map(x=><option key={x}>{x}</option>)}</select></div></Field><Field label="Tracking"><select value={editing.trackingMode} onChange={e=>setEditing({...editing,trackingMode:e.target.value})}><option>Discrete</option><option>Measured</option></select></Field><Field label="Supplier"><input value={editing.supplier||""} onChange={e=>setEditing({...editing,supplier:e.target.value})}/></Field><Field label="Tax rate %"><input type="number" min="0" max="100" step=".01" value={editing.taxRate} onChange={e=>setEditing({...editing,taxRate:+e.target.value})}/></Field><Field label="Cost price"><input type="number" min="0" value={editing.costPrice} onChange={e=>setEditing({...editing,costPrice:+e.target.value})}/></Field><Field label="Selling price"><input type="number" min="0" value={editing.sellingPrice} onChange={e=>setEditing({...editing,sellingPrice:+e.target.value})}/></Field><Field label="Minimum stock"><input type="number" min="0" step={editing.trackingMode==="Measured"?".001":"1"} value={editing.minStock} onChange={e=>setEditing({...editing,minStock:+e.target.value})}/></Field><Field label="Reason"><input required value={editing.reason} onChange={e=>setEditing({...editing,reason:e.target.value})}/></Field><div className="checks"><label><input type="checkbox" checked={editing.sellable} onChange={e=>setEditing({...editing,sellable:e.target.checked})}/> Sellable</label><label><input type="checkbox" checked={editing.active} onChange={e=>setEditing({...editing,active:e.target.checked})}/> Active (clear to archive)</label></div><button>Save controlled change</button></form></section></div>}
     </Page>
   );
 }
@@ -1229,6 +1252,14 @@ function downloadPdfReport({from,to,summary,detail}:{from:string;to:string;summa
   autoTable(doc,{startY:(doc as any).lastAutoTable.finalY+7,head:[["Expense","Category","Amount","Paid","Method"]],body:(detail.expenseRecords||[]).slice(0,30).map((x:any)=>[x.description,x.category,fmt(Number(x.amount)),fmt(Number(x.paidAmount)),x.method]),theme:"grid",headStyles:{fillColor:green},styles:{fontSize:7}});
   const pages=doc.getNumberOfPages();for(let p=1;p<=pages;p++){doc.setPage(p);doc.setFontSize(7);doc.setTextColor(110);doc.text(`Dukora - ${org.name} - Page ${p} of ${pages}`,105,291,{align:"center"})}doc.save(`Dukora-report-${from}-to-${to}.pdf`);
 }
+const inventoryUnits=["item","piece","bottle","can","pack","tray","bag","portion","serving","shot","glass","ml","L","g","kg"];
+const measureUnits=["item","piece","bottle","can","pack","tray","bag","portion","serving","shot","glass","ml","L","g","kg"];
+const productTemplateHeaders=["name","category","brand","barcode_sku","stock_unit","package_quantity","package_unit","tracking_mode","cost_price","selling_price","opening_stock","minimum_stock","supplier","tax_rate","sellable"];
+function csvCell(value:unknown){const text=String(value??"");return /[",\r\n]/.test(text)?`"${text.replaceAll('"','""')}"`:text}
+function downloadProductTemplate(){const examples=[productTemplateHeaders,["Mineral Water","Soft drinks","Aqua","WATER-500","bottle",500,"ml","Discrete",35,80,24,8,"Demo Supplier",0,"TRUE"],["Mineral Water","Soft drinks","Aqua","WATER-1L","bottle",1,"L","Discrete",60,120,12,6,"Demo Supplier",0,"TRUE"],["Coffee beans","Coffee","","COFFEE-KG","kg",1,"kg","Measured",1200,1800,8.5,2,"Demo Supplier",16,"FALSE"],["Flour 5 kg","Kitchen consumable","","FLOUR-5KG","bag",5,"kg","Discrete",620,0,6,2,"Demo Supplier",0,"FALSE"]];const blob=new Blob(["\ufeff"+examples.map(row=>row.map(csvCell).join(",")).join("\r\n")],{type:"text/csv;charset=utf-8"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="Dukora-item-import-template.csv";a.click();URL.revokeObjectURL(a.href)}
+function readCsv(text:string){const rows:string[][]=[];let row:string[]=[],cell="",quoted=false;for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){cell+='"';i++}else quoted=!quoted}else if(c===","&&!quoted){row.push(cell);cell=""}else if((c==="\n"||c==="\r")&&!quoted){if(c==="\r"&&text[i+1]==="\n")i++;row.push(cell);if(row.some(x=>x.trim()))rows.push(row);row=[];cell=""}else cell+=c}row.push(cell);if(row.some(x=>x.trim()))rows.push(row);return rows}
+function parseProductCsv(text:string){const matrix=readCsv(text.replace(/^\ufeff/,""));if(matrix.length<2)throw new Error("The template must contain a header and at least one item row");const headers=matrix[0].map(x=>x.trim().toLowerCase().replaceAll(" ","_"));const missing=productTemplateHeaders.filter(x=>!headers.includes(x));if(missing.length)throw new Error(`Missing columns: ${missing.join(", ")}`);const at=(row:string[],name:string)=>row[headers.indexOf(name)]?.trim()??"",num=(value:string)=>value===""?0:Number(value),bool=(value:string)=>["true","yes","1","y"].includes(value.toLowerCase());return matrix.slice(1).map((row,index)=>({rowNumber:index+2,name:at(row,"name"),category:at(row,"category"),brand:at(row,"brand")||null,barcode:at(row,"barcode_sku")||null,stockUnit:at(row,"stock_unit"),packageQuantity:num(at(row,"package_quantity")),packageUnit:at(row,"package_unit"),trackingMode:at(row,"tracking_mode"),costPrice:num(at(row,"cost_price")),sellingPrice:num(at(row,"selling_price")),openingStock:num(at(row,"opening_stock")),minimumStock:num(at(row,"minimum_stock")),supplier:at(row,"supplier")||null,taxRate:num(at(row,"tax_rate")),sellable:bool(at(row,"sellable"))}))}
+function validateProductRows(rows:any[]){const allowed=new Set(inventoryUnits.map(x=>x.toLowerCase())),seen=new Set<string>(),variants=new Set<string>();return rows.flatMap(row=>{const errors:string[]=[];if(!row.name)errors.push("Item name is required");if(!row.category)errors.push("Category is required");if(!allowed.has(String(row.stockUnit).toLowerCase()))errors.push("Unsupported stock unit");if(!allowed.has(String(row.packageUnit).toLowerCase()))errors.push("Unsupported package unit");for(const key of ["packageQuantity","costPrice","sellingPrice","openingStock","minimumStock","taxRate"])if(!Number.isFinite(row[key]))errors.push(`${key} must be numeric`);if(row.packageQuantity<=0)errors.push("Package quantity must be greater than zero");if(row.costPrice<0||row.sellingPrice<0||row.openingStock<0||row.minimumStock<0)errors.push("Prices and stock cannot be negative");if(row.taxRate<0||row.taxRate>100)errors.push("Tax rate must be between 0 and 100");if(!["discrete","measured"].includes(String(row.trackingMode).toLowerCase()))errors.push("Tracking mode must be Discrete or Measured");if(String(row.trackingMode).toLowerCase()==="discrete"&&(!Number.isInteger(row.openingStock)||!Number.isInteger(row.minimumStock)))errors.push("Discrete stock requires whole quantities");if([row.packageQuantity,row.openingStock,row.minimumStock].some((x:number)=>{const decimal=String(x).split(".")[1];return decimal&&decimal.length>3}))errors.push("Quantities support at most 3 decimals");if(row.barcode){const key=String(row.barcode).toLowerCase();if(seen.has(key))errors.push("Duplicate barcode/SKU in file");seen.add(key)}const variant=`${row.name}|${row.category}|${row.packageQuantity}|${row.packageUnit}`.toLowerCase();if(variants.has(variant))errors.push("Duplicate item/package-size variant in file");variants.add(variant);return errors.length?[{row:row.rowNumber,errors}]:[]})}
 function Page({ children }: { children: ReactNode }) {
   return <div className="spec-page">{children}</div>;
 }
@@ -1342,7 +1373,7 @@ function Donut({
     </div>
   );
 }
-function Table({ heads, rows }: { heads: string[]; rows: string[][] }) {
+function Table({ heads, rows }: { heads: string[]; rows: ReactNode[][] }) {
   const statuses = [
     "Healthy",
     "Low",
@@ -1368,12 +1399,12 @@ function Table({ heads, rows }: { heads: string[]; rows: string[][] }) {
         <tbody>
           {rows.map((r, i) => (
             <tr
-              className={`${r.includes("Debt") ? "row-debt" : ""} ${r.includes("Watch") ? "row-watch" : ""}`}
+              className={`${r.some(x=>x==="Debt") ? "row-debt" : ""} ${r.some(x=>x==="Watch") ? "row-watch" : ""}`}
               key={i}
             >
               {r.map((x, j) => (
                 <td key={j}>
-                  {j === r.length - 1 && statuses.includes(x) ? (
+                  {j === r.length - 1 && typeof x==="string" && statuses.includes(x) ? (
                     <span className={`badge ${x.toLowerCase()}`}>{x}</span>
                   ) : (
                     x

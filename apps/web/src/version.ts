@@ -1,6 +1,9 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.6.0";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.7.0";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Validated bulk item upload with duplicate policies and safe batch reversal",
+  "Unit-aware product variants for bottles, packs, weights, volumes and measured stock",
+  "Three-decimal inventory quantities with separate package size and stock unit",
   "Governed held, paid, credit, partial-payment and refund bill lifecycle",
   "Interactive bill follow-up workspace with immutable revisions",
   "Live dashboard drill-downs and attention indicators",
