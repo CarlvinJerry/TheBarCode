@@ -1,6 +1,10 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.7.0";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.0";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Automatic held-bill workflow with explicit UNPAID, PAID and CREDIT printing",
+  "Reliable multi-terminal held-bill revisions with new product additions",
+  "Whole-unit sale quantities and governed paid or credit posting",
+  "Attention counters and collapsible operations and setup navigation",
   "Validated bulk item upload with duplicate policies and safe batch reversal",
   "Unit-aware product variants for bottles, packs, weights, volumes and measured stock",
   "Three-decimal inventory quantities with separate package size and stock unit",
