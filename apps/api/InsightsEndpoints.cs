@@ -44,7 +44,7 @@ public static class InsightsEndpoints
         var financialSales=await db.Sales.AsNoTracking().Where(x=>x.IsDemo==demo&&(x.Status=="Paid"||x.Status=="Credit"||x.Status=="PartiallyPaid"||x.Status=="Refunded")).Include(x=>x.Items).Include(x=>x.Payments).ToListAsync();
         var allSales=financialSales.Where(x=>x.Status!="Refunded").ToList();
         var sales=allSales.Where(x=>x.OccurredAt>=start&&x.OccurredAt<end).ToList();
-        var expenses = await db.Expenses.AsNoTracking().Where(x =>x.IsDemo==demo&&x.Date >= from && x.Date <= to).ToListAsync();
+        var expenses = await db.Expenses.AsNoTracking().Where(x =>x.IsDemo==demo&&x.Active&&x.Status=="Approved"&&x.Date >= from && x.Date <= to).ToListAsync();
         var products = await db.Products.AsNoTracking().Where(x => x.Active&&x.IsDemo==demo).ToListAsync();
         var velocityStart=DateTimeOffset.UtcNow.AddDays(-30);var recentSales=allSales.Where(x=>(x.PostedAt??x.OccurredAt)>=velocityStart).ToList();var recentLines=recentSales.SelectMany(x=>x.Items).GroupBy(x=>x.ProductId).ToDictionary(x=>x.Key,x=>x.Sum(line=>line.Quantity)/30m);
         var customerSales=allSales.Where(x=>x.CustomerId!=null).ToList();
