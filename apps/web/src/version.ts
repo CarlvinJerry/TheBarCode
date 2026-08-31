@@ -1,6 +1,11 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.12";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.9.0";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Open Preview module architecture with all completed features visible during local testing",
+  "Version-controlled recipes with multiple ingredients, measured quantities and waste allowances",
+  "Transactional production runs that consume ingredients, add finished stock and calculate weighted cost",
+  "Production stock movements, history, permission controls and audit trail integration",
+  "Approved-active expense governance for accurate dashboards and Smart Insights",
   "Permanent Keep held and start new control on Sell without receipt printing",
   "Reload and open controls for restarting or managing any held Sell order",
   "Separate Cash and M-Pesa paid-posting buttons with immediate paid-receipt printing",

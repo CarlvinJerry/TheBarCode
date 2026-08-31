@@ -51,4 +51,9 @@ export async function updateCustomer(id:string,value:Record<string,unknown>){ret
 export async function updateStaff(id:string,value:Record<string,unknown>){return request(`/staff/${id}`,{method:'PUT',body:JSON.stringify(value)});}
 export async function getInsightsSettings(){return request('/settings/insights');}
 export async function saveInsightsSettings(value:Record<string,unknown>){return request('/settings/insights',{method:'PUT',body:JSON.stringify(value)});}
+export async function getModules(){return request('/modules');}
+export async function getRecipes(){return request('/recipes');}
+export async function createRecipe(value:Record<string,unknown>){return request('/recipes',{method:'POST',body:JSON.stringify(value)});}
+export async function getProductionRuns(){return request('/production-runs');}
+export async function createProductionRun(value:Record<string,unknown>){return request('/production-runs',{method:'POST',body:JSON.stringify(value)});}
 export type { LocalSale };

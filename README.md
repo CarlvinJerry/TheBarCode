@@ -2,7 +2,7 @@
 
 **Smarter Business Operations**
 
-Current version: **1.8.12** (see `VERSION`). Native installers must be rebuilt after every releasable change so the installer always contains the current UI, API, database initialization and print bridge.
+Current version: **1.9.0** (see `VERSION`). Native installers must be rebuilt after every releasable change so the installer always contains the current UI, API, database initialization and print bridge. Version 1.9.0 is intentionally awaiting local acceptance testing before its installer is generated.
 
 Windows deployment profiles:
 

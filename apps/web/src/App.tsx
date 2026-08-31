@@ -159,7 +159,7 @@ export default function App() {
     syncOutbox().catch(() => 0);
   }
   const primaryViews=["Sell","Dashboard","Bills","Inventory"];
-  const menuGroups={Operations:["Expense","Reports","Audit trail"],"Data & Setup":["Customers","Staff & Roles","Item Setup"]};
+  const menuGroups={Operations:["Expense","Production","Reports","Audit trail"],"Data & Setup":["Customers","Staff & Roles","Item Setup"]};
   const icons: Record<string, string> = {
     Sell: "▦",
     Dashboard: "◫",
@@ -168,6 +168,7 @@ export default function App() {
     Customers: "♙",
     Expenses: "▧",
     Expense: "▧",
+    Production: "⚒",
     Reports: "⌁",
     "Smart Insights": "✦",
     "Audit trail": "≡",
