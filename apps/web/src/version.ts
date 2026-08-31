@@ -1,6 +1,9 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.9.0";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.9.1";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Fixed SQLite expense-register reloads after saving, paying, approving or editing",
+  "Saved expenses automatically clear stale filters and remain visible in the selected date range",
+  "Pending approval and payment states are shown accurately in the expense register",
   "Open Preview module architecture with all completed features visible during local testing",
   "Version-controlled recipes with multiple ingredients, measured quantities and waste allowances",
   "Transactional production runs that consume ingredients, add finished stock and calculate weighted cost",

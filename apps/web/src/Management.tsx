@@ -578,9 +578,10 @@ function Expenses({user,notify}:{user:{role:string},notify:(x:string)=>void}) {
   const today=new Date().toISOString().slice(0,10), month=new Date();month.setDate(1);
   const blank={date:today,category:"Inventory",description:"",amount:0,initiallyPaid:0,method:"Cash",payee:"",reference:"",dueDate:"",taxAmount:0,notes:"",recurring:false};
   const [category, setCategory] = useState("All"),[status,setStatus]=useState("All"),[from,setFrom]=useState(month.toISOString().slice(0,10)),[to,setTo]=useState(today),[rows,setRows]=useState<any[]>([]),[adding,setAdding]=useState(false),[form,setForm]=useState(blank),[paying,setPaying]=useState<any>(),[payment,setPayment]=useState({amount:0,method:"Cash",reference:"",notes:""}),[editing,setEditing]=useState<any>();
-  const canAdd=["Owner","Manager","Cashier","Storekeeper"].includes(user.role),canManage=["Owner","Manager"].includes(user.role);const load=()=>getProductionExpenses(from,to,category,status).then(setRows).catch(()=>setRows([]));
+  const canAdd=["Owner","Manager","Cashier","Storekeeper"].includes(user.role),canManage=["Owner","Manager"].includes(user.role);
+  const load=async(filters?:{from?:string;to?:string;category?:string;status?:string})=>{try{const data=await getProductionExpenses(filters?.from??from,filters?.to??to,filters?.category??category,filters?.status??status);setRows(data);return data}catch(error){notify(error instanceof Error?error.message:"Expenses could not be refreshed");return []}};
   useEffect(()=>{void load()},[category,status]);
-  async function addExpense(e:FormEvent){e.preventDefault();try{await createProductionExpense({...form,dueDate:form.dueDate||null,branchId:null,deviceId:localStorage.getItem("device_id")||"expense-ui"});setAdding(false);setForm(blank);await load();dispatchEvent(new Event("dukora:attention"));notify("Expense recorded successfully")}catch(error){notify(error instanceof Error?error.message:"Expense could not be saved")}}
+  async function addExpense(e:FormEvent){e.preventDefault();try{await createProductionExpense({...form,dueDate:form.dueDate||null,branchId:null,deviceId:localStorage.getItem("device_id")||"expense-ui"});const savedDate=form.date,nextFrom=savedDate<from?savedDate:from,nextTo=savedDate>to?savedDate:to;setAdding(false);setForm(blank);setCategory("All");setStatus("All");setFrom(nextFrom);setTo(nextTo);await load({from:nextFrom,to:nextTo,category:"All",status:"All"});dispatchEvent(new Event("dukora:attention"));notify("Expense recorded and shown in the register")}catch(error){notify(error instanceof Error?error.message:"Expense could not be saved")}}
   async function settle(e:FormEvent){e.preventDefault();try{await payExpense(paying.id,{...payment,deviceId:localStorage.getItem("device_id")||"expense-ui"});setPaying(undefined);setPayment({amount:0,method:"Cash",reference:"",notes:""});await load();dispatchEvent(new Event("dukora:attention"));notify("Expense payment recorded and balance updated")}catch(error){notify(error instanceof Error?error.message:"Payment could not be saved")}}
   async function saveEdit(e:FormEvent){e.preventDefault();try{await updateExpense(editing.id,{category:editing.category,description:editing.description,payee:editing.payee,reference:editing.reference,dueDate:editing.dueDate||null,taxAmount:+editing.taxAmount||0,notes:editing.notes,recurring:Boolean(editing.recurring),active:Boolean(editing.active),reason:editing.reason});setEditing(undefined);await load();dispatchEvent(new Event("dukora:attention"));notify("Expense details updated")}catch(error){notify(error instanceof Error?error.message:"Expense could not be updated")}}
   async function approve(id:string){try{await approveExpense(id);await load();dispatchEvent(new Event("dukora:attention"));notify("Expense approved and included in live reporting")}catch(error){notify(error instanceof Error?error.message:"Expense could not be approved")}}
@@ -601,11 +602,11 @@ function Expenses({user,notify}:{user:{role:string},notify:(x:string)=>void}) {
             ),
           )}
         </select>
-        <select value={status} onChange={e=>setStatus(e.target.value)}><option>All</option><option>Approved</option><option>Archived</option></select>
+        <select value={status} onChange={e=>setStatus(e.target.value)}><option>All</option><option value="PendingApproval">Pending approval</option><option>Approved</option><option>Archived</option></select>
         <input type="date" value={from} onChange={e=>setFrom(e.target.value)} />
         <span>to</span>
         <input type="date" value={to} onChange={e=>setTo(e.target.value)} />
-        <button onClick={load}>Apply filters</button>
+        <button onClick={()=>void load()}>Apply filters</button>
       </Filter>
       <Kpis
         items={[
@@ -654,7 +655,7 @@ function Expenses({user,notify}:{user:{role:string},notify:(x:string)=>void}) {
             x.category,
             money(x.amount),
             money(x.paidAmount),money(x.balance),
-            !x.active?"Archived":Number(x.balance)<=0?"Paid":Number(x.paidAmount)>0?"Partially paid":"Unpaid",
+            !x.active?"Archived":x.status==="PendingApproval"?"Pending approval":Number(x.balance)<=0?"Approved · paid":Number(x.paidAmount)>0?"Approved · partially paid":"Approved · unpaid",
             canManage?<div className="button-row" key={x.id}>{x.status==="PendingApproval"&&<button className="table-action" onClick={()=>void approve(x.id)}>Approve</button>}{Number(x.balance)>0&&x.active&&x.status==="Approved"&&<button className="table-action" onClick={()=>{setPaying(x);setPayment({...payment,amount:Number(x.balance)})}}>Pay</button>}<button className="table-action" onClick={()=>setEditing({...x,reason:""})}>Edit</button></div>:"Submitted",
           ])}
         />

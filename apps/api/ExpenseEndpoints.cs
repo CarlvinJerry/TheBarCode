@@ -12,7 +12,8 @@ public static class ExpenseEndpoints
         {
             var demo=Security.IsDemo(principal);var query=db.Expenses.AsNoTracking().Where(x=>x.IsDemo==demo).Include(x=>x.Payments).AsQueryable();
             if(from is not null)query=query.Where(x=>x.Date>=from);if(to is not null)query=query.Where(x=>x.Date<=to);if(!string.IsNullOrWhiteSpace(category)&&category!="All")query=query.Where(x=>x.Category==category);if(!string.IsNullOrWhiteSpace(status)&&status!="All")query=query.Where(x=>x.Status==status);
-            return await query.OrderByDescending(x=>x.Date).ThenByDescending(x=>x.CreatedAt).Select(x=>new{x.Id,x.Date,x.Category,x.Description,x.Amount,x.PaidAmount,balance=x.Amount-x.PaidAmount,x.Method,x.Payee,x.Reference,x.DueDate,x.TaxAmount,x.Notes,x.Recurring,x.Status,x.BranchId,x.Active,x.CreatedAt,payments=x.Payments.OrderByDescending(p=>p.PaidAt).Select(p=>new{p.Id,p.Amount,p.Method,p.Reference,p.Notes,p.PaidAt})}).ToListAsync();
+            var rows=await query.Select(x=>new{x.Id,x.Date,x.Category,x.Description,x.Amount,x.PaidAmount,balance=x.Amount-x.PaidAmount,x.Method,x.Payee,x.Reference,x.DueDate,x.TaxAmount,x.Notes,x.Recurring,x.Status,x.BranchId,x.Active,x.CreatedAt,payments=x.Payments.Select(p=>new{p.Id,p.Amount,p.Method,p.Reference,p.Notes,p.PaidAt})}).ToListAsync();
+            return rows.OrderByDescending(x=>x.Date).ThenByDescending(x=>x.CreatedAt).Select(x=>new{x.Id,x.Date,x.Category,x.Description,x.Amount,x.PaidAmount,x.balance,x.Method,x.Payee,x.Reference,x.DueDate,x.TaxAmount,x.Notes,x.Recurring,x.Status,x.BranchId,x.Active,x.CreatedAt,payments=x.payments.OrderByDescending(p=>p.PaidAt)}).ToList();
         });
         api.MapPost("/production",async(ProductionExpenseRequest r,AppDbContext db,ClaimsPrincipal principal)=>
         {
