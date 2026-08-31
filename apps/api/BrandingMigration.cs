@@ -6,7 +6,7 @@ public static class BrandingMigration
 {
     public static async Task Apply(AppDbContext db)
     {
-        var organization = await db.Organizations.FirstOrDefaultAsync();
+        var organization = await db.Organizations.OrderBy(x=>x.Id).FirstOrDefaultAsync();
         if (organization is null || organization.Name is not ("The BarCode" or "TheBarcode")) return;
 
         organization.Name = "Dukora";
