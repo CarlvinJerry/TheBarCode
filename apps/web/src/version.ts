@@ -1,6 +1,7 @@
 export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.0";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Accounting foundation: live financial position, trial balance, journals and controlled periods",
   "Transactions now broadcast a shared refresh signal so dependent screens reload authoritative data immediately",
   "Expense payments update the register optimistically and reconcile with the server response",
   "Offline stock movements remain visible locally and refresh from the server only after successful synchronization",

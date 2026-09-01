@@ -78,6 +78,9 @@ import {
   saveTerminalConfiguration,
   saveInsightsSettings,
   syncOutbox,
+  getAccountingOverview,
+  getAccountingTrialBalance,
+  getAccountingJournals,
 } from "./api";
 import { categoryLabel, enabledModules, industryProfiles, profileFor } from "./industryProfiles";
 import {
@@ -104,6 +107,7 @@ export function Management({ view, products, user, notify, navigate }: Props) {
   if (view === "Customers") return <Customers notify={notify} />;
   if (view === "Expenses" || view === "Expense") return <Expenses user={user} notify={notify} />;
   if (view === "Production") return <Production products={products} user={user} notify={notify} />;
+  if (view === "Accounting") return <Accounting user={user} />;
   if (view === "Reports") return <Reports user={user} />;
   if (view === "Smart Insights" || view === "Smart insights") return <SmartInsights user={user} />;
   if (view === "Audit" || view === "Audit trail") return <Audit user={user} />;
@@ -671,6 +675,12 @@ function Expenses({user,notify}:{user:{role:string},notify:(x:string)=>void}) {
       {editing&&<div className="modal record-editor"><section><button className="close" onClick={()=>setEditing(undefined)}>×</button><h2>Edit expense</h2><form className="customer-form" onSubmit={saveEdit}><Field label="Expense date"><input required type="date" value={editing.date} onChange={e=>setEditing({...editing,date:e.target.value})}/></Field><Field label="Category"><input required value={editing.category} onChange={e=>setEditing({...editing,category:e.target.value})}/></Field><Field label="Description"><input required value={editing.description} onChange={e=>setEditing({...editing,description:e.target.value})}/></Field><Field label="Amount"><input required type="number" min={editing.paidAmount||0.01} step="0.01" value={editing.amount} onChange={e=>setEditing({...editing,amount:+e.target.value})}/></Field><Field label="Payment method"><select required value={editing.method} onChange={e=>setEditing({...editing,method:e.target.value})}>{["Cash","M-Pesa","Bank","Credit","Other"].map(x=><option key={x}>{x}</option>)}</select></Field><Field label="Supplier / payee"><input value={editing.payee||""} onChange={e=>setEditing({...editing,payee:e.target.value})}/></Field><Field label="Reference"><input value={editing.reference||""} onChange={e=>setEditing({...editing,reference:e.target.value})}/></Field><Field label="Due date"><input type="date" value={editing.dueDate||""} onChange={e=>setEditing({...editing,dueDate:e.target.value})}/></Field><Field label="Tax"><input type="number" min="0" value={editing.taxAmount||0} onChange={e=>setEditing({...editing,taxAmount:+e.target.value})}/></Field><Field label="Notes"><input value={editing.notes||""} onChange={e=>setEditing({...editing,notes:e.target.value})}/></Field><Field label="Reason for change"><input required value={editing.reason} onChange={e=>setEditing({...editing,reason:e.target.value})}/></Field><label><input type="checkbox" checked={editing.recurring} onChange={e=>setEditing({...editing,recurring:e.target.checked})}/> Recurring</label><label><input type="checkbox" checked={editing.active} onChange={e=>setEditing({...editing,active:e.target.checked})}/> Active (clear to archive)</label><button>Save controlled change</button></form></section></div>}
     </Page>
   );
+}
+function Accounting({user}:{user:{role:string}}) {
+  const today=new Date().toISOString().slice(0,10),month=new Date();month.setDate(1);const [from,setFrom]=useState(month.toISOString().slice(0,10)),[to,setTo]=useState(today),[data,setData]=useState<any>(),[trial,setTrial]=useState<any[]>([]),[journals,setJournals]=useState<any[]>([]),[busy,setBusy]=useState(false);
+  const permitted=["Owner","Manager","Auditor"].includes(user.role);const load=async()=>{if(!permitted)return;setBusy(true);try{const [overview,tb,je]=await Promise.all([getAccountingOverview(from,to),getAccountingTrialBalance(from,to),getAccountingJournals(from,to)]);setData(overview);setTrial(tb);setJournals(je)}catch{}finally{setBusy(false)}};useEffect(()=>{void load()},[from,to,permitted]);
+  if(!permitted)return <Page><Intro title="Accounting" text="Ledger and financial statements are protected by role."/><Panel title="Restricted access"><p>Accounting is available to Owners, Managers and Auditors.</p></Panel></Page>;
+  return <Page><Intro title="Accounting" text="Live financial position from sales, payments, inventory and approved expenses." action={busy?"Refreshing…":"Refresh"} onAction={()=>void load()}/><Filter><input type="date" value={from} onChange={e=>setFrom(e.target.value)}/><span>to</span><input type="date" value={to} onChange={e=>setTo(e.target.value)}/></Filter><Kpis items={[["Revenue",money(data?.revenue||0),`${data?.salesCount||0} posted sales`],["Gross profit",money(data?.grossProfit||0),"Revenue less cost of goods"],["Net profit",money(data?.netProfit||0),"After approved expenses"],["Receivables",money(data?.receivables||0),"Customer credit outstanding"]]}/><Two><Panel title="Financial position"><Table heads={["Measure","Amount"]} rows={[["Revenue",money(data?.revenue||0)],["Cost of goods sold",money(data?.cost||0)],["Operating expenses",money(data?.expenses||0)],["Cash collected",money(data?.collected||0)],["Accounts receivable",money(data?.receivables||0)],["Accounts payable",money(data?.payables||0)]]}/></Panel><Panel title="Trial balance"><Table heads={["Account","Type","Debit","Credit"]} rows={trial.map(x=>[`${x.code} · ${x.name}`,x.type,money(x.debit),money(x.credit)])}/></Panel></Two><Panel title="Posted journal entries"><Table heads={["Date","Source","Memo","Status","Lines"]} rows={journals.map(x=>[String(x.date),x.sourceType,x.memo,x.status,String(x.lines?.length||0)])}/></Panel></Page>;
 }
 function Reports({user}:{user:{role:string}}) {
   const today=new Date().toISOString().slice(0,10), month=new Date();month.setDate(1);

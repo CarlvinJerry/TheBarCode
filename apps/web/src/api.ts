@@ -54,6 +54,14 @@ export async function updateStaff(id:string,value:Record<string,unknown>){return
 export async function getInsightsSettings(){return request('/settings/insights');}
 export async function saveInsightsSettings(value:Record<string,unknown>){return request('/settings/insights',{method:'PUT',body:JSON.stringify(value)});}
 export async function getModules(){return request('/modules');}
+export async function getAccountingOverview(from:string,to:string){return request(`/accounting/overview?from=${from}&to=${to}`);}
+export async function getAccountingAccounts(){return request('/accounting/accounts');}
+export async function getAccountingTrialBalance(from:string,to:string){return request(`/accounting/trial-balance?from=${from}&to=${to}`);}
+export async function getAccountingJournals(from:string,to:string){return request(`/accounting/journals?from=${from}&to=${to}`);}
+export async function createAccountingAdjustment(value:Record<string,unknown>){return request('/accounting/adjustments',{method:'POST',body:JSON.stringify(value)});}
+export async function getAccountingPeriods(){return request('/accounting/periods');}
+export async function createAccountingPeriod(value:Record<string,unknown>){return request('/accounting/periods',{method:'POST',body:JSON.stringify(value)});}
+export async function lockAccountingPeriod(id:string){return request(`/accounting/periods/${id}/lock`,{method:'PUT'});}
 export async function getRecipes(){return request('/recipes');}
 export async function createRecipe(value:Record<string,unknown>){return request('/recipes',{method:'POST',body:JSON.stringify(value)});}
 export async function getProductionRuns(){return request('/production-runs');}

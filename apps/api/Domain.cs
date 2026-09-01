@@ -39,6 +39,14 @@ public record ExpenseUpdateRequest(DateOnly Date,string Category,string Descript
 public sealed class Recipe : Entity { public Guid ProductId { get; set; } public string Name { get; set; } = ""; public decimal YieldQuantity { get; set; } = 1; public int Version { get; set; } = 1; public bool Active { get; set; } = true; public string? Notes { get; set; } public bool IsDemo { get; set; } public List<RecipeIngredient> Ingredients { get; set; } = []; }
 public sealed class RecipeIngredient : Entity { public Guid RecipeId { get; set; } public Guid IngredientProductId { get; set; } public decimal Quantity { get; set; } public decimal WastePercent { get; set; } }
 public sealed class ProductionRun : Entity { public Guid RecipeId { get; set; } public Guid ProductId { get; set; } public Guid StaffId { get; set; } public decimal QuantityProduced { get; set; } public decimal TotalCost { get; set; } public string Status { get; set; } = "Completed"; public string? Notes { get; set; } public DateTimeOffset OccurredAt { get; set; } = DateTimeOffset.UtcNow; public bool IsDemo { get; set; } }
+public sealed class LedgerAccount : Entity { public required string Code { get; set; } public required string Name { get; set; } public required string Type { get; set; } public bool System { get; set; } public bool Active { get; set; } = true; public bool IsDemo { get; set; } }
+public sealed class JournalEntry : Entity { public DateOnly Date { get; set; } public required string SourceType { get; set; } public string? SourceId { get; set; } public required string Memo { get; set; } public string Status { get; set; } = "Posted"; public bool IsDemo { get; set; } public List<JournalLine> Lines { get; set; } = []; }
+public sealed class JournalLine : Entity { public Guid JournalEntryId { get; set; } public Guid AccountId { get; set; } public required string Description { get; set; } public decimal Debit { get; set; } public decimal Credit { get; set; } }
+public sealed class AccountingPeriod : Entity { public required string Name { get; set; } public DateOnly Start { get; set; } public DateOnly End { get; set; } public bool Locked { get; set; } public bool IsDemo { get; set; } }
+public record LedgerAccountRequest(string Code,string Name,string Type);
+public record AccountingPeriodRequest(string Name,DateOnly Start,DateOnly End);
+public record AdjustmentJournalRequest(DateOnly Date,string Memo,List<AdjustmentLineRequest> Lines);
+public record AdjustmentLineRequest(Guid AccountId,decimal Debit,decimal Credit,string? Description);
 public record RecipeIngredientRequest(Guid ProductId,decimal Quantity,decimal WastePercent);
 public record RecipeRequest(Guid ProductId,string Name,decimal YieldQuantity,string? Notes,List<RecipeIngredientRequest> Ingredients);
 public record ProductionRunRequest(Guid RecipeId,decimal Quantity,string? Notes,string? DeviceId);

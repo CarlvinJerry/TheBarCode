@@ -16,5 +16,6 @@ public static class ModularOperationsMigration
  // Ensure databases created by earlier previews gain columns used by the current read models.
  var compatibility=db.Database.IsSqlite()?new[]{"ALTER TABLE production_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'Completed'","ALTER TABLE production_runs ADD COLUMN is_demo INTEGER NOT NULL DEFAULT 0","ALTER TABLE recipes ADD COLUMN is_demo INTEGER NOT NULL DEFAULT 0","ALTER TABLE recipe_ingredients ADD COLUMN waste_percent TEXT NOT NULL DEFAULT '0'"}:new[]{"ALTER TABLE production_runs ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'Completed'","ALTER TABLE production_runs ADD COLUMN IF NOT EXISTS is_demo boolean NOT NULL DEFAULT false","ALTER TABLE recipes ADD COLUMN IF NOT EXISTS is_demo boolean NOT NULL DEFAULT false","ALTER TABLE recipe_ingredients ADD COLUMN IF NOT EXISTS waste_percent numeric(18,2) NOT NULL DEFAULT 0"};
  foreach(var statement in compatibility){try{await db.Database.ExecuteSqlRawAsync(statement);}catch{ /* Existing column: safe and expected on subsequent starts. */ }}
+ await AccountingMigration.Apply(db);
  }
 }

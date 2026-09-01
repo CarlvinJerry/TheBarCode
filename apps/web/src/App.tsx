@@ -18,7 +18,7 @@ import "./App.css";
 type CartLine = Product & { quantity: number };
 const money = (n: number) => `KES ${n.toLocaleString()}`;
 const iconPaths:Record<string,string>={Sell:"M3 5h18M5 5l1.5 15h11L19 5M9 9v7m6-7v7",Dashboard:"M4 13h6V4H4v9Zm10 7h6V11h-6v9ZM4 20h6v-3H4v3Zm10-13h6V4h-6v3Z",Bills:"M6 3h12v18l-3-2-3 2-3-2-3 2V3Zm3 5h6m-6 4h6m-6 4h4",Inventory:"M4 7l8-4 8 4-8 4-8-4Zm0 0v10l8 4 8-4V7M12 11v10",Customers:"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm8-1a3 3 0 0 0 0-6m5 17v-2a4 4 0 0 0-3-3.87",Expense:"M12 2v20m5-16H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",Production:"M14.7 6.3a4 4 0 0 0-5-5L12 3.6 3.6 12l-2.3-.7a4 4 0 0 0 5 5L14.7 8l2.3.7a4 4 0 0 0 5-5L19.6 6l-8.3 8.3",Reports:"M4 20V10m6 10V4m6 16v-7m4 7H2",SmartInsights:"M12 3l1.4 4.1L17.5 8.5l-4.1 1.4L12 14l-1.4-4.1-4.1-1.4 4.1-1.4L12 3Zm6 10 .8 2.2L21 16l-2.2.8L18 19l-.8-2.2L15 16l2.2-.8L18 13Z",AuditTrail:"M4 5h16M4 12h16M4 19h10",StaffRoles:"M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M8.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM19 8v6m3-3h-6",ItemSetup:"M12 5v14m-7-7h14",Settings:"M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm7.4-3.5a7 7 0 0 0-.1-1l2-1.6-2-3.4-2.4 1a8 8 0 0 0-1.7-1L15 3.5h-4L10.6 6a8 8 0 0 0-1.7 1L6.5 6 4.5 9.4l2 1.6a7 7 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8 8 0 0 0 1.7 1l.4 2.5h4l.4-2.5a8 8 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6c.1-.3.1-.7.1-1Z",Bell:"M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Zm-8 13h4",Chevron:"M9 18l6-6-6-6",Menu:"M4 7h16M4 12h16M4 17h16",Logout:"M10 17l5-5-5-5m5 5H3m12-9h5v18h-5",Fullscreen:"M8 3H3v5m13-5h5v5M8 21H3v-5m13 5h5v-5"};
-function Icon({name,size=18}:{name:string;size?:number}){const key=name.replaceAll(" ","").replace("Expenses","Expense");return <svg className="ui-icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={iconPaths[key]||iconPaths.ItemSetup}/></svg>}
+function Icon({name,size=18}:{name:string;size?:number}){const key=name.replaceAll(" ","").replace("Expenses","Expense");const path=key==="Accounting"?"M4 19h16M6 16V8m6 8V4m6 12v-6":iconPaths[key]||iconPaths.ItemSetup;return <svg className="ui-icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={path}/></svg>}
 export default function App() {
   const products =
     useLiveQuery(() => db.products.toArray(), []) ?? [];
@@ -168,7 +168,7 @@ export default function App() {
   }
   const primaryViews=["Sell","Dashboard","Bills","Inventory"];
   const institutionModules=enabledModules(organizationProfile.enabledModules),industry=profileFor(organizationProfile.industryProfile);
-  const menuGroups={Operations:["Expense",...(institutionModules.has("production")?["Production"]:[]),...(institutionModules.has("reports")?["Reports"]:[]),"Audit trail"],"Data & Setup":["Customers","Staff & Roles","Item Setup"]};
+  const menuGroups={Operations:["Expense","Accounting",...(institutionModules.has("production")?["Production"]:[]),...(institutionModules.has("reports")?["Reports"]:[]),"Audit trail"],"Data & Setup":["Customers","Staff & Roles","Item Setup"]};
   const alertKeys:Record<string,string>={Bills:"Bills",Inventory:"Inventory",Customers:"Customers",Expenses:"Expenses",Expense:"Expenses","Audit trail":"AuditTrail",Settings:"Settings"};
   const today = new Intl.DateTimeFormat("en-GB", {
     weekday: "long",
