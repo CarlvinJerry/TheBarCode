@@ -1,6 +1,10 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.11.0";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.11.1";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Unified Dukora stroke icons replace mixed emoji and Unicode navigation symbols",
+  "Workflow-specific POS empty states now explain the condition and route to the correct setup action",
+  "Sticky Settings section navigator makes business, device, intelligence and data controls easier to reach",
+  "Rounded cards retained intentionally with clearer hierarchy, varied summary emphasis and denser operational layouts",
   "New Dukora design-engineering standard with purposeful, fast and accessible interaction feedback",
   "Refined hierarchy, surfaces, controls, focus states, dialogs, toasts, tables and touchscreen product cards",
   "Origin-aware popovers and restrained sub-300ms motion with full reduced-motion support",

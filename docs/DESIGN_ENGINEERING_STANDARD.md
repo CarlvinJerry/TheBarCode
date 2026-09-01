@@ -14,11 +14,16 @@ This is the baseline for all new Dukora interfaces. It is informed by Emil Kowal
 8. Touch targets remain generous, focus indicators remain visible, and color is never the only status signal.
 9. Success and failure messages state what happened and disappear only after the user has had time to read them.
 10. Active operational conditions and unseen notifications are separate concepts. Opening the bell clears its unseen badge; unresolved work stays on the relevant menu until the source record is resolved.
+11. Rounded cards are part of Dukora's identity, but cards are used only for a meaningful group, actionable summary, or elevated surface. Pages must not turn every sentence or field into an identical card.
+12. Layout density follows the job: selling, stock control and bill follow-up are compact; configuration and destructive actions receive more space and explanation.
+13. Use the Dukora stroke-icon family for navigation and actions. Emoji and unrelated Unicode symbols are not product icons.
+14. Empty states explain why nothing is shown and provide the safest relevant next action.
+15. Page hierarchy must identify one primary task. Supporting summaries, filters and history must not compete at equal visual weight.
 
 ## Shared tokens
 
 - Surfaces: quiet neutral canvas with white operational surfaces.
-- Radius: 8 px controls, 12 px compact surfaces, 16 px cards/dialogs.
+- Radius: 8 px controls, 12 px compact surfaces, 16 px cards/dialogs. Rounded geometry is retained deliberately, with quieter borders and fewer unnecessary containers.
 - Motion: 140 ms direct feedback, 180 ms entrances, `cubic-bezier(.16,1,.3,1)`.
 - Shadows: subtle at rest; stronger only for elevated dialogs, popovers, and interactive hover states.
 - Typography: system UI stack, compact labels, tabular financial values where practical.
@@ -31,3 +36,6 @@ This is the baseline for all new Dukora interfaces. It is informed by Emil Kowal
 - Is the state equally clear with reduced motion and without color?
 - Does the component preserve the current theme, display scale, mobile layout, and touch target size?
 - Are success, failure, empty, loading, disabled, and offline states all represented?
+- Does each card correspond to a real information group or action rather than merely decorating content?
+- Are icons sourced from the shared stroke-icon vocabulary?
+- Does the page have a clear primary task and product-specific information density?
