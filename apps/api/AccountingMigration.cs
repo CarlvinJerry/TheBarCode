@@ -25,5 +25,6 @@ public static class AccountingMigration
   var accounts=new[]{("1000","Cash","Asset"),("1010","M-Pesa","Asset"),("1100","Accounts receivable","Asset"),("1200","Inventory","Asset"),("2000","Accounts payable","Liability"),("2100","Tax payable","Liability"),("3000","Owner equity","Equity"),("4000","Sales revenue","Revenue"),("5000","Cost of goods sold","Expense"),("6000","Operating expenses","Expense")};
   foreach(var demo in new[]{false,true})if(!await db.LedgerAccounts.AnyAsync(x=>x.IsDemo==demo))foreach(var a in accounts)db.LedgerAccounts.Add(new LedgerAccount{Code=a.Item1,Name=a.Item2,Type=a.Item3,System=true,IsDemo=demo});
   await db.SaveChangesAsync();
+  await AccountingJournalBuilder.Ensure(db,false);await AccountingJournalBuilder.Ensure(db,true);
  }
 }
