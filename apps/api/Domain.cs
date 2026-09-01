@@ -29,6 +29,7 @@ public record UpdateBillRequest(Guid? CustomerId,decimal Discount,string? Notes,
 public record ResolveBillApprovalRequest(bool Approve,string Reason,string? DeviceId);
 public record PostBillRequest(string Status,string Method,decimal AmountPaid,DateTimeOffset? DueAt,string? Notes,string? DeviceId);
 public record BillPaymentRequest(string Method,decimal Amount,string? Reference,string? DeviceId);
+public record PaymentMethodUpdateRequest(string Method,string Reason,string? DeviceId);
 public record ProductUpdateRequest(string Name,string Category,string? Barcode,string Unit,decimal CostPrice,decimal SellingPrice,decimal MinStock,bool Sellable,bool Active,string Reason,string? Brand=null,decimal PackageQuantity=1,string? PackageUnit=null,string TrackingMode="Discrete",string? Supplier=null,decimal TaxRate=0);
 public record CustomerUpdateRequest(string Name,string? Phone,decimal CreditLimit,string? Notes,bool Active,string Reason);
 public record StaffUpdateRequest(string Name,string Role,bool Active,string? NewPin,string Reason,string? Permissions=null);

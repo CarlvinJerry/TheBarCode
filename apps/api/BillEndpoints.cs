@@ -168,6 +168,17 @@ public static class BillEndpoints
             return Results.Ok(BillView(sale, null, principal.Identity?.Name));
         });
 
+        api.MapPut("/bills/{saleId:guid}/payments/{paymentId:guid}", async (Guid saleId, Guid paymentId, PaymentMethodUpdateRequest r, AppDbContext db, ClaimsPrincipal principal) =>
+        {
+            if (!IsManager(principal)) return Denied("Only an Owner or Manager can correct a posted payment.");
+            if (string.IsNullOrWhiteSpace(r.Method) || string.IsNullOrWhiteSpace(r.Reason)) return Results.BadRequest(new { error = "Payment method and correction reason are required" });
+            var sale=await db.Sales.SingleOrDefaultAsync(x=>x.Id==saleId&&x.IsDemo==Security.IsDemo(principal)); if(sale is null)return Results.NotFound();
+            var payment=await db.Payments.SingleOrDefaultAsync(x=>x.Id==paymentId&&x.SaleId==saleId); if(payment is null)return Results.NotFound();
+            var before=payment.Method; payment.Method=r.Method.Trim(); payment.UpdatedAt=DateTimeOffset.UtcNow;
+            db.AuditEvents.Add(Audit(principal,"Updated",sale,$"Payment {payment.Id}: {before} → {payment.Method}; {r.Reason.Trim()}",r.DeviceId)); await db.SaveChangesAsync();
+            return Results.Ok(new { payment.Id, payment.Method, payment.Amount, payment.PaidAt });
+        }).RequireAuthorization(p=>p.RequireRole("Owner","Manager"));
+
         api.MapPost("/bills/{id:guid}/cancel", async (Guid id, string reason, string? deviceId, AppDbContext db, ClaimsPrincipal principal) =>
         {
             if (!IsManager(principal)) return Denied("Only an Owner or Manager can cancel a held bill.");
