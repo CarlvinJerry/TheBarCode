@@ -1,6 +1,9 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.11.1";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.11.2";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Removed decorative card-edge strips and active-menu rails in favor of quiet selected surfaces",
+  "Reduced heading weight and tightened section rhythm so operational data remains the visual priority",
+  "Expanded the Dukora design standard with alignment, sentence-case, separator and anti-decoration rules",
   "Unified Dukora stroke icons replace mixed emoji and Unicode navigation symbols",
   "Workflow-specific POS empty states now explain the condition and route to the correct setup action",
   "Sticky Settings section navigator makes business, device, intelligence and data controls easier to reach",
