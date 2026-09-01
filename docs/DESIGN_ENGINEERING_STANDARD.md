@@ -26,6 +26,7 @@ This is the baseline for all new Dukora interfaces. It is informed by Emil Kowal
 20. Group captions use sentence case. Uppercase and wide letter spacing are reserved for genuinely short metadata such as receipt status or compact table headings.
 21. Cards must read as surfaces, not outlined boxes: give them a clear background, quiet boundary, and at most a subtle resting shadow. Avoid nesting cards when spacing or a divider establishes the same relationship.
 22. Establish page rhythm deliberately: keep related heading-to-content gaps tight, add more space between separate groups, and keep row titles compact with line-height rather than oversized padding.
+23. Every operational data grid provides local global search and user-controlled column ordering without discarding its domain-specific default order. Sort indicators are explicit, action columns are not sortable, and empty search results explain the active filter.
 
 ## Shared tokens
 
@@ -52,3 +53,4 @@ This is the baseline for all new Dukora interfaces. It is informed by Emil Kowal
 - Could a heavy heading be reduced to medium or semibold without weakening hierarchy?
 - Do labels and row titles align to a shared text column and use sentence case?
 - Are related elements closer to each other than they are to the next group?
+- Can every data grid be searched and sorted without changing its authoritative source data or default order?

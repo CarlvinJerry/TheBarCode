@@ -1,6 +1,8 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.11.2";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.11.3";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Every data grid now supports local global search and ascending or descending column sorting",
+  "Existing business-specific default ordering is preserved until a user chooses a sort column",
   "Removed decorative card-edge strips and active-menu rails in favor of quiet selected surfaces",
   "Reduced heading weight and tightened section rhythm so operational data remains the visual priority",
   "Expanded the Dukora design standard with alignment, sentence-case, separator and anti-decoration rules",
