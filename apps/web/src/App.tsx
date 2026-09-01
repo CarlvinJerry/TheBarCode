@@ -62,12 +62,14 @@ export default function App() {
     addEventListener("online", change);
     addEventListener("offline", change);
     const navigationChanged=(event:Event)=>setNavigationLayout((event as CustomEvent<string>).detail);const industryChanged=(event:Event)=>{const next=(event as CustomEvent<any>).detail;setOrganizationProfile(next);const modules=enabledModules(next.enabledModules);setView(current=>(current==="Production"&&!modules.has("production"))||(current==="Reports"&&!modules.has("reports"))||(current==="Smart Insights"&&!modules.has("ai"))?"Dashboard":current)};addEventListener("dukora:navigation-layout",navigationChanged);addEventListener("dukora:industry-profile",industryChanged);
+    let refreshTimer=0;const dataChanged=()=>{clearTimeout(refreshTimer);refreshTimer=window.setTimeout(()=>bootstrap().catch(()=>0),80)};addEventListener("thebarcode:data-changed",dataChanged);
     const timer = setInterval(() => syncOutbox().catch(() => 0), 15000);
     return () => {
       removeEventListener("online", change);
       removeEventListener("offline", change);
       removeEventListener("dukora:navigation-layout",navigationChanged);
       removeEventListener("dukora:industry-profile",industryChanged);
+      removeEventListener("thebarcode:data-changed",dataChanged);clearTimeout(refreshTimer);
       clearInterval(timer);
     };
   }, []);
