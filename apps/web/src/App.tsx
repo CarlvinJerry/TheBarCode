@@ -195,8 +195,8 @@ export default function App() {
     <div className={`shell ${collapsed ? "sidebar-collapsed" : ""} ${navigationLayout==="Horizontal"?"nav-horizontal":""}`}>
       <aside>
         <div className="brand">
-          <img className="brand-lockup" src="/dukora-full-logo.png" alt="Dukora — Smarter Business Operations" />
-          <img className="brand-logo" src="/dukora-logo.png" alt="Dukora" />
+          <img className="brand-lockup" src="/thebarcode-logo-light-text.png" alt="TheBarcode" />
+          <img className="brand-logo" src="/thebarcode-logo-light-text.png" alt="TheBarcode" />
           <button
             className="collapse-sidebar"
             onClick={toggleSidebar}
@@ -465,7 +465,7 @@ function Login({
   return (
     <div className="login">
       <form onSubmit={submit}>
-        <img className="login-lockup" src="/dukora-full-logo.png" alt="Dukora — Smarter Business Operations" />
+        <img className="login-lockup" src="/thebarcode-logo-dark-text.png" alt="TheBarcode" />
         <label>
           Staff
           <select value={staffId} onChange={(e) => setStaffId(e.target.value)}>

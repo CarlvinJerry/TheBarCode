@@ -1,6 +1,10 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.11.5";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.0";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Transactions now broadcast a shared refresh signal so dependent screens reload authoritative data immediately",
+  "Expense payments update the register optimistically and reconcile with the server response",
+  "Offline stock movements remain visible locally and refresh from the server only after successful synchronization",
+  "TheBarcode branding and theme-appropriate transparent logo artwork replace the previous product identity",
   "Release notes are grouped by topic inside a compact scrollable history",
   "Bill workspace rebuilt with clear header, line editing, actions, later payment and revision-history sections",
   "Consistent primary and secondary form actions eliminate browser-default buttons",

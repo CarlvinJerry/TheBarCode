@@ -2,7 +2,7 @@ const bridgeUrl = "http://127.0.0.1:17777";
 export type ReceiptSettings = {paperWidthMm:number;showBusinessDetails:boolean;showCustomer:boolean;showCashier:boolean;showTax:boolean;showCustomerBalance:boolean;showPoweredBy:boolean;autoPrintPaidSale:boolean;creditSalePrintMode:string;paymentReceiptPrintMode:string;copies:number;footer:string;receiptPrefix:string;invoicePrefix:string;paymentPrefix:string};
 export type OrganizationSettings = {name:string;legalName?:string;industryProfile:string;businessCategory?:string;enabledModules?:string;profileConfigured?:boolean;currency:string;phone?:string;email?:string;address?:string;taxPin?:string;vatNumber?:string;tagline?:string};
 export const defaultReceiptSettings:ReceiptSettings={paperWidthMm:80,showBusinessDetails:true,showCustomer:true,showCashier:true,showTax:false,showCustomerBalance:true,showPoweredBy:true,autoPrintPaidSale:false,creditSalePrintMode:"Optional",paymentReceiptPrintMode:"Optional",copies:1,footer:"Thank you for your business.",receiptPrefix:"RCP",invoicePrefix:"INV",paymentPrefix:"PAY"};
-export const defaultOrganizationSettings:OrganizationSettings={name:"Dukora",industryProfile:"Hospitality",businessCategory:"BarCafe",enabledModules:"sales,inventory,expenses,reports,ai,production",profileConfigured:false,currency:"KES",tagline:"Smarter Business Operations"};
+export const defaultOrganizationSettings:OrganizationSettings={name:"TheBarcode",industryProfile:"Hospitality",businessCategory:"BarCafe",enabledModules:"sales,inventory,expenses,reports,ai,production",profileConfigured:false,currency:"KES",tagline:"Smarter Business Operations"};
 export function cachedReceiptSettings():ReceiptSettings{try{return {...defaultReceiptSettings,...JSON.parse(localStorage.getItem("receipt_configuration")||"{}")} }catch{return defaultReceiptSettings}}
 export function cachedOrganizationSettings():OrganizationSettings{try{return {...defaultOrganizationSettings,...JSON.parse(localStorage.getItem("organization_profile")||"{}")} }catch{return defaultOrganizationSettings}}
 
@@ -57,7 +57,7 @@ function printReceiptPreview(text: string) {
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
-    .split("\n").map(line=>line.trim().startsWith("STATUS: ")?`<strong>${line}</strong>`:line.trim()==="Powered by Dukora | Beyond Raw Data"?`<small>${line}</small>`:line).join("\n");
+    .split("\n").map(line=>line.trim().startsWith("STATUS: ")?`<strong>${line}</strong>`:line.trim()==="Powered by TheBarcode | Beyond Raw Data"?`<small>${line}</small>`:line).join("\n");
   doc.open();
   doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Receipt</title><style>
     @page { size: ${width}mm auto; margin: 0; }
@@ -79,7 +79,7 @@ function printReceiptPreview(text: string) {
 
 export function testReceiptText() {
   const organization=cachedOrganizationSettings(),receipt=cachedReceiptSettings(),line="-".repeat(receipt.paperWidthMm===58?32:48),branch=localStorage.getItem("branch_name")||"Main branch",terminal=localStorage.getItem("device_id")||"POS-01";
-  return `${organization.name.toUpperCase()}${organization.tagline?`\n${organization.tagline}`:""}${organization.address?`\n${organization.address}`:""}${organization.phone?`\nTel: ${organization.phone}`:""}\nBranch: ${branch}\n${line}\nPRINTER TEST\nTEST-0001\n${new Date().toLocaleString()}\nTill: ${terminal}\nPaper: ${receipt.paperWidthMm} mm\nSTATUS: TEST OK\n${line}\n${receipt.footer}${receipt.showPoweredBy?"\nPowered by Dukora | Beyond Raw Data":""}`;
+  return `${organization.name.toUpperCase()}${organization.tagline?`\n${organization.tagline}`:""}${organization.address?`\n${organization.address}`:""}${organization.phone?`\nTel: ${organization.phone}`:""}\nBranch: ${branch}\n${line}\nPRINTER TEST\nTEST-0001\n${new Date().toLocaleString()}\nTill: ${terminal}\nPaper: ${receipt.paperWidthMm} mm\nSTATUS: TEST OK\n${line}\n${receipt.footer}${receipt.showPoweredBy?"\nPowered by TheBarcode | Beyond Raw Data":""}`;
 }
 
 function localNumbers(id:string,walkIn:boolean){const date=new Date().toISOString().slice(0,10),key=`receipt_numbers_${date}`;try{const data=JSON.parse(localStorage.getItem(key)||'{"order":0,"walkIn":0,"ids":{}}');if(!data.ids[id]){data.order++;if(walkIn)data.walkIn++;data.ids[id]={order:data.order,walkIn:walkIn?data.walkIn:null};localStorage.setItem(key,JSON.stringify(data))}return data.ids[id]}catch{return{order:1,walkIn:walkIn?1:null}}}
@@ -90,5 +90,5 @@ export function buildSaleReceipt(input:{id:string;dailyOrderNumber?:number;walkI
  const status=input.status??(input.credit?"CREDIT":"PAID"),walkIn=input.customerName.toLowerCase().startsWith("walk-in"),numbers=input.dailyOrderNumber?{order:input.dailyOrderNumber,walkIn:input.walkInNumber}:localNumbers(input.id,walkIn);rows.push(line,status==="UNPAID"?"UNPAID BILL":status==="CREDIT"?"CREDIT SALE":"SALES RECEIPT",`${cfg.receiptPrefix}-${input.id.slice(0,8).toUpperCase()}`,`Order today: ${numbers.order}`,new Date().toLocaleString(),`Till: ${terminal}`);
  if(cfg.showCashier)rows.push(`Cashier: ${input.cashierName}`);if(cfg.showCustomer)rows.push(`Customer: ${walkIn&&numbers.walkIn?`Walk-in #${numbers.walkIn}`:input.customerName}`);rows.push(line);
  for(const item of input.items){rows.push(item.name);rows.push(`${item.quantity} x ${money(item.unitPrice)}  ${money(item.quantity*item.unitPrice)}`)}
- rows.push(line,`TOTAL: ${money(input.total)}`,status==="UNPAID"?`STATUS: UNPAID\nHELD - NOT A PAYMENT RECEIPT`:status==="CREDIT"?`PAID: ${money(0)}\nBALANCE: ${money(input.total)}\nSTATUS: CREDIT`:`PAYMENT: ${input.method.toUpperCase()}\nSTATUS: PAID`,line,cfg.footer);if(cfg.showPoweredBy)rows.push("Powered by Dukora | Beyond Raw Data");return rows.join("\n");
+ rows.push(line,`TOTAL: ${money(input.total)}`,status==="UNPAID"?`STATUS: UNPAID\nHELD - NOT A PAYMENT RECEIPT`:status==="CREDIT"?`PAID: ${money(0)}\nBALANCE: ${money(input.total)}\nSTATUS: CREDIT`:`PAYMENT: ${input.method.toUpperCase()}\nSTATUS: PAID`,line,cfg.footer);if(cfg.showPoweredBy)rows.push("Powered by TheBarcode | Beyond Raw Data");return rows.join("\n");
 }

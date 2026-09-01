@@ -18,7 +18,7 @@ internal static class Program
     static async Task Main()
     {
         using var single = new Mutex(true, "BeyondRawData.Dukora.Lite", out var first);
-        if (!first) { MessageBox.Show("Dukora is already open.", "Dukora", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
+        if (!first) { MessageBox.Show("TheBarcode is already open.", "TheBarcode", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
         ApplicationConfiguration.Initialize();
         try
         {
@@ -32,7 +32,7 @@ internal static class Program
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Dukora could not start.\n\n{ex.Message}\n\nSee the Dukora Logs folder for details.", "Dukora startup", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show($"TheBarcode could not start.\n\n{ex.Message}\n\nSee the TheBarcode Logs folder for details.", "TheBarcode startup", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {
@@ -115,7 +115,7 @@ internal static class Program
         var safeName=Path.GetFileName(fileName);var source=Path.GetFullPath(Path.Combine(paths.BackupDir,safeName));var root=Path.GetFullPath(paths.BackupDir)+Path.DirectorySeparatorChar;
         if(string.IsNullOrWhiteSpace(safeName)||!source.StartsWith(root,StringComparison.OrdinalIgnoreCase)||!File.Exists(source))throw new FileNotFoundException("The selected backup no longer exists.");
         Stop(api);Stop(bridge);File.Copy(source,paths.DatabaseFile,true);foreach(var suffix in new[]{"-wal","-shm"})if(File.Exists(paths.DatabaseFile+suffix))File.Delete(paths.DatabaseFile+suffix);
-        var configuration=LiteConfiguration.Load(paths.ConfigFile)??throw new InvalidOperationException("Dukora configuration could not be loaded.");await EnsureApi(paths,configuration);StartPrintBridge(paths);
+        var configuration=LiteConfiguration.Load(paths.ConfigFile)??throw new InvalidOperationException("TheBarcode configuration could not be loaded.");await EnsureApi(paths,configuration);StartPrintBridge(paths);
     }
     static void Stop(Process? process) { try { if (process is { HasExited: false }) process.Kill(true); } catch { } process?.Dispose(); }
     sealed record Health(string Status);
@@ -129,7 +129,7 @@ internal sealed class DukoraWindow : Form
     public DukoraWindow(string url, AppPaths paths)
     {
         this.url = url; this.paths = paths;
-        Text = "Dukora — Smarter Business Operations";
+        Text = "TheBarcode — Smarter Business Operations";
         Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "dukora.ico"));
         MinimumSize = new Size(960, 640);
         WindowState = FormWindowState.Maximized;
@@ -152,8 +152,8 @@ internal sealed class DukoraWindow : Form
         {
             await File.AppendAllTextAsync(paths.DesktopLog, $"{DateTimeOffset.Now:O} WebView2 initialization failed: {ex}{Environment.NewLine}");
             browser.Visible = false;
-            var message = new Label { Text = "Dukora is running, but its embedded desktop view could not start.\nThe same interface has been opened in your default browser.\n\nClose this window when you finish using Dukora.", AutoSize = true, Font = new Font(Font.FontFamily, 13), TextAlign = ContentAlignment.MiddleCenter };
-            var open = new Button { Text = "Open Dukora in browser", AutoSize = true, Padding = new Padding(16,8,16,8) };
+            var message = new Label { Text = "TheBarcode is running, but its embedded desktop view could not start.\nThe same interface has been opened in your default browser.\n\nClose this window when you finish using TheBarcode.", AutoSize = true, Font = new Font(Font.FontFamily, 13), TextAlign = ContentAlignment.MiddleCenter };
+            var open = new Button { Text = "Open TheBarcode in browser", AutoSize = true, Padding = new Padding(16,8,16,8) };
             open.Click += (_, _) => Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
             var fallback = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(50) };
             fallback.Controls.AddRange([message, open]); Controls.Add(fallback); fallback.BringToFront();
@@ -166,19 +166,19 @@ internal sealed class DukoraWindow : Form
         DesktopCommand? command;try{command=JsonSerializer.Deserialize<DesktopCommand>(e.WebMessageAsJson,new JsonSerializerOptions{PropertyNameCaseInsensitive=true});}catch{return;}
         if(command?.Command=="restoreBackup")
         {
-            try{if(MessageBox.Show($"Restore {command.FileName}?\n\nCurrent records will be replaced by this backup and Dukora will reload.","Restore Dukora backup",MessageBoxButtons.YesNo,MessageBoxIcon.Warning)!=DialogResult.Yes){Reply(false,"Restore cancelled","dukoraRestore");return;}await Dukora.Desktop.Program.RestoreBackup(paths,command.FileName??"");Reply(true,"Backup restored. Dukora is reloading.","dukoraRestore");browser.CoreWebView2.Navigate(url);}catch(Exception ex){Reply(false,ex.Message,"dukoraRestore");}return;
+            try{if(MessageBox.Show($"Restore {command.FileName}?\n\nCurrent records will be replaced by this backup and TheBarcode will reload.","Restore TheBarcode backup",MessageBoxButtons.YesNo,MessageBoxIcon.Warning)!=DialogResult.Yes){Reply(false,"Restore cancelled","dukoraRestore");return;}await Dukora.Desktop.Program.RestoreBackup(paths,command.FileName??"");Reply(true,"Backup restored. TheBarcode is reloading.","dukoraRestore");browser.CoreWebView2.Navigate(url);}catch(Exception ex){Reply(false,ex.Message,"dukoraRestore");}return;
         }
         if(command?.Command!="installUpdate")return;
         try
         {
-            if(MessageBox.Show($"Install Dukora {command.Version}?\n\nDukora will verify the download, back up your database, close, install the update and reopen.","Dukora update",MessageBoxButtons.YesNo,MessageBoxIcon.Information)!=DialogResult.Yes){Reply(false,"Update cancelled");return;}
+            if(MessageBox.Show($"Install TheBarcode {command.Version}?\n\nTheBarcode will verify the download, back up your database, close, install the update and reopen.","TheBarcode update",MessageBoxButtons.YesNo,MessageBoxIcon.Information)!=DialogResult.Yes){Reply(false,"Update cancelled");return;}
             if(!Uri.TryCreate(command.DownloadUrl,UriKind.Absolute,out var download)||download.Scheme!="https"||!TrustedReleaseHost(download.Host))throw new InvalidOperationException("The release URL is not an approved Beyond Raw Data HTTPS address.");
             if(string.IsNullOrWhiteSpace(command.Sha256)||command.Sha256.Length!=64)throw new InvalidOperationException("The release manifest does not contain a valid SHA-256 checksum.");
             var updates=Path.Combine(paths.Root,"Updates");Directory.CreateDirectory(updates);var installer=Path.Combine(updates,$"Dukora-Lite-Setup-{SafeVersion(command.Version??"update")}-x64.exe");
             using(var client=new HttpClient{Timeout=TimeSpan.FromMinutes(15)})await using(var input=await client.GetStreamAsync(download))await using(var output=File.Create(installer)){await input.CopyToAsync(output);}
             await using(var stream=File.OpenRead(installer)){var actual=Convert.ToHexString(await SHA256.HashDataAsync(stream));if(!actual.Equals(command.Sha256,StringComparison.OrdinalIgnoreCase)){File.Delete(installer);throw new InvalidOperationException("The downloaded installer failed checksum verification and was deleted.");}}
             if(File.Exists(paths.DatabaseFile)){Directory.CreateDirectory(paths.BackupDir);File.Copy(paths.DatabaseFile,Path.Combine(paths.BackupDir,$"dukora-before-update-{DateTime.Now:yyyyMMdd-HHmmss}.db"),true);}
-            Reply(true,$"Dukora {command.Version} verified. Windows will now request permission to install it.");
+            Reply(true,$"TheBarcode {command.Version} verified. Windows will now request permission to install it.");
             Process.Start(new ProcessStartInfo(installer,"/SILENT /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS"){UseShellExecute=true,Verb="runas",WorkingDirectory=updates});
             await Task.Delay(700);BeginInvoke(Application.Exit);
         }
@@ -197,10 +197,10 @@ internal sealed class PinDialog : Form
     public string OwnerPin => pin.Text;
     public PinDialog()
     {
-        Text = "Set up Dukora Lite"; FormBorderStyle = FormBorderStyle.FixedDialog; StartPosition = FormStartPosition.CenterScreen; MaximizeBox = false; MinimizeBox = false; ClientSize = new Size(390, 260);
+        Text = "Set up TheBarcode Lite"; FormBorderStyle = FormBorderStyle.FixedDialog; StartPosition = FormStartPosition.CenterScreen; MaximizeBox = false; MinimizeBox = false; ClientSize = new Size(390, 260);
         var title = new Label { Text = "Create the private owner PIN", Font = new Font(Font.FontFamily, 14, FontStyle.Bold), AutoSize = true };
         var note = new Label { Text = "Use at least 6 characters. This PIN protects the Owner account.", AutoSize = true, ForeColor = Color.DimGray };
-        var save = new Button { Text = "Start Dukora", DialogResult = DialogResult.None, Width = 130, Height = 38 };
+        var save = new Button { Text = "Start TheBarcode", DialogResult = DialogResult.None, Width = 130, Height = 38 };
         save.Click += (_, _) => { if (pin.Text.Length < 6) MessageBox.Show("Use at least 6 characters."); else if (pin.Text != confirm.Text) MessageBox.Show("The PINs do not match."); else { DialogResult = DialogResult.OK; Close(); } };
         var layout = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(28), WrapContents = false };
         layout.Controls.AddRange([title, note, new Label { Text = "Owner PIN", AutoSize = true, Margin = new Padding(0,18,0,3) }, pin, new Label { Text = "Confirm PIN", AutoSize = true, Margin = new Padding(0,10,0,3) }, confirm, save]);
