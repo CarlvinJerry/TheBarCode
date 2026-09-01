@@ -1,6 +1,11 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.9.1";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.10.0";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Institution-level industry and business-category setup with persistent terminology and module choices",
+  "Adaptive item categories and production language for hospitality, bakery, retail, manufacturing, services, wholesale and agriculture",
+  "Core Sales, Inventory and Expenses kept enabled for accounting and stock integrity",
+  "Complete expense editing for date, amount, method, supplier, tax, recurrence and archival with audit reasons",
+  "Expense payment controls prevent settlement before approval or below amounts already paid",
   "Fixed SQLite expense-register reloads after saving, paying, approving or editing",
   "Saved expenses automatically clear stale filters and remain visible in the selected date range",
   "Pending approval and payment states are shown accurately in the expense register",

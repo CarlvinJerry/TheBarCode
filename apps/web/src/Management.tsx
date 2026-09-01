@@ -48,6 +48,7 @@ import {
   createMaintenanceBackup,
   purgeLiveData,
   getOperationalOverview,
+  saveIndustryConfiguration,
   getModules,
   getRecipes,
   createRecipe,
@@ -78,6 +79,7 @@ import {
   saveInsightsSettings,
   syncOutbox,
 } from "./api";
+import { categoryLabel, enabledModules, industryProfiles, profileFor } from "./industryProfiles";
 import {
   db,
   queueCustomer,
@@ -558,6 +560,7 @@ function Customers({notify}:{notify:(x:string)=>void}) {
   );
 }
 function Production({products,user,notify}:{products:Product[];user:{role:string};notify:(x:string)=>void}) {
+  const industry=profileFor(cachedOrganizationSettings().industryProfile);
   const [modules,setModules]=useState<any>();const [recipes,setRecipes]=useState<any[]>([]),[runs,setRuns]=useState<any[]>([]),[adding,setAdding]=useState(false),[running,setRunning]=useState<any>();
   const [form,setForm]=useState<any>({productId:"",name:"",yieldQuantity:1,notes:"",ingredients:[{productId:"",quantity:1,wastePercent:0}]});const [run,setRun]=useState({quantity:1,notes:""});
   const load=async()=>{const [m,r,p]=await Promise.all([getModules(),getRecipes(),getProductionRuns()]);setModules(m);setRecipes(r);setRuns(p)};useEffect(()=>{void load().catch(e=>notify(e instanceof Error?e.message:"Production data could not be loaded"))},[]);
@@ -565,13 +568,13 @@ function Production({products,user,notify}:{products:Product[];user:{role:string
   function updateIngredient(index:number,key:string,value:any){setForm({...form,ingredients:form.ingredients.map((x:any,i:number)=>i===index?{...x,[key]:value}:x)})}
   async function saveRecipe(e:FormEvent){e.preventDefault();try{await createRecipe({...form,yieldQuantity:+form.yieldQuantity,ingredients:form.ingredients.map((x:any)=>({productId:x.productId,quantity:+x.quantity,wastePercent:+x.wastePercent}))});setAdding(false);setForm({productId:"",name:"",yieldQuantity:1,notes:"",ingredients:[{productId:"",quantity:1,wastePercent:0}]});await load();notify("Recipe saved as a controlled new version")}catch(e){notify(e instanceof Error?e.message:"Recipe could not be saved")}}
   async function completeRun(e:FormEvent){e.preventDefault();try{const result=await createProductionRun({recipeId:running.id,quantity:+run.quantity,notes:run.notes,deviceId:localStorage.getItem("device_id")||"production-ui"});setRunning(undefined);setRun({quantity:1,notes:""});await bootstrap();await load();dispatchEvent(new Event("dukora:attention"));notify(`Production completed · ${result.quantityProduced} units · ${money(result.totalCost)} cost`)}catch(e){notify(e instanceof Error?e.message:"Production run could not be completed")}}
-  return <Page><Intro title="Recipes & production" text="Turn ingredients into finished goods with accurate consumption, output stock, costing and audit history."/>
+  return <Page><Intro title={industry.productionLabel} text={`${industry.productionHelp} Every transaction updates ${industry.inputLabel.toLowerCase()}, output stock, costing and audit history.`}/>
     <Kpis items={[["Active recipes",String(recipes.filter(x=>x.active).length),"Version controlled"],["Completed runs",String(runs.length),"Latest 250"],["Production cost",money(runs.reduce((n,x)=>n+Number(x.totalCost),0)),"Recorded material cost"],["Access mode",modules?.mode||"Loading",modules?.package||"All features"]]}/>
     <div className="button-row">{canManage&&<button onClick={()=>setAdding(true)}>+ New recipe</button>}<small className="muted">All completed modules are visible during Open Preview testing. Destructive and approval permissions remain role-controlled.</small></div>
-    <Panel title="Active recipes"><div className="spec-table-wrap"><table className="spec-table"><thead><tr>{["Output","Recipe","Yield","Ingredients","Material cost","Version","Action"].map(x=><th key={x}>{x}</th>)}</tr></thead><tbody>{recipes.filter(x=>x.active).map(x=><tr key={x.id}><td>{x.productName}</td><td>{x.name}</td><td>{x.yieldQuantity}</td><td>{x.ingredients.map((i:any)=>`${i.quantity} ${i.unit||"unit"} ${i.productName}${i.wastePercent?` + ${i.wastePercent}%`:""}`).join(" · ")}</td><td>{money(x.costPerYield)}</td><td>v{x.version}</td><td>{canManage?<button className="table-action" onClick={()=>setRunning(x)}>Record production</button>:"View only"}</td></tr>)}</tbody></table></div>{!recipes.some(x=>x.active)&&<p className="muted">No recipe yet. Create the ingredient items and finished item in Item Setup, then define the recipe here.</p>}</Panel>
+    <Panel title={`Active ${industry.productionLabel.toLowerCase()} definitions`}><div className="spec-table-wrap"><table className="spec-table"><thead><tr>{["Output","Definition","Yield",industry.inputLabel,"Material cost","Version","Action"].map(x=><th key={x}>{x}</th>)}</tr></thead><tbody>{recipes.filter(x=>x.active).map(x=><tr key={x.id}><td>{x.productName}</td><td>{x.name}</td><td>{x.yieldQuantity}</td><td>{x.ingredients.map((i:any)=>`${i.quantity} ${i.unit||"unit"} ${i.productName}${i.wastePercent?` + ${i.wastePercent}%`:""}`).join(" · ")}</td><td>{money(x.costPerYield)}</td><td>v{x.version}</td><td>{canManage?<button className="table-action" onClick={()=>setRunning(x)}>Record transaction</button>:"View only"}</td></tr>)}</tbody></table></div>{!recipes.some(x=>x.active)&&<p className="muted">No definition yet. Create the required {industry.inputLabel.toLowerCase()} and output item in Item Setup, then define their relationship here.</p>}</Panel>
     <Panel title="Production history"><Table heads={["Completed","Output","Quantity","Material cost","Status","Notes"]} rows={runs.map(x=>[new Date(x.occurredAt).toLocaleString(),x.productName,String(x.quantityProduced),money(x.totalCost),x.status,x.notes||"—"])}/></Panel>
-    {adding&&<div className="modal record-editor"><section><button className="close" onClick={()=>setAdding(false)}>×</button><h2>New recipe version</h2><form className="item-form" onSubmit={saveRecipe}><Field label="Finished item"><select required value={form.productId} onChange={e=>setForm({...form,productId:e.target.value})}><option value="">Choose output item</option>{active.map(x=><option key={x.id} value={x.id}>{x.name} · {x.unit}</option>)}</select></Field><Field label="Recipe name"><input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></Field><Field label="Output yield"><input required type="number" min=".001" step=".001" value={form.yieldQuantity} onChange={e=>setForm({...form,yieldQuantity:+e.target.value})}/></Field>{form.ingredients.map((row:any,index:number)=><div className="recipe-line" key={index}><Field label={`Ingredient ${index+1}`}><select required value={row.productId} onChange={e=>updateIngredient(index,"productId",e.target.value)}><option value="">Choose ingredient</option>{ingredients.filter(x=>x.id!==form.productId).map(x=><option key={x.id} value={x.id}>{x.name} · {x.stock} {x.unit}</option>)}</select></Field><Field label="Quantity per yield"><input required type="number" min=".001" step=".001" value={row.quantity} onChange={e=>updateIngredient(index,"quantity",+e.target.value)}/></Field><Field label="Waste %"><input type="number" min="0" step=".01" value={row.wastePercent} onChange={e=>updateIngredient(index,"wastePercent",+e.target.value)}/></Field>{form.ingredients.length>1&&<button type="button" className="table-action" onClick={()=>setForm({...form,ingredients:form.ingredients.filter((_:any,i:number)=>i!==index)})}>Remove</button>}</div>)}<button type="button" className="outline-button" onClick={()=>setForm({...form,ingredients:[...form.ingredients,{productId:"",quantity:1,wastePercent:0}]})}>+ Ingredient</button><Field label="Production notes"><input value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/></Field><button>Save recipe version</button></form></section></div>}
-    {running&&<div className="modal record-editor"><section><button className="close" onClick={()=>setRunning(undefined)}>×</button><h2>Record production · {running.productName}</h2><p>Ingredients will be deducted and finished stock added together. The operation cannot partially save.</p><form className="item-form" onSubmit={completeRun}><Field label="Quantity produced"><input required type="number" min=".001" step=".001" value={run.quantity} onChange={e=>setRun({...run,quantity:+e.target.value})}/></Field><Field label="Batch / production notes"><input value={run.notes} onChange={e=>setRun({...run,notes:e.target.value})}/></Field><button>Complete production transaction</button></form></section></div>}
+    {adding&&<div className="modal record-editor"><section><button className="close" onClick={()=>setAdding(false)}>×</button><h2>New controlled definition</h2><form className="item-form" onSubmit={saveRecipe}><Field label="Output item"><select required value={form.productId} onChange={e=>setForm({...form,productId:e.target.value})}><option value="">Choose output item</option>{active.map(x=><option key={x.id} value={x.id}>{x.name} · {x.unit}</option>)}</select></Field><Field label="Definition name"><input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></Field><Field label="Output yield"><input required type="number" min=".001" step=".001" value={form.yieldQuantity} onChange={e=>setForm({...form,yieldQuantity:+e.target.value})}/></Field>{form.ingredients.map((row:any,index:number)=><div className="recipe-line" key={index}><Field label={`${industry.inputLabel} ${index+1}`}><select required value={row.productId} onChange={e=>updateIngredient(index,"productId",e.target.value)}><option value="">Choose {industry.inputLabel.toLowerCase()}</option>{ingredients.filter(x=>x.id!==form.productId).map(x=><option key={x.id} value={x.id}>{x.name} · {x.stock} {x.unit}</option>)}</select></Field><Field label="Quantity per yield"><input required type="number" min=".001" step=".001" value={row.quantity} onChange={e=>updateIngredient(index,"quantity",+e.target.value)}/></Field><Field label="Waste %"><input type="number" min="0" step=".01" value={row.wastePercent} onChange={e=>updateIngredient(index,"wastePercent",+e.target.value)}/></Field>{form.ingredients.length>1&&<button type="button" className="table-action" onClick={()=>setForm({...form,ingredients:form.ingredients.filter((_:any,i:number)=>i!==index)})}>Remove</button>}</div>)}<button type="button" className="outline-button" onClick={()=>setForm({...form,ingredients:[...form.ingredients,{productId:"",quantity:1,wastePercent:0}]})}>+ {industry.inputLabel}</button><Field label="Transaction notes"><input value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/></Field><button>Save controlled version</button></form></section></div>}
+    {running&&<div className="modal record-editor"><section><button className="close" onClick={()=>setRunning(undefined)}>×</button><h2>Record {industry.productionLabel.toLowerCase()} · {running.productName}</h2><p>{industry.inputLabel} stock will be deducted and output stock added atomically. The operation cannot partially save.</p><form className="item-form" onSubmit={completeRun}><Field label="Output quantity"><input required type="number" min=".001" step=".001" value={run.quantity} onChange={e=>setRun({...run,quantity:+e.target.value})}/></Field><Field label="Batch / transaction notes"><input value={run.notes} onChange={e=>setRun({...run,notes:e.target.value})}/></Field><button>Complete stock transaction</button></form></section></div>}
   </Page>
 }
 function Expenses({user,notify}:{user:{role:string},notify:(x:string)=>void}) {
@@ -583,7 +586,7 @@ function Expenses({user,notify}:{user:{role:string},notify:(x:string)=>void}) {
   useEffect(()=>{void load()},[category,status]);
   async function addExpense(e:FormEvent){e.preventDefault();try{await createProductionExpense({...form,dueDate:form.dueDate||null,branchId:null,deviceId:localStorage.getItem("device_id")||"expense-ui"});const savedDate=form.date,nextFrom=savedDate<from?savedDate:from,nextTo=savedDate>to?savedDate:to;setAdding(false);setForm(blank);setCategory("All");setStatus("All");setFrom(nextFrom);setTo(nextTo);await load({from:nextFrom,to:nextTo,category:"All",status:"All"});dispatchEvent(new Event("dukora:attention"));notify("Expense recorded and shown in the register")}catch(error){notify(error instanceof Error?error.message:"Expense could not be saved")}}
   async function settle(e:FormEvent){e.preventDefault();try{await payExpense(paying.id,{...payment,deviceId:localStorage.getItem("device_id")||"expense-ui"});setPaying(undefined);setPayment({amount:0,method:"Cash",reference:"",notes:""});await load();dispatchEvent(new Event("dukora:attention"));notify("Expense payment recorded and balance updated")}catch(error){notify(error instanceof Error?error.message:"Payment could not be saved")}}
-  async function saveEdit(e:FormEvent){e.preventDefault();try{await updateExpense(editing.id,{category:editing.category,description:editing.description,payee:editing.payee,reference:editing.reference,dueDate:editing.dueDate||null,taxAmount:+editing.taxAmount||0,notes:editing.notes,recurring:Boolean(editing.recurring),active:Boolean(editing.active),reason:editing.reason});setEditing(undefined);await load();dispatchEvent(new Event("dukora:attention"));notify("Expense details updated")}catch(error){notify(error instanceof Error?error.message:"Expense could not be updated")}}
+  async function saveEdit(e:FormEvent){e.preventDefault();try{await updateExpense(editing.id,{date:editing.date,category:editing.category,description:editing.description,amount:+editing.amount,method:editing.method,payee:editing.payee,reference:editing.reference,dueDate:editing.dueDate||null,taxAmount:+editing.taxAmount||0,notes:editing.notes,recurring:Boolean(editing.recurring),active:Boolean(editing.active),reason:editing.reason});setEditing(undefined);await load();dispatchEvent(new Event("dukora:attention"));notify("Expense details updated")}catch(error){notify(error instanceof Error?error.message:"Expense could not be updated")}}
   async function approve(id:string){try{await approveExpense(id);await load();dispatchEvent(new Event("dukora:attention"));notify("Expense approved and included in live reporting")}catch(error){notify(error instanceof Error?error.message:"Expense could not be approved")}}
   const categories=Array.from(new Set(rows.map(x=>x.category))), grouped=Array.from(rows.reduce<Map<string,number>>((m,x)=>m.set(x.category,(m.get(x.category)||0)+Number(x.amount)),new Map<string,number>())).map(([name,v])=>({name,v}));
   return (
@@ -662,7 +665,7 @@ function Expenses({user,notify}:{user:{role:string},notify:(x:string)=>void}) {
       </Panel>
       {adding&&<div className="modal record-editor"><section><button className="close" onClick={()=>setAdding(false)}>×</button><h2>Add expense</h2><form className="item-form" onSubmit={addExpense}><Field label="Expense date"><input type="date" required value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></Field><Field label="Category"><select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}>{["Inventory","Utilities","Rent","Payroll","Maintenance","Transport","Marketing","Tax","Supplies","Other"].map(x=><option key={x}>{x}</option>)}</select></Field><Field label="Description"><input required value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></Field><Field label="Supplier / payee"><input value={form.payee} onChange={e=>setForm({...form,payee:e.target.value})}/></Field><Field label="Invoice / receipt reference"><input value={form.reference} onChange={e=>setForm({...form,reference:e.target.value})}/></Field><Field label="Due date"><input type="date" value={form.dueDate} onChange={e=>setForm({...form,dueDate:e.target.value})}/></Field><Field label="Total amount"><input type="number" min="0.01" step="0.01" required value={form.amount} onChange={e=>setForm({...form,amount:+e.target.value})}/></Field><Field label="Initially paid"><input type="number" min="0" max={form.amount} step="0.01" value={form.initiallyPaid} onChange={e=>setForm({...form,initiallyPaid:+e.target.value})}/></Field><Field label="Payment method"><select value={form.method} onChange={e=>setForm({...form,method:e.target.value})}>{["Cash","M-Pesa","Bank","Card","Pending"].map(x=><option key={x}>{x}</option>)}</select></Field><Field label="Tax included"><input type="number" min="0" step="0.01" value={form.taxAmount} onChange={e=>setForm({...form,taxAmount:+e.target.value})}/></Field><Field label="Notes"><input value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/></Field><label className="check"><input type="checkbox" checked={form.recurring} onChange={e=>setForm({...form,recurring:e.target.checked})}/> Recurring obligation</label><button className="save-item">Save expense</button></form></section></div>}
       {paying&&<div className="modal record-editor"><section><button className="close" onClick={()=>setPaying(undefined)}>×</button><h2>Pay expense</h2><p>{paying.description} · outstanding {money(paying.balance)}</p><form className="customer-form" onSubmit={settle}><Field label="Amount"><input type="number" min="0.01" max={paying.balance} step="0.01" required value={payment.amount} onChange={e=>setPayment({...payment,amount:+e.target.value})}/></Field><Field label="Method"><select value={payment.method} onChange={e=>setPayment({...payment,method:e.target.value})}>{["Cash","M-Pesa","Bank","Card"].map(x=><option key={x}>{x}</option>)}</select></Field><Field label="Payment reference"><input value={payment.reference} onChange={e=>setPayment({...payment,reference:e.target.value})}/></Field><Field label="Notes"><input value={payment.notes} onChange={e=>setPayment({...payment,notes:e.target.value})}/></Field><button>Record payment</button></form></section></div>}
-      {editing&&<div className="modal record-editor"><section><button className="close" onClick={()=>setEditing(undefined)}>×</button><h2>Edit expense</h2><form className="customer-form" onSubmit={saveEdit}><Field label="Category"><input required value={editing.category} onChange={e=>setEditing({...editing,category:e.target.value})}/></Field><Field label="Description"><input required value={editing.description} onChange={e=>setEditing({...editing,description:e.target.value})}/></Field><Field label="Supplier / payee"><input value={editing.payee||""} onChange={e=>setEditing({...editing,payee:e.target.value})}/></Field><Field label="Reference"><input value={editing.reference||""} onChange={e=>setEditing({...editing,reference:e.target.value})}/></Field><Field label="Due date"><input type="date" value={editing.dueDate||""} onChange={e=>setEditing({...editing,dueDate:e.target.value})}/></Field><Field label="Tax"><input type="number" min="0" value={editing.taxAmount||0} onChange={e=>setEditing({...editing,taxAmount:+e.target.value})}/></Field><Field label="Notes"><input value={editing.notes||""} onChange={e=>setEditing({...editing,notes:e.target.value})}/></Field><Field label="Reason for change"><input required value={editing.reason} onChange={e=>setEditing({...editing,reason:e.target.value})}/></Field><label><input type="checkbox" checked={editing.recurring} onChange={e=>setEditing({...editing,recurring:e.target.checked})}/> Recurring</label><label><input type="checkbox" checked={editing.active} onChange={e=>setEditing({...editing,active:e.target.checked})}/> Active (clear to archive)</label><button>Save controlled change</button></form></section></div>}
+      {editing&&<div className="modal record-editor"><section><button className="close" onClick={()=>setEditing(undefined)}>×</button><h2>Edit expense</h2><form className="customer-form" onSubmit={saveEdit}><Field label="Expense date"><input required type="date" value={editing.date} onChange={e=>setEditing({...editing,date:e.target.value})}/></Field><Field label="Category"><input required value={editing.category} onChange={e=>setEditing({...editing,category:e.target.value})}/></Field><Field label="Description"><input required value={editing.description} onChange={e=>setEditing({...editing,description:e.target.value})}/></Field><Field label="Amount"><input required type="number" min={editing.paidAmount||0.01} step="0.01" value={editing.amount} onChange={e=>setEditing({...editing,amount:+e.target.value})}/></Field><Field label="Payment method"><select required value={editing.method} onChange={e=>setEditing({...editing,method:e.target.value})}>{["Cash","M-Pesa","Bank","Credit","Other"].map(x=><option key={x}>{x}</option>)}</select></Field><Field label="Supplier / payee"><input value={editing.payee||""} onChange={e=>setEditing({...editing,payee:e.target.value})}/></Field><Field label="Reference"><input value={editing.reference||""} onChange={e=>setEditing({...editing,reference:e.target.value})}/></Field><Field label="Due date"><input type="date" value={editing.dueDate||""} onChange={e=>setEditing({...editing,dueDate:e.target.value})}/></Field><Field label="Tax"><input type="number" min="0" value={editing.taxAmount||0} onChange={e=>setEditing({...editing,taxAmount:+e.target.value})}/></Field><Field label="Notes"><input value={editing.notes||""} onChange={e=>setEditing({...editing,notes:e.target.value})}/></Field><Field label="Reason for change"><input required value={editing.reason} onChange={e=>setEditing({...editing,reason:e.target.value})}/></Field><label><input type="checkbox" checked={editing.recurring} onChange={e=>setEditing({...editing,recurring:e.target.checked})}/> Recurring</label><label><input type="checkbox" checked={editing.active} onChange={e=>setEditing({...editing,active:e.target.checked})}/> Active (clear to archive)</label><button>Save controlled change</button></form></section></div>}
     </Page>
   );
 }
@@ -869,12 +872,13 @@ function Staff({ notify }: { notify: (x: string) => void }) {
   );
 }
 function ItemSetup({ products,user,notify }: {products:Product[];user:{role:string}; notify: (x: string) => void }) {
+  const industry=profileFor(cachedOrganizationSettings().industryProfile),defaultCategory=industry.itemCategories[0];
   const [editing,setEditing]=useState<any>();
   const [bulkRows,setBulkRows]=useState<any[]>([]),[bulkErrors,setBulkErrors]=useState<{row:number;errors:string[]}[]>([]),[duplicatePolicy,setDuplicatePolicy]=useState("Skip"),[importing,setImporting]=useState(false),[bulkResult,setBulkResult]=useState<any>();
   const [importBatches,setImportBatches]=useState<any[]>([]);const loadBatches=()=>getProductImportBatches().then(setImportBatches).catch(()=>setImportBatches([]));useEffect(()=>{void loadBatches()},[]);
   const [form, setForm] = useState({
     name: "",
-    category: "Beer",
+    category: defaultCategory,
     barcode: "",
     unit: "item",
     packageQuantity: 1,
@@ -894,7 +898,7 @@ function ItemSetup({ products,user,notify }: {products:Product[];user:{role:stri
     try {
       const p = await createProduct(form);
       await db.products.put(p);
-      setForm({name:"",category:"Beer",barcode:"",unit:"item",packageQuantity:1,packageUnit:"item",trackingMode:"Discrete",brand:"",supplier:"",taxRate:0,costPrice:0,sellingPrice:0,stock:0,minStock:0,sellable:true});dispatchEvent(new Event("dukora:attention"));notify("Item created successfully");
+      setForm({name:"",category:defaultCategory,barcode:"",unit:"item",packageQuantity:1,packageUnit:"item",trackingMode:"Discrete",brand:"",supplier:"",taxRate:0,costPrice:0,sellingPrice:0,stock:0,minStock:0,sellable:true});dispatchEvent(new Event("dukora:attention"));notify("Item created successfully");
     } catch (e) {
       notify(e instanceof Error?e.message:"Item could not be created");
     }
@@ -907,7 +911,7 @@ function ItemSetup({ products,user,notify }: {products:Product[];user:{role:stri
     <Page>
       <Intro
         title="Item setup"
-        text="Add anything sold or consumed across the bar, café and kitchen."
+        text={`Add anything sold, stocked or consumed by this ${industry.name.toLowerCase()} business. Suggested categories adapt to the selected industry.`}
       />
       <Two>
         <Panel title="New item">
@@ -924,16 +928,7 @@ function ItemSetup({ products,user,notify }: {products:Product[];user:{role:stri
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
               >
-                {[
-                  "Beer",
-                  "Spirits",
-                  "Coffee",
-                  "Soft drinks",
-                  "Food",
-                  "Bakery",
-                  "Kitchen consumable",
-                  "Operations",
-                ].map((x) => (
+                {industry.itemCategories.map((x) => (
                   <option key={x}>{x}</option>
                 ))}
               </select>
@@ -1007,21 +1002,14 @@ function ItemSetup({ products,user,notify }: {products:Product[];user:{role:stri
             <button className="save-item">Save item</button>
           </form>
         </Panel>
-        <Panel title="Category guide">
+        <Panel title={`${industry.name} category guide`}>
           <div className="category-guide">
-            {[
-              ["B", "Beer & cider", "Bottles, cans, draught"],
-              ["S", "Spirits & wine", "Bottles, shots, glasses"],
-              ["C", "Coffee & tea", "Beans, servings, add-ons"],
-              ["F", "Food & bakery", "Meals, snacks, pastries"],
-              ["K", "Kitchen", "Milk, oil, ingredients"],
-              ["O", "Operations", "Tissue, gas, cleaning"],
-            ].map((x) => (
-              <p key={x[0]}>
-                <i>{x[0]}</i>
+            {industry.itemCategories.map((name) => (
+              <p key={name}>
+                <i>{name.slice(0,1).toUpperCase()}</i>
                 <span>
-                  <b>{x[1]}</b>
-                  <small>{x[2]}</small>
+                  <b>{name}</b>
+                  <small>Suggested for {industry.name.toLowerCase()}</small>
                 </span>
               </p>
             ))}
@@ -1055,6 +1043,7 @@ function Settings({
   const [navigationLayout,setNavigationLayout]=useState(localStorage.getItem("navigation_layout")??"Vertical");
   const [displayScale, setDisplayScale] = useState<DisplayScaleName>(storedDisplayScale());
   const [organization,setOrganization]=useState<OrganizationSettings>(defaultOrganizationSettings);
+  const selectedIndustry=profileFor(organization.industryProfile),selectedModules=enabledModules(organization.enabledModules);
   const [receiptConfig,setReceiptConfig]=useState<ReceiptSettings>(defaultReceiptSettings);
   const [branches,setBranches]=useState<any[]>([]),[terminals,setTerminals]=useState<any[]>([]);
   const [branchForm,setBranchForm]=useState({name:"",code:"",address:"",phone:"",active:true});
@@ -1101,6 +1090,7 @@ function Settings({
     notify("Terminal connection and update channel saved");
   }
   async function persistOrganization(){try{const saved=await saveOrganization(organization);setOrganization(saved);localStorage.setItem("organization_profile",JSON.stringify(saved));localStorage.setItem("business_name",saved.name);notify("Shared business profile saved")}catch(e){notify(e instanceof Error?e.message:"Business profile could not be saved")}}
+  async function persistIndustry(){if(user.role!=="Owner"){notify("Only the Owner can change industry and enabled modules");return}try{const saved=await saveIndustryConfiguration({industryProfile:organization.industryProfile,businessCategory:organization.businessCategory||selectedIndustry.categories[0],enabledModules:Array.from(selectedModules)});setOrganization(saved);localStorage.setItem("organization_profile",JSON.stringify(saved));dispatchEvent(new CustomEvent("dukora:industry-profile",{detail:saved}));notify("Industry, terminology and enabled modules saved across the institution")}catch(e){notify(e instanceof Error?e.message:"Industry configuration could not be saved")}}
   async function persistReceipt(){try{const saved=await saveReceiptConfiguration(receiptConfig);setReceiptConfig(saved);localStorage.setItem("receipt_configuration",JSON.stringify(saved));localStorage.setItem("receipt_footer",saved.footer);notify("Shared receipt configuration saved")}catch(e){notify(e instanceof Error?e.message:"Receipt configuration could not be saved")}}
   async function persistInsights(){try{const saved=await saveInsightsSettings(insightsConfig);setInsightsConfig(current=>({...current,...saved,apiKey:"",clearApiKey:false}));notify(saved.enabled&&saved.apiKeyConfigured?"AI insights provider saved and encrypted":"Rule-based Smart Insights remains active")}catch(e){notify(e instanceof Error?e.message:"Owner authorization is required")}}
   async function persistBranch(){try{const saved=await saveBranch(branchForm);const data=await getSettings();setBranches(data.branches);setBranchForm({name:"",code:"",address:"",phone:"",active:true});if(!branchId)setBranchId(saved.id);notify("Branch saved")}catch(e){notify(e instanceof Error?e.message:"Branch could not be saved")}}
@@ -1185,7 +1175,11 @@ function Settings({
           <div className="settings-fields">
             <Field label="Trading name"><input value={organization.name} onChange={(e)=>setOrganization({...organization,name:e.target.value})}/></Field>
             <Field label="Legal name"><input value={organization.legalName||""} onChange={(e)=>setOrganization({...organization,legalName:e.target.value})}/></Field>
-            <Field label="Industry profile"><select value={organization.industryProfile} onChange={(e)=>setOrganization({...organization,industryProfile:e.target.value})}><option value="BarCafe">Bar & café</option><option value="Restaurant">Restaurant</option><option value="Bakery">Bakery & cakes</option><option value="Retail">General retail</option><option value="Services">Services</option><option value="Hotel">Hotel</option><option value="Custom">Custom</option></select></Field>
+            <Field label="Industry"><select value={organization.industryProfile} onChange={(e)=>{const profile=profileFor(e.target.value);setOrganization({...organization,industryProfile:profile.key,businessCategory:profile.categories[0],enabledModules:profile.defaultModules.join(',')})}}>{industryProfiles.map(x=><option key={x.key} value={x.key}>{x.name}</option>)}</select></Field>
+            <Field label="Business category"><select value={organization.businessCategory||selectedIndustry.categories[0]} onChange={e=>setOrganization({...organization,businessCategory:e.target.value})}>{selectedIndustry.categories.map(x=><option key={x} value={x}>{categoryLabel(x)}</option>)}</select></Field>
+            <div className="module-selector"><b>Enabled operational modules</b><small>Core sales, inventory and expenses remain enabled for data integrity.</small>{[{key:"sales",name:"Sales & POS",locked:true},{key:"inventory",name:"Inventory",locked:true},{key:"expenses",name:"Expenses",locked:true},{key:"production",name:selectedIndustry.productionLabel},{key:"reports",name:"Reports"},{key:"ai",name:"Smart Insights"}].map(m=><label key={m.key}><input type="checkbox" disabled={m.locked} checked={selectedModules.has(m.key)} onChange={e=>{const next=new Set(selectedModules);e.target.checked?next.add(m.key):next.delete(m.key);setOrganization({...organization,enabledModules:Array.from(next).join(',')})}}/> {m.name}</label>)}</div>
+            <div className="industry-preview"><b>Industry terminology</b><small>{selectedIndustry.inputLabel} · {selectedIndustry.productionHelp}</small></div>
+            <button className="outline-button" onClick={persistIndustry}>Save industry & modules</button>
             <Field label="Currency"><select value={organization.currency} onChange={(e)=>setOrganization({...organization,currency:e.target.value})}><option>KES</option><option>USD</option><option>UGX</option><option>TZS</option></select></Field>
             <Field label="Tagline"><input value={organization.tagline||""} onChange={(e)=>setOrganization({...organization,tagline:e.target.value})}/></Field>
             <Field label="Phone"><input value={organization.phone||""} onChange={(e)=>setOrganization({...organization,phone:e.target.value})}/></Field>

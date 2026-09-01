@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { bootstrap, getBills, getLoginStaff, getNotifications, holdBill, login, postBill, session, syncOutbox, updateBill } from "./api";
+import { bootstrap, getBills, getLoginStaff, getNotifications, getSettings, holdBill, login, postBill, session, syncOutbox, updateBill } from "./api";
 import {
   db,
   queueCustomer,
@@ -10,7 +10,8 @@ import {
   type Staff,
 } from "./db";
 import { Management } from "./Management";
-import { buildSaleReceipt, cachedReceiptSettings, printReceiptText } from "./receiptPrinter";
+import { buildSaleReceipt, cachedOrganizationSettings, cachedReceiptSettings, printReceiptText } from "./receiptPrinter";
+import { enabledModules, profileFor } from "./industryProfiles";
 import { APP_VERSION } from "./version";
 import "./App.css";
 
@@ -41,6 +42,7 @@ export default function App() {
     [readNotificationFingerprint,setReadNotificationFingerprint]=useState(localStorage.getItem("notification_read")||""),
     [alertsOpen,setAlertsOpen]=useState(false),
     [navigationLayout,setNavigationLayout]=useState(localStorage.getItem("navigation_layout")||"Vertical"),
+    [organizationProfile,setOrganizationProfile]=useState(cachedOrganizationSettings()),
     [expandedGroups,setExpandedGroups]=useState<Record<string,boolean>>({Operations:false,"Data & Setup":false}),
     [collapsed, setCollapsed] = useState(
       localStorage.getItem("sidebar_collapsed") === "true",
@@ -57,15 +59,17 @@ export default function App() {
     const change = () => setOnline(navigator.onLine);
     addEventListener("online", change);
     addEventListener("offline", change);
-    const navigationChanged=(event:Event)=>setNavigationLayout((event as CustomEvent<string>).detail);addEventListener("dukora:navigation-layout",navigationChanged);
+    const navigationChanged=(event:Event)=>setNavigationLayout((event as CustomEvent<string>).detail);const industryChanged=(event:Event)=>{const next=(event as CustomEvent<any>).detail;setOrganizationProfile(next);const modules=enabledModules(next.enabledModules);setView(current=>(current==="Production"&&!modules.has("production"))||(current==="Reports"&&!modules.has("reports"))||(current==="Smart Insights"&&!modules.has("ai"))?"Dashboard":current)};addEventListener("dukora:navigation-layout",navigationChanged);addEventListener("dukora:industry-profile",industryChanged);
     const timer = setInterval(() => syncOutbox().catch(() => 0), 15000);
     return () => {
       removeEventListener("online", change);
       removeEventListener("offline", change);
       removeEventListener("dukora:navigation-layout",navigationChanged);
+      removeEventListener("dukora:industry-profile",industryChanged);
       clearInterval(timer);
     };
   }, []);
+  useEffect(()=>{if(!user)return;void getSettings().then(settings=>{if(!settings?.organization)return;setOrganizationProfile(settings.organization);localStorage.setItem("organization_profile",JSON.stringify(settings.organization))}).catch(()=>0)},[user?.id]);
   useEffect(()=>{if(!user)return;const refresh=async()=>{const request=++notificationRequest.current;try{const current=await getNotifications();if(request===notificationRequest.current)setNotifications(current)}catch{}};const attention=()=>void refresh();const visible=()=>{if(document.visibilityState==="visible")void refresh()};addEventListener("dukora:attention",attention);addEventListener("focus",attention);document.addEventListener("visibilitychange",visible);void refresh();const timer=setInterval(refresh,10000);return()=>{removeEventListener("dukora:attention",attention);removeEventListener("focus",attention);document.removeEventListener("visibilitychange",visible);clearInterval(timer)}},[user?.id]);
   useEffect(()=>{if(!message)return;const timer=setTimeout(()=>setMessage(""),5000);return()=>clearTimeout(timer)},[message]);
   useEffect(()=>{if(readNotificationFingerprint)localStorage.setItem("notification_read",readNotificationFingerprint)},[readNotificationFingerprint]);
@@ -159,7 +163,8 @@ export default function App() {
     syncOutbox().catch(() => 0);
   }
   const primaryViews=["Sell","Dashboard","Bills","Inventory"];
-  const menuGroups={Operations:["Expense","Production","Reports","Audit trail"],"Data & Setup":["Customers","Staff & Roles","Item Setup"]};
+  const institutionModules=enabledModules(organizationProfile.enabledModules),industry=profileFor(organizationProfile.industryProfile);
+  const menuGroups={Operations:["Expense",...(institutionModules.has("production")?["Production"]:[]),...(institutionModules.has("reports")?["Reports"]:[]),"Audit trail"],"Data & Setup":["Customers","Staff & Roles","Item Setup"]};
   const icons: Record<string, string> = {
     Sell: "▦",
     Dashboard: "◫",
@@ -184,7 +189,7 @@ export default function App() {
   })
     .format(new Date())
     .toUpperCase();
-  const pageTitle = view === "Sell" ? "New sale" : view;
+  const pageTitle = view === "Sell" ? "New sale" : view==="Production"?industry.productionLabel:view;
   function logout() {
     session.clear();
     setCart([]);
@@ -224,7 +229,7 @@ export default function App() {
             </button>
           ))}
           {Object.entries(menuGroups).map(([group,items])=><div className="nav-group" key={group}><button className="nav-group-toggle" aria-expanded={expandedGroups[group]} onClick={()=>setExpandedGroups(x=>({...x,[group]:!x[group]}))}><i>{expandedGroups[group]?"▾":"▸"}</i><span>{group}</span>{items.reduce((sum,x)=>sum+(attention[alertKeys[x]]||0),0)>0&&<em className="menu-alert">{items.reduce((sum,x)=>sum+(attention[alertKeys[x]]||0),0)}</em>}</button>{expandedGroups[group]&&<div className="nav-submenu">{items.map(x=><button className={view===x?"active":""} onClick={()=>setView(x)} key={x}><i>{icons[x]}</i><span>{x}</span>{(attention[alertKeys[x]]||0)>0&&<em className="menu-alert">{attention[alertKeys[x]]}</em>}</button>)}</div>}</div>)}
-          {["Smart Insights","Settings"].map(x=><button className={view===x?"active":""} onClick={()=>setView(x)} key={x}><i>{icons[x]}</i><span>{x}</span>{(attention[alertKeys[x]]||0)>0&&<em className="menu-alert">{attention[alertKeys[x]]}</em>}</button>)}
+          {[...(institutionModules.has("ai")?["Smart Insights"]:[]),"Settings"].map(x=><button className={view===x?"active":""} onClick={()=>setView(x)} key={x}><i>{icons[x]}</i><span>{x}</span>{(attention[alertKeys[x]]||0)>0&&<em className="menu-alert">{attention[alertKeys[x]]}</em>}</button>)}
         </nav>
         <div className="user">
           <span>

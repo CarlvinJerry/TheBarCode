@@ -32,6 +32,8 @@ export async function updateExpense(id:string,value:Record<string,unknown>){retu
 export async function getInsights(from:string,to:string){return request(`/insights?from=${from}&to=${to}`);}
 export async function getSettings(){return request('/settings');}
 export async function saveOrganization(value:Record<string,unknown>){return request('/settings/organization',{method:'PUT',body:JSON.stringify(value)});}
+export async function getIndustryCatalog(){return request('/settings/industry-catalog');}
+export async function saveIndustryConfiguration(value:Record<string,unknown>){return request('/settings/industry',{method:'PUT',body:JSON.stringify(value)});}
 export async function saveReceiptConfiguration(value:Record<string,unknown>){return request('/settings/receipt',{method:'PUT',body:JSON.stringify(value)});}
 export async function saveBranch(value:Record<string,unknown>){return request('/settings/branches',{method:'PUT',body:JSON.stringify(value)});}
 export async function saveTerminalConfiguration(value:Record<string,unknown>){return request('/settings/terminals',{method:'PUT',body:JSON.stringify(value)});}
