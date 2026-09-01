@@ -1,6 +1,10 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.11.4";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.11.5";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Release notes are grouped by topic inside a compact scrollable history",
+  "Bill workspace rebuilt with clear header, line editing, actions, later payment and revision-history sections",
+  "Consistent primary and secondary form actions eliminate browser-default buttons",
+  "Mobile-first modal sheets, 44 px touch targets, 16 px inputs and single-column transaction layouts",
   "Settings are separated into role-aware Appearance, Business, Devices & receipts, Smart Insights and Data protection tabs",
   "Switching Settings tabs keeps in-progress local form values while removing the previous long scrolling page",
   "Every data grid now supports local global search and ascending or descending column sorting",

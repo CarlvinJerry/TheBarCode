@@ -28,6 +28,10 @@ This is the baseline for all new Dukora interfaces. It is informed by Emil Kowal
 22. Establish page rhythm deliberately: keep related heading-to-content gaps tight, add more space between separate groups, and keep row titles compact with line-height rather than oversized padding.
 23. Every operational data grid provides local global search and user-controlled column ordering without discarding its domain-specific default order. Sort indicators are explicit, action columns are not sortable, and empty search results explain the active filter.
 24. Large configuration areas use true task-specific tabs rather than a single anchor-linked scrolling page. Only the active panel is visible, restricted tabs are omitted by role, and switching tabs must not discard unsaved local form state.
+25. Mobile layouts are designed as a primary operating surface, not a scaled desktop. At narrow widths use one clear content column, 44 px minimum touch targets, 16 px form text to prevent browser zoom, bottom-sheet dialogs, and full-width primary actions where appropriate.
+26. Mobile information density remains readable: secondary copy may wrap, transactional values stay visually paired with their labels, and horizontal scrolling is limited to data grids whose columns cannot be responsibly collapsed.
+27. Release histories and other long secondary archives are grouped by topic and bounded inside their own scroll region so they cannot dominate the active task.
+28. Buttons never rely on browser-default rendering. Every action uses the shared primary, secondary, quiet, or danger treatment with a clear label, consistent height, and visible disabled state.
 
 ## Shared tokens
 
@@ -56,3 +60,6 @@ This is the baseline for all new Dukora interfaces. It is informed by Emil Kowal
 - Are related elements closer to each other than they are to the next group?
 - Can every data grid be searched and sorted without changing its authoritative source data or default order?
 - Does a long settings or administration area expose focused tabs instead of forcing users through unrelated sections?
+- At phone width, can the workflow be completed with one thumb without pinching, tiny form text, clipped dialogs, or ambiguous buttons?
+- Are long secondary lists grouped and bounded instead of stretching the primary page?
+- Does every action use a deliberate button treatment rather than native browser defaults?
