@@ -11,4 +11,4 @@ export const industryProfiles:IndustryProfile[]=[
 ];
 export const profileFor=(key?:string)=>industryProfiles.find(x=>x.key===key)||industryProfiles[0];
 export const categoryLabel=(value:string)=>value.replace(/([a-z])([A-Z])/g,"$1 $2");
-export const enabledModules=(value?:string)=>new Set((value||"sales,inventory,expenses,reports,ai,production").split(',').filter(Boolean));
+export const enabledModules=(value?:string)=>new Set((value||"sales,inventory,expenses,reports,ai,production").split(',').map(x=>x.trim().toLowerCase()).filter(Boolean));
