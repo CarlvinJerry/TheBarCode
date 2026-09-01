@@ -1040,6 +1040,7 @@ function Settings({
   const primaryUpdateManifest="https://dukora.beyondrawdata.com/releases/lite/latest.json";
   const fallbackUpdateManifest="https://dukora.beyondrawdata.co.ke/releases/lite/latest.json";
   const [theme, setTheme] = useState(localStorage.getItem("theme") ?? "Forest");
+  const [settingsTab,setSettingsTab]=useState(sessionStorage.getItem("dukora_settings_tab")||"appearance");
   const [navigationLayout,setNavigationLayout]=useState(localStorage.getItem("navigation_layout")??"Vertical");
   const [displayScale, setDisplayScale] = useState<DisplayScaleName>(storedDisplayScale());
   const [organization,setOrganization]=useState<OrganizationSettings>(defaultOrganizationSettings);
@@ -1129,14 +1130,18 @@ function Settings({
   async function backupNow(){setMaintenanceBusy(true);try{const saved=await createMaintenanceBackup();setBackups(await getMaintenanceBackups());notify(`Backup saved locally: ${saved.fileName}`)}catch(e){notify(e instanceof Error?e.message:"Backup could not be created")}finally{setMaintenanceBusy(false)}}
   async function purgeNow(){if(purgeConfirmation!=="PURGE LIVE DATA")return;setMaintenanceBusy(true);try{const result=await purgeLiveData(purgeConfirmation,purgeReason);await purgeLocalLiveData();await bootstrap();setBackups(await getMaintenanceBackups());setPurgeConfirmation("");setPurgeReason("");notify(`Live records purged after backup ${result.backup.fileName}`);dispatchEvent(new CustomEvent("dukora:attention-refresh"))}catch(e){notify(e instanceof Error?e.message:"Live data could not be purged")}finally{setMaintenanceBusy(false)}}
   function restoreBackup(fileName:string){const desktop=(window as any).chrome?.webview;if(!desktop){notify("Restore is available from the installed Dukora desktop app");return}desktop.postMessage({command:"restoreBackup",fileName})}
+  const settingsTabs=[{id:"appearance",label:"Appearance"},{id:"business",label:"Business"},{id:"hardware",label:"Devices & receipts"},...(["Owner","Manager"].includes(user.role)?[{id:"intelligence",label:"Smart Insights"}]:[]),...(user.role==="Owner"?[{id:"data",label:"Data protection"}]:[])];
+  const activeSettingsTab=settingsTabs.some(tab=>tab.id===settingsTab)?settingsTab:"appearance";
+  function selectSettingsTab(id:string){setSettingsTab(id);sessionStorage.setItem("dukora_settings_tab",id)}
   return (
     <Page>
       <Intro
         title="Device & business settings"
         text="Configure this terminal, printer, themes and offline behaviour."
       />
-      <nav className="settings-section-nav" aria-label="Settings sections">{[["settings-appearance","Appearance"],["settings-business","Business"],["settings-hardware","Devices & receipts"],["settings-intelligence","Smart Insights"],["settings-data","Data protection"]].map(([id,label])=><button key={id} onClick={()=>document.getElementById(id)?.scrollIntoView({behavior:"smooth",block:"start"})}>{label}</button>)}</nav>
-      <Panel id="settings-appearance" title="App theme">
+      <div className="settings-tabs" role="tablist" aria-label="Settings categories">{settingsTabs.map(tab=><button key={tab.id} type="button" role="tab" aria-selected={activeSettingsTab===tab.id} aria-controls={`settings-panel-${tab.id}`} className={activeSettingsTab===tab.id?"active":""} onClick={()=>selectSettingsTab(tab.id)}>{tab.label}</button>)}</div>
+      {activeSettingsTab==="appearance"&&<div className="settings-tab-panel" id="settings-panel-appearance" role="tabpanel">
+      <Panel title="App theme">
         <div className="theme-grid">
           {[
             ["Forest", "#153d34"],
@@ -1171,8 +1176,9 @@ function Settings({
         <p className="display-scale-help">Choose a traditional left sidebar or a horizontal top menu. The choice persists on this terminal.</p>
         <div className="navigation-layout-grid">{["Vertical","Horizontal"].map(value=><button className={navigationLayout===value?"active":""} onClick={()=>chooseNavigationLayout(value)} key={value}><b>{value==="Vertical"?"▥":"▤"}</b><span>{value}</span></button>)}</div>
       </Panel>
-      <Two>
-        <Panel id="settings-business" title="Business profile">
+      </div>}
+      {activeSettingsTab==="business"&&<div className="settings-tab-panel" id="settings-panel-business" role="tabpanel"><Two>
+        <Panel title="Business profile">
           <div className="settings-fields">
             <Field label="Trading name"><input value={organization.name} onChange={(e)=>setOrganization({...organization,name:e.target.value})}/></Field>
             <Field label="Legal name"><input value={organization.legalName||""} onChange={(e)=>setOrganization({...organization,legalName:e.target.value})}/></Field>
@@ -1201,9 +1207,9 @@ function Settings({
             <small>Built and maintained by Beyond Raw Data</small>
           </div>
         </Panel>
-      </Two>
-      <Two>
-        <Panel id="settings-hardware" title="Receipt printer">
+      </Two></div>}
+      {activeSettingsTab==="hardware"&&<div className="settings-tab-panel" id="settings-panel-hardware" role="tabpanel"><Two>
+        <Panel title="Receipt printer">
           <div className="device-row">
             <i>▤</i>
             <span>
@@ -1298,20 +1304,19 @@ function Settings({
         </div>
         <button className="outline-button" onClick={persistReceipt}>Save shared receipt configuration</button>
       </Panel>
-      {["Owner","Manager"].includes(user.role)&&<Panel id="settings-intelligence" title="Smart Insights provider">
+      </div>}
+      {activeSettingsTab==="intelligence"&&["Owner","Manager"].includes(user.role)&&<div className="settings-tab-panel" id="settings-panel-intelligence" role="tabpanel"><Panel title="Smart Insights provider">
         <p className="muted">Optional server-side chat model configuration. The key is encrypted before storage and is never returned to the browser. If this is disabled or unavailable, Dukora automatically uses its deterministic business rule engine.</p>
         <div className="receipt-config-grid"><Field label="HTTPS chat-completions endpoint"><input value={insightsConfig.endpoint} onChange={e=>setInsightsConfig({...insightsConfig,endpoint:e.target.value})}/></Field><Field label="Model"><input value={insightsConfig.model} onChange={e=>setInsightsConfig({...insightsConfig,model:e.target.value})}/></Field><Field label={insightsConfig.apiKeyConfigured?"Replace API key (configured)":"API key"}><input type="password" autoComplete="new-password" value={insightsConfig.apiKey} onChange={e=>setInsightsConfig({...insightsConfig,apiKey:e.target.value})}/></Field></div>
         <div className="receipt-toggles"><label><input type="checkbox" checked={insightsConfig.enabled} onChange={e=>setInsightsConfig({...insightsConfig,enabled:e.target.checked})}/> Enable configured AI provider</label><label><input type="checkbox" checked={insightsConfig.allowUserNames} onChange={e=>setInsightsConfig({...insightsConfig,allowUserNames:e.target.checked})}/> Allow staff names in operational activity summaries</label><label><input type="checkbox" checked={insightsConfig.clearApiKey} onChange={e=>setInsightsConfig({...insightsConfig,clearApiKey:e.target.checked})}/> Remove saved API key</label></div><button className="outline-button" onClick={persistInsights}>Save Smart Insights configuration</button>
-      </Panel>}
-      {user.role === "Owner" && (
-        <Panel id="settings-data" title="Data protection & purge">
+      </Panel></div>}
+      {activeSettingsTab==="data"&&user.role === "Owner" && <div className="settings-tab-panel" id="settings-panel-data" role="tabpanel">
+        <Panel title="Data protection & purge">
           <p className="muted">Create local database backups, restore an earlier snapshot, or remove live business records before handover. Purge always creates and verifies a backup first. Staff accounts, business settings, terminals, receipt settings and the separate Demo environment are preserved.</p>
           <div className="button-row"><button disabled={maintenanceBusy} onClick={backupNow}>{maintenanceBusy?"Working…":"Back up now"}</button></div>
           <div className="setting-list">{backups.length===0?<span><small>No manual backups yet</small></span>:backups.slice(0,10).map(x=><span key={x.fileName}><b>{new Date(x.createdAt).toLocaleString()}</b><small>{x.fileName} · {(Number(x.sizeBytes)/1048576).toFixed(1)} MB</small><button className="table-action" disabled={maintenanceBusy} onClick={()=>restoreBackup(x.fileName)}>Restore</button></span>)}</div>
           <div className="settings-fields purge-controls"><Field label="Reason for purge"><input value={purgeReason} onChange={e=>setPurgeReason(e.target.value)} placeholder="For example: remove pre-launch test entries"/></Field><Field label="Type PURGE LIVE DATA to confirm"><input value={purgeConfirmation} onChange={e=>setPurgeConfirmation(e.target.value)} autoComplete="off"/></Field><button className="danger-button" disabled={maintenanceBusy||purgeConfirmation!=="PURGE LIVE DATA"} onClick={purgeNow}>{maintenanceBusy?"Backing up and purging…":"Back up, then purge live records"}</button></div>
         </Panel>
-      )}
-      {user.role === "Owner" && (
         <Panel title="Demo environment">
           <p className="muted">
             Demo records are marked separately from real data and the offline
@@ -1324,7 +1329,7 @@ function Settings({
             </button>
           </div>
         </Panel>
-      )}
+      </div>}
     </Page>
   );
 }

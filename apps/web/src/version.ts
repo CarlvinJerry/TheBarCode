@@ -1,6 +1,8 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.11.3";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.11.4";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Settings are separated into role-aware Appearance, Business, Devices & receipts, Smart Insights and Data protection tabs",
+  "Switching Settings tabs keeps in-progress local form values while removing the previous long scrolling page",
   "Every data grid now supports local global search and ascending or descending column sorting",
   "Existing business-specific default ordering is preserved until a user chooses a sort column",
   "Removed decorative card-edge strips and active-menu rails in favor of quiet selected surfaces",
