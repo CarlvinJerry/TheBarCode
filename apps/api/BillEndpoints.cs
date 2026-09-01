@@ -12,6 +12,8 @@ public static class BillEndpoints
     {
         var api = app.MapGroup("/api").RequireAuthorization();
 
+        api.MapGet("/auth/permissions", (ClaimsPrincipal principal) => Results.Ok(new { permissions = principal.Claims.Where(c=>c.Type=="permission").Select(c=>c.Value).Distinct().OrderBy(x=>x).ToArray() }));
+
         api.MapGet("/settings/insights",async(AppDbContext db)=>{var x=await db.InsightsConfigurations.FirstAsync();return Results.Ok(new{x.Enabled,x.Endpoint,x.Model,apiKeyConfigured=!string.IsNullOrWhiteSpace(x.EncryptedApiKey),x.AllowUserNames});}).RequireAuthorization(p=>p.RequireRole("Owner","Manager"));
         api.MapPut("/settings/insights",async(InsightsSettingsRequest r,AppDbContext db,ClaimsPrincipal principal,SecretProtector protector)=>{if(!Uri.TryCreate(r.Endpoint,UriKind.Absolute,out var uri)||uri.Scheme!="https"||string.IsNullOrWhiteSpace(r.Model))return Results.BadRequest(new{error="A valid HTTPS endpoint and model are required"});var x=await db.InsightsConfigurations.FirstAsync();x.Enabled=r.Enabled;x.Endpoint=r.Endpoint.Trim();x.Model=r.Model.Trim();x.AllowUserNames=r.AllowUserNames;if(r.ClearApiKey)x.EncryptedApiKey=null;else if(!string.IsNullOrWhiteSpace(r.ApiKey))x.EncryptedApiKey=protector.Protect(r.ApiKey.Trim());x.UpdatedAt=DateTimeOffset.UtcNow;db.AuditEvents.Add(Audit(principal,"Updated",x.Id,"InsightsConfiguration",$"Enabled {x.Enabled}; model {x.Model}; user names {x.AllowUserNames}"));await db.SaveChangesAsync();return Results.Ok(new{x.Enabled,x.Endpoint,x.Model,apiKeyConfigured=!string.IsNullOrWhiteSpace(x.EncryptedApiKey),x.AllowUserNames});}).RequireAuthorization(p=>p.RequireRole("Owner"));
 
@@ -241,6 +243,18 @@ public static class BillEndpoints
         {
             if (!HasRole(principal,"Owner")) return Denied("Only the Owner can change staff accounts and roles.");var x=await db.Staff.FindAsync(id);if(x is null)return Results.NotFound();if(string.IsNullOrWhiteSpace(r.Reason))return Results.BadRequest(new{error="A reason is required"});x.Name=r.Name.Trim();x.Role=r.Role;x.Active=r.Active;if(!string.IsNullOrWhiteSpace(r.NewPin)){if(r.NewPin.Length<6)return Results.BadRequest(new{error="PIN must be at least 6 characters"});x.PinHash=Security.HashPin(r.NewPin);}x.UpdatedAt=DateTimeOffset.UtcNow;db.AuditEvents.Add(Audit(principal,"Updated",x.Id,"Staff",r.Reason));await db.SaveChangesAsync();return Results.Ok(new{x.Id,x.Name,x.Role,x.Active,x.UpdatedAt});
         });
+        api.MapGet("/staff/access", async (AppDbContext db, ClaimsPrincipal principal) => { if (!Security.HasRole(principal, "Owner")) return Results.Forbid(); return Results.Ok(await db.Staff.OrderBy(x=>x.Name).Select(x=>new { x.Id,x.Name,x.Role,x.Active,x.CreatedAt,x.Permissions }).ToListAsync()); }).RequireAuthorization();
+        api.MapPut("/staff/{id:guid}/permissions", async (Guid id, PermissionUpdateRequest r, AppDbContext db, ClaimsPrincipal principal) =>
+        {
+            if (!Security.HasRole(principal, "Owner")) return Denied("Only the Owner can change staff permissions.");
+            var user = await db.Staff.FindAsync(id); if (user is null) return Results.NotFound();
+            if (string.IsNullOrWhiteSpace(r.Reason)) return Results.BadRequest(new { error = "A reason is required" });
+            var normalized = Security.ParsePermissions(r.Permissions);
+            var before = user.Permissions; user.Permissions = string.Join(',', normalized.OrderBy(x => x)); user.UpdatedAt = DateTimeOffset.UtcNow;
+            db.AuditEvents.Add(Audit(principal, "Updated", user.Id, "StaffPermissions", $"{user.Name}: {before} → {user.Permissions}; {r.Reason}"));
+            await db.SaveChangesAsync();
+            return Results.Ok(new { user.Id, user.Name, user.Role, user.Active, permissions = normalized });
+        }).RequireAuthorization();
     }
 
     static async Task<Dictionary<Guid, Product>?> Products(IEnumerable<BillLineRequest> lines, AppDbContext db,bool demo)

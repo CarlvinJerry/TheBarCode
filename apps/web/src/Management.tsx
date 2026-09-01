@@ -35,6 +35,7 @@ import {
   bulkImportProducts,
   createProduct,
   createStaff,
+  updateStaffPermissions,
   getAudit,
   getCustomerSummary,
   getProductionExpenses,
@@ -82,6 +83,7 @@ import {
   getAccountingTrialBalance,
   getAccountingJournals,
 } from "./api";
+const canAccess=(user:any,key:string)=>user?.role==="Owner"||user?.permissions?.includes(key)||((({Manager:["reports","approvals","accounting","audit","expenses","inventory"],Auditor:["reports","audit","accounting"],Storekeeper:["inventory"],Cashier:["sales","expenses"]} as Record<string,string[]>)[user?.role]||[]).includes(key));
 import { categoryLabel, enabledModules, industryProfiles, profileFor } from "./industryProfiles";
 import {
   db,
@@ -801,6 +803,7 @@ function Audit({user}:{user:{role:string}}) {
   );
 }
 function Staff({ notify }: { notify: (x: string) => void }) {
+  const canEditPermissions=canAccess({role:"Owner"},"staff");
   const [rows, setRows] = useState<any[]>([]),
     [open, setOpen] = useState(false),
     [form, setForm] = useState({ name: "", pin: "", role: "Cashier" }),[editing,setEditing]=useState<any>();
@@ -822,7 +825,7 @@ function Staff({ notify }: { notify: (x: string) => void }) {
       notify(e instanceof Error?e.message:"Staff account could not be created");
     }
   }
-  async function saveEdit(e:FormEvent){e.preventDefault();try{await updateStaff(editing.id,{name:editing.name,role:editing.role,active:editing.active,newPin:editing.newPin||null,reason:editing.reason});setEditing(undefined);await load();notify("Staff access updated and audited")}catch(e){notify(e instanceof Error?e.message:"Staff access could not be updated")}}
+  async function saveEdit(e:FormEvent){e.preventDefault();if(!canEditPermissions)return;try{await updateStaff(editing.id,{name:editing.name,role:editing.role,active:editing.active,newPin:editing.newPin||null,reason:editing.reason});await updateStaffPermissions(editing.id,editing.permissions||[],editing.reason);setEditing(undefined);await load();notify("Staff access updated and audited")}catch(e){notify(e instanceof Error?e.message:"Staff access could not be updated")}}
   return (
     <Page>
       <Intro
@@ -879,8 +882,8 @@ function Staff({ notify }: { notify: (x: string) => void }) {
           </article>
         ))}
       </div>
-      <Panel title="Team & access"><Table heads={["Name","Role","Discount","Stock","Reports","Status","Action"]} rows={rows.map(x=>[x.name,x.role,x.role==="Owner"||x.role==="Manager"?"Yes":"No",x.role==="Owner"||x.role==="Storekeeper"?"Yes":"No",x.role==="Owner"||x.role==="Manager"?"Yes":"No",x.active?"Active":"Inactive",<button key={`staff-${x.id}`} className="table-action" onClick={()=>setEditing({...x,newPin:"",reason:""})}>Edit</button>])}/></Panel>
-      {editing&&<div className="modal record-editor"><section><button className="close" onClick={()=>setEditing(undefined)}>×</button><h2>Edit staff access</h2><form className="customer-form" onSubmit={saveEdit}><Field label="Name"><input required value={editing.name} onChange={e=>setEditing({...editing,name:e.target.value})}/></Field><Field label="Role"><select value={editing.role} onChange={e=>setEditing({...editing,role:e.target.value})}>{["Cashier","Storekeeper","Manager","Auditor","Owner"].map(x=><option key={x}>{x}</option>)}</select></Field><Field label="New PIN (optional)"><input type="password" minLength={6} value={editing.newPin} onChange={e=>setEditing({...editing,newPin:e.target.value})}/></Field><Field label="Reason"><input required value={editing.reason} onChange={e=>setEditing({...editing,reason:e.target.value})}/></Field><label><input type="checkbox" checked={editing.active} onChange={e=>setEditing({...editing,active:e.target.checked})}/> Active (clear to deactivate)</label><button>Save access change</button></form></section></div>}
+      <Panel title="Team & access"><Table heads={["Name","Role","Discount","Stock","Reports","Status","Action"]} rows={rows.map(x=>[x.name,x.role,x.role==="Owner"||x.role==="Manager"?"Yes":"No",x.role==="Owner"||x.role==="Storekeeper"?"Yes":"No",x.role==="Owner"||x.role==="Manager"?"Yes":"No",x.active?"Active":"Inactive",<button key={`staff-${x.id}`} className="table-action" onClick={()=>setEditing({...x,permissions:typeof x.permissions==="string"?x.permissions.split(",").filter(Boolean):[],newPin:"",reason:""})}>Edit</button>])}/></Panel>
+      {editing&&<div className="modal record-editor"><section><button className="close" onClick={()=>setEditing(undefined)}>×</button><h2>Edit staff access</h2><form className="customer-form" onSubmit={saveEdit}><Field label="Name"><input required value={editing.name} onChange={e=>setEditing({...editing,name:e.target.value})}/></Field><Field label="Role"><select value={editing.role} onChange={e=>setEditing({...editing,role:e.target.value})}>{["Cashier","Storekeeper","Manager","Auditor","Owner"].map(x=><option key={x}>{x}</option>)}</select></Field><Field label="New PIN (optional)"><input type="password" minLength={6} value={editing.newPin} onChange={e=>setEditing({...editing,newPin:e.target.value})}/></Field><Field label="Reason"><input required value={editing.reason} onChange={e=>setEditing({...editing,reason:e.target.value})}/></Field><fieldset><legend>Additional capabilities</legend>{[["reports","Reports"],["approvals","Bill approvals"],["accounting","Accounting"],["audit","Audit trail"],["expenses","Expenses"],["inventory","Inventory"],["staff","Staff administration"],["settings","Settings"]].map(([key,label])=><label key={key}><input type="checkbox" checked={(editing.permissions||[]).includes(key)} onChange={e=>setEditing({...editing,permissions:e.target.checked?[...(editing.permissions||[]),key]:(editing.permissions||[]).filter((x:string)=>x!==key)})}/>{label}</label>)}</fieldset><label><input type="checkbox" checked={editing.active} onChange={e=>setEditing({...editing,active:e.target.checked})}/> Active (clear to deactivate)</label><button>Save access change</button></form></section></div>}
     </Page>
   );
 }

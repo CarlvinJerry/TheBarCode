@@ -4,7 +4,7 @@ export const session={get token(){return localStorage.getItem('barcode_token')??
 async function request(path:string,init?:RequestInit){const response=await fetch(configuredBase()+path,{...init,headers:{'Content-Type':'application/json',...(session.token?{Authorization:`Bearer ${session.token}`}:{}) ,...init?.headers}});if(!response.ok){const raw=await response.text();let reason="";try{const body=JSON.parse(raw);reason=body.error||body.detail||body.title||""}catch{reason=raw}if(!reason)reason=response.status===403?"You do not have permission to perform this action with the current account.":response.status===401?"Your session expired. Sign in again.":`Request failed (${response.status}).`;throw new Error(reason)}const result=response.status===204?null:await response.json();const method=(init?.method||'GET').toUpperCase();if(method!=='GET'&&!path.startsWith('/auth/'))dispatchEvent(new CustomEvent('thebarcode:data-changed',{detail:{path,method,at:Date.now()}}));return result;}
 export async function bootstrap(){const data=await request('/bootstrap');await saveBootstrap(data);return data;}
 export async function getLoginStaff(){const staff=await request('/auth/staff');await saveLoginStaff(staff);return staff;}
-export async function login(staffId:string,pin:string){const result=await request('/auth/login',{method:'POST',body:JSON.stringify({staffId,pin})});session.set(result.token,result.user);return result.user;}
+export async function login(staffId:string,pin:string){const result=await request('/auth/login',{method:'POST',body:JSON.stringify({staffId,pin})});session.set(result.token,result.user);try{const access=await request('/auth/permissions');result.user={...result.user,permissions:access.permissions};session.set(result.token,result.user);}catch{}return result.user;}
 export async function syncOutbox(){if(!navigator.onLine||!session.token)return 0;const demo=Boolean(session.user?.isDemo),rows=(await db.outbox.toArray()).filter(x=>Boolean(x.payload?.isDemo)===demo);let synced=0;for(const row of rows){try{if(row.type==='sale')await request('/sales/sync',{method:'POST',body:JSON.stringify({...row.payload,items:row.payload.items.map((x:any)=>({productId:x.productId,quantity:x.quantity,unitPrice:x.unitPrice,discount:x.discount}))})});if(row.type==='customer')await request('/customers',{method:'POST',body:JSON.stringify(row.payload)});if(row.type==='stock')await request('/stock-movements',{method:'POST',body:JSON.stringify(row.payload)});await db.outbox.delete(row.id!);if(row.type==='sale')await db.sales.update(row.payload.deviceTransactionId,{synced:true});synced++;}catch(error){await db.outbox.update(row.id!,{attempts:row.attempts+1,lastError:String(error)})}}return synced;}
 export async function createProduct(product:Record<string,unknown>){return request('/products/single',{method:'POST',body:JSON.stringify(product)});}
 export async function bulkImportProducts(value:Record<string,unknown>){return request('/products/bulk-import',{method:'POST',body:JSON.stringify(value)});}
@@ -13,7 +13,7 @@ export async function reverseProductImport(id:string){return request(`/products/
 export async function getSummary(from:string,to:string){return request(`/reports/accurate?from=${from}&to=${to}`);}
 export async function createExpense(expense:Record<string,unknown>){return request('/expenses',{method:'POST',body:JSON.stringify(expense)});}
 export async function getAudit(){return request('/audit/live?take=500');}
-export async function getStaff(){return request('/staff');}
+export async function getStaff(){return request('/staff/access');}
 export async function createStaff(staff:Record<string,unknown>){return request('/staff',{method:'POST',body:JSON.stringify(staff)});}
 export async function resetDemo(){return request('/demo/reset',{method:'POST'});}
 export async function removeDemo(){return request('/demo',{method:'DELETE'});}
@@ -51,6 +51,7 @@ export async function getNotifications(){const x=await request('/notifications')
 export async function updateProduct(id:string,value:Record<string,unknown>){return request(`/products/${id}`,{method:'PUT',body:JSON.stringify(value)});}
 export async function updateCustomer(id:string,value:Record<string,unknown>){return request(`/customers/${id}`,{method:'PUT',body:JSON.stringify(value)});}
 export async function updateStaff(id:string,value:Record<string,unknown>){return request(`/staff/${id}`,{method:'PUT',body:JSON.stringify(value)});}
+export async function updateStaffPermissions(id:string,permissions:string[],reason:string){return request(`/staff/${id}/permissions`,{method:'PUT',body:JSON.stringify({permissions:permissions.join(','),reason})});}
 export async function getInsightsSettings(){return request('/settings/insights');}
 export async function saveInsightsSettings(value:Record<string,unknown>){return request('/settings/insights',{method:'PUT',body:JSON.stringify(value)});}
 export async function getModules(){return request('/modules');}
