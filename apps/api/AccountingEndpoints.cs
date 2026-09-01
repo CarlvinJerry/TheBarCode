@@ -5,7 +5,7 @@ public static class AccountingEndpoints
 {
  public static void MapAccountingApi(this WebApplication app)
  {
-  var api=app.MapGroup("/api/accounting").RequireAuthorization();
+  var api=app.MapGroup("/api/accounting").RequireAuthorization().RequireModule("accounting");
   api.MapGet("/accounts",async(AppDbContext db,ClaimsPrincipal p)=>await db.LedgerAccounts.AsNoTracking().Where(x=>x.IsDemo==Security.IsDemo(p)&&x.Active).OrderBy(x=>x.Code).ToListAsync());
   api.MapGet("/periods",async(AppDbContext db,ClaimsPrincipal p)=>await db.AccountingPeriods.AsNoTracking().Where(x=>x.IsDemo==Security.IsDemo(p)).OrderByDescending(x=>x.Start).ToListAsync());
   api.MapGet("/overview",async(DateOnly? from,DateOnly? to,AppDbContext db,ClaimsPrincipal p)=>{
