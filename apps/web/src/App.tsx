@@ -238,11 +238,11 @@ export default function App() {
             <Icon name="Logout" size={14}/> <b>Sign out</b>
           </button>
         </div>
+        <button className="fullscreen-button" onClick={toggleFullscreen}><Icon name="Fullscreen" size={13}/> Full screen</button>
         <div className="builder-signoff">
           <span>Built by</span>
           <b>Beyond Raw Data</b>
           <small>v{APP_VERSION}</small>
-          <button className="fullscreen-button" onClick={toggleFullscreen}><Icon name="Fullscreen" size={13}/> Full screen</button>
         </div>
       </aside>
       <main>
