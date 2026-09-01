@@ -168,7 +168,7 @@ export default function App() {
   }
   const primaryViews=["Sell","Dashboard","Bills","Inventory"];
   const institutionModules=enabledModules(organizationProfile.enabledModules),industry=profileFor(organizationProfile.industryProfile);
-  const menuGroups={Operations:["Expense","Accounting",...(institutionModules.has("production")?["Production"]:[]),...(institutionModules.has("reports")?["Reports"]:[]),"Audit trail"],"Data & Setup":["Customers","Staff & Roles","Item Setup"]};
+  const menuGroups={Operations:["Expense",...(institutionModules.has("accounting")?["Accounting"]:[]),...(institutionModules.has("production")?["Production"]:[]),...(institutionModules.has("reports")?["Reports"]:[]),"Audit trail"],"Data & Setup":["Customers","Staff & Roles","Item Setup"]};
   const alertKeys:Record<string,string>={Bills:"Bills",Inventory:"Inventory",Customers:"Customers",Expenses:"Expenses",Expense:"Expenses","Audit trail":"AuditTrail",Settings:"Settings"};
   const today = new Intl.DateTimeFormat("en-GB", {
     weekday: "long",
