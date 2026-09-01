@@ -39,7 +39,7 @@ export default function App() {
     [draftTransactionId,setDraftTransactionId]=useState(()=>crypto.randomUUID()),
     [orderFailure,setOrderFailure]=useState(""),
     [notifications, setNotifications] = useState<Record<string, any>>({Total:0,Details:{}}),
-    [readNotificationFingerprint,setReadNotificationFingerprint]=useState(localStorage.getItem("notification_read")||""),
+    [seenNotificationFingerprint,setSeenNotificationFingerprint]=useState(localStorage.getItem("notification_seen")||""),
     [alertsOpen,setAlertsOpen]=useState(false),
     [navigationLayout,setNavigationLayout]=useState(localStorage.getItem("navigation_layout")||"Vertical"),
     [organizationProfile,setOrganizationProfile]=useState(cachedOrganizationSettings()),
@@ -49,8 +49,8 @@ export default function App() {
     );
   const notificationRequest=useRef(0);
   const notificationFingerprint=JSON.stringify(Object.values(notifications.Details||{}).flat().map((x:any)=>[x.id,x.status,x.stock,x.minStock,x.balance,x.total]));
-  const notificationsRead=Boolean(notificationFingerprint)&&readNotificationFingerprint===notificationFingerprint;
-  const attention=notificationsRead?{...notifications,Total:0,Bills:0,Customers:0,Inventory:0,Approvals:0,Expenses:0}:notifications;
+  const notificationsSeen=Boolean(notificationFingerprint)&&seenNotificationFingerprint===notificationFingerprint;
+  const attention=notifications;
   useEffect(() => {
     document.documentElement.dataset.theme = (
       localStorage.getItem("theme") || "Forest"
@@ -72,7 +72,7 @@ export default function App() {
   useEffect(()=>{if(!user)return;void getSettings().then(settings=>{if(!settings?.organization)return;setOrganizationProfile(settings.organization);localStorage.setItem("organization_profile",JSON.stringify(settings.organization))}).catch(()=>0)},[user?.id]);
   useEffect(()=>{if(!user)return;const refresh=async()=>{const request=++notificationRequest.current;try{const current=await getNotifications();if(request===notificationRequest.current)setNotifications(current)}catch{}};const attention=()=>void refresh();const visible=()=>{if(document.visibilityState==="visible")void refresh()};addEventListener("dukora:attention",attention);addEventListener("focus",attention);document.addEventListener("visibilitychange",visible);void refresh();const timer=setInterval(refresh,10000);return()=>{removeEventListener("dukora:attention",attention);removeEventListener("focus",attention);document.removeEventListener("visibilitychange",visible);clearInterval(timer)}},[user?.id]);
   useEffect(()=>{if(!message)return;const timer=setTimeout(()=>setMessage(""),5000);return()=>clearTimeout(timer)},[message]);
-  useEffect(()=>{if(readNotificationFingerprint)localStorage.setItem("notification_read",readNotificationFingerprint)},[readNotificationFingerprint]);
+  useEffect(()=>{if(seenNotificationFingerprint)localStorage.setItem("notification_seen",seenNotificationFingerprint)},[seenNotificationFingerprint]);
   const messageIsError=/unable|failed|failure|could not|cannot|invalid|error|required|permission|expired|unavailable|refused|correction/i.test(message);
   const visibleProducts = products.filter((p) =>
     user?.isDemo ? p.isDemo : !p.isDemo,
@@ -267,8 +267,8 @@ export default function App() {
             <span className={online ? "online" : "offline"}>
               {online ? "● Online" : "● Offline ready"} · {queued} queued
             </span>
-            <button className="notification-bell" onClick={()=>setAlertsOpen(x=>!x)} aria-label="Open notifications">♢{Number(attention.Total||0)>0&&<em>{attention.Total}</em>}</button>
-            {alertsOpen&&<div className="notification-panel"><h3>Active conditions · {notifications.Total||0}</h3>{Number(notifications.Total||0)>0&&<button className="mark-read" onClick={()=>setReadNotificationFingerprint(notificationFingerprint)}><b>{notificationsRead?"Marked as read":"Mark current alerts as read"}</b><small>Badges return if the underlying records change.</small></button>}{Number(notifications.Approvals||0)>0&&<button onClick={()=>{setView("Bills");setAlertsOpen(false)}}><b>{notifications.Approvals} approval requests</b><small>{notifications.Details?.approvals?.slice(0,2).map((x:any)=>x.label).join(" · ")||"Held-bill changes need review"}</small></button>}{Number(notifications.Bills||0)>0&&<button onClick={()=>{setView("Bills");setAlertsOpen(false)}}><b>{notifications.Bills} unresolved bills</b><small>{notifications.Details?.bills?.slice(0,3).map((x:any)=>`${x.label} ${x.status}`).join(" · ")}</small></button>}{Number(notifications.Inventory||0)>0&&<button onClick={()=>{setView("Inventory");setAlertsOpen(false)}}><b>{notifications.Inventory} stock alerts</b><small>{notifications.Details?.inventory?.slice(0,3).map((x:any)=>x.label).join(" · ")}</small></button>}{Number(notifications.Expenses||0)>0&&<button onClick={()=>{setView("Expense");setAlertsOpen(false)}}><b>{notifications.Expenses} unpaid expenses</b><small>{notifications.Details?.expenses?.slice(0,3).map((x:any)=>x.label).join(" · ")}</small></button>}{Number(notifications.Total||0)===0&&<p className="notification-empty">All caught up. No unresolved issues.</p>}</div>}
+            <button className="notification-bell" aria-expanded={alertsOpen} onClick={()=>setAlertsOpen(open=>{if(!open&&notificationFingerprint)setSeenNotificationFingerprint(notificationFingerprint);return !open})} aria-label="Open notifications">♢{!notificationsSeen&&Number(notifications.Total||0)>0&&<em>{notifications.Total}</em>}</button>
+            {alertsOpen&&<div className="notification-panel" role="dialog" aria-label="Active notifications"><div className="notification-heading"><span><small>NOTIFICATIONS</small><h3>Active conditions</h3></span><b>{notifications.Total||0}</b></div>{Number(notifications.Total||0)>0&&<p className="notification-guidance">Opening clears the bell badge. Unresolved work stays visible here and on its menu until the underlying record is addressed.</p>}{Number(notifications.Approvals||0)>0&&<button onClick={()=>{setView("Bills");setAlertsOpen(false)}}><b>{notifications.Approvals} approval requests</b><small>{notifications.Details?.approvals?.slice(0,2).map((x:any)=>x.label).join(" · ")||"Held-bill changes need review"}</small><i>Review →</i></button>}{Number(notifications.Bills||0)>0&&<button onClick={()=>{setView("Bills");setAlertsOpen(false)}}><b>{notifications.Bills} unresolved bills</b><small>{notifications.Details?.bills?.slice(0,3).map((x:any)=>`${x.label} ${x.status}`).join(" · ")}</small><i>Open bills →</i></button>}{Number(notifications.Inventory||0)>0&&<button onClick={()=>{setView("Inventory");setAlertsOpen(false)}}><b>{notifications.Inventory} stock alerts</b><small>{notifications.Details?.inventory?.slice(0,3).map((x:any)=>x.label).join(" · ")}</small><i>Review stock →</i></button>}{Number(notifications.Expenses||0)>0&&<button onClick={()=>{setView("Expense");setAlertsOpen(false)}}><b>{notifications.Expenses} unpaid expenses</b><small>{notifications.Details?.expenses?.slice(0,3).map((x:any)=>x.label).join(" · ")}</small><i>Open expenses →</i></button>}{Number(notifications.Total||0)===0&&<p className="notification-empty">All caught up. No unresolved issues.</p>}</div>}
           </div>
         </header>
         {view === "Sell" ? (

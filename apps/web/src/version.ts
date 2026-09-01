@@ -1,6 +1,10 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.10.0";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.11.0";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "New Dukora design-engineering standard with purposeful, fast and accessible interaction feedback",
+  "Refined hierarchy, surfaces, controls, focus states, dialogs, toasts, tables and touchscreen product cards",
+  "Origin-aware popovers and restrained sub-300ms motion with full reduced-motion support",
+  "Opening notifications clears the unseen bell badge while active menu counts remain until records are resolved",
   "Institution-level industry and business-category setup with persistent terminology and module choices",
   "Adaptive item categories and production language for hospitality, bakery, retail, manufacturing, services, wholesale and agriculture",
   "Core Sales, Inventory and Expenses kept enabled for accounting and stock integrity",
