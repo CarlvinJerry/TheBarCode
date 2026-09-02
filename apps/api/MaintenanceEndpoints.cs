@@ -30,25 +30,51 @@ public static class MaintenanceEndpoints
             await using var transaction = await db.Database.BeginTransactionAsync();
             var liveProductIds = await db.Products.Where(x => !x.IsDemo).Select(x => x.Id).ToListAsync();
             var liveSaleIds = await db.Sales.Where(x => !x.IsDemo).Select(x => x.Id).ToListAsync();
+            var liveJournalIds = await db.JournalEntries.Where(x => !x.IsDemo).Select(x => x.Id).ToListAsync();
+            var liveRecipeIds = await db.Recipes.Where(x => !x.IsDemo).Select(x => x.Id).ToListAsync();
+            var livePurchaseOrderIds = await db.PurchaseOrders.Where(x => !x.IsDemo).Select(x => x.Id).ToListAsync();
+            var liveStocktakeIds = await db.StocktakeSessions.Where(x => !x.IsDemo).Select(x => x.Id).ToListAsync();
+            var liveImportBatchIds = await db.ProductImportLines.Where(x => liveProductIds.Contains(x.ProductId)).Select(x => x.ProductImportBatchId).Distinct().ToListAsync();
             var counts = new
             {
                 sales = liveSaleIds.Count,
                 products = liveProductIds.Count,
                 customers = await db.Customers.CountAsync(x => !x.IsDemo),
-                expenses = await db.Expenses.CountAsync(x => !x.IsDemo)
+                expenses = await db.Expenses.CountAsync(x => !x.IsDemo),
+                accountingJournals = liveJournalIds.Count,
+                accountingPeriods = await db.AccountingPeriods.CountAsync(x => !x.IsDemo),
+                recipes = liveRecipeIds.Count,
+                productionRuns = await db.ProductionRuns.CountAsync(x => !x.IsDemo),
+                suppliers = await db.Suppliers.CountAsync(x => !x.IsDemo),
+                purchaseOrders = livePurchaseOrderIds.Count,
+                stockLots = await db.StockLots.CountAsync(x => !x.IsDemo),
+                stocktakes = liveStocktakeIds.Count,
+                productImports = liveImportBatchIds.Count
             };
             await db.BillRevisions.Where(x => liveSaleIds.Contains(x.SaleId)).ExecuteDeleteAsync();
             await db.Payments.Where(x => liveSaleIds.Contains(x.SaleId)).ExecuteDeleteAsync();
             await db.SaleItems.Where(x => liveSaleIds.Contains(x.SaleId)).ExecuteDeleteAsync();
             await db.Sales.Where(x => !x.IsDemo).ExecuteDeleteAsync();
             await db.StockMovements.Where(x => liveProductIds.Contains(x.ProductId)).ExecuteDeleteAsync();
-            await db.ProductImportLines.ExecuteDeleteAsync();
-            await db.ProductImportBatches.ExecuteDeleteAsync();
+            await db.ProductImportLines.Where(x => liveImportBatchIds.Contains(x.ProductImportBatchId)).ExecuteDeleteAsync();
+            await db.ProductImportBatches.Where(x => liveImportBatchIds.Contains(x.Id)).ExecuteDeleteAsync();
             var liveExpenseIds=await db.Expenses.Where(x=>!x.IsDemo).Select(x=>x.Id).ToListAsync();
             await db.ExpensePayments.Where(x=>liveExpenseIds.Contains(x.ExpenseId)).ExecuteDeleteAsync();
             await db.Expenses.Where(x => !x.IsDemo).ExecuteDeleteAsync();
             await db.Customers.Where(x => !x.IsDemo).ExecuteDeleteAsync();
             await db.Products.Where(x => !x.IsDemo).ExecuteDeleteAsync();
+            await db.JournalLines.Where(x => liveJournalIds.Contains(x.JournalEntryId)).ExecuteDeleteAsync();
+            await db.JournalEntries.Where(x => !x.IsDemo).ExecuteDeleteAsync();
+            await db.AccountingPeriods.Where(x => !x.IsDemo).ExecuteDeleteAsync();
+            await db.RecipeIngredients.Where(x => liveRecipeIds.Contains(x.RecipeId)).ExecuteDeleteAsync();
+            await db.Recipes.Where(x => !x.IsDemo).ExecuteDeleteAsync();
+            await db.ProductionRuns.Where(x => !x.IsDemo).ExecuteDeleteAsync();
+            await db.PurchaseOrderLines.Where(x => livePurchaseOrderIds.Contains(x.PurchaseOrderId)).ExecuteDeleteAsync();
+            await db.PurchaseOrders.Where(x => !x.IsDemo).ExecuteDeleteAsync();
+            await db.StockLots.Where(x => !x.IsDemo).ExecuteDeleteAsync();
+            await db.StocktakeLines.Where(x => liveStocktakeIds.Contains(x.StocktakeSessionId)).ExecuteDeleteAsync();
+            await db.StocktakeSessions.Where(x => !x.IsDemo).ExecuteDeleteAsync();
+            await db.Suppliers.Where(x => !x.IsDemo).ExecuteDeleteAsync();
             db.AuditEvents.Add(new AuditEvent { StaffId = Guid.TryParse(principal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var id) ? id : null, Actor = principal.Identity?.Name ?? "Owner", Action = "Purged", EntityType = "LiveData", Details = $"Owner purge after backup {backup.FileName}. Reason: {request.Reason?.Trim() ?? "Not supplied"}", DeviceId = "desktop" });
             await db.SaveChangesAsync();
             await transaction.CommitAsync();
