@@ -67,3 +67,4 @@ public record ReceivePurchaseLineRequest(Guid LineId,decimal Quantity,decimal? U
 public record StocktakeLineRequest(Guid ProductId,decimal CountedQuantity,string? LotNumber,DateOnly? ExpiryDate,string? Notes);
 public record StocktakeRequest(Guid? Id,string Name,DateOnly CountDate,List<StocktakeLineRequest> Lines);
 public record StocktakeApprovalRequest(bool Approve,string? Reason,string? DeviceId);
+public record WastageRequest(Guid ProductId,decimal Quantity,string? LotNumber,string Reason,string? DeviceId);

@@ -73,6 +73,7 @@ export async function sendPurchaseOrder(id:string){return request(`/purchasing/o
 export async function receivePurchaseOrder(id:string,value:Record<string,unknown>){return request(`/purchasing/orders/${id}/receive`,{method:'POST',body:JSON.stringify(value)});}
 export async function getStockLots(productId?:string){return request(`/stock/lots${productId?`?productId=${productId}`:''}`);}
 export async function getExpiringLots(days=30){return request(`/stock/expiring?days=${days}`);}
+export async function recordWastage(value:Record<string,unknown>){return request('/stock/wastage',{method:'POST',body:JSON.stringify(value)});}
 export async function getStocktakes(){return request('/stock/stocktakes');}
 export async function saveStocktake(value:Record<string,unknown>){return request('/stock/stocktakes',{method:'POST',body:JSON.stringify(value)});}
 export async function submitStocktake(id:string){return request(`/stock/stocktakes/${id}/submit`,{method:'POST'});}
