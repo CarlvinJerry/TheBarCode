@@ -61,6 +61,7 @@ import {
   getBills,
   getBillApprovals,
   payBill,
+  updateBillPaymentMethod,
   postBill,
   cancelBill,
   refundBill,
@@ -221,6 +222,8 @@ function Bills({products,user,notify}:{products:Product[];user:{id:string;name:s
   const chooseCreditCustomer=(customer:any)=>{setCreditOpen(false);void post("Credit",customer.id)};
   const createCreditCustomer=async(e:FormEvent)=>{e.preventDefault();const customer={id:crypto.randomUUID(),...newCustomer,notes:"Created while posting credit bill"};await queueCustomer(customer);await syncOutbox();chooseCreditCustomer(customer)};
   const recordPayment=async()=>{try{const saved=await payBill(selected.id,{...payment,deviceId:localStorage.getItem("device_id")});setSelected(undefined);notify(`Payment recorded; balance ${money(saved.balance)}`);dispatchEvent(new Event("dukora:attention"));await load()}catch(e){notify(e instanceof Error?e.message:"Payment could not be recorded")}};
+  const correctPayment=async(paymentId:string,method:string)=>{const reason=prompt("Reason for correcting this payment method");if(!reason)return;try{await updateBillPaymentMethod(selected.id,paymentId,method,reason);notify("Payment method corrected and audited");await refreshSelected();await load()}catch(e){notify(e instanceof Error?e.message:"Payment method could not be corrected")}};
+  void correctPayment;
   const cancel=async()=>{const reason=prompt("Owner/manager cancellation reason");if(!reason)return;try{await cancelBill(selected.id,reason,localStorage.getItem("device_id")||undefined);setSelected(undefined);notify("Held bill cancelled with audit record");dispatchEvent(new Event("dukora:attention"));await load()}catch{notify("Owner or manager authorization is required")}};
   const refund=async()=>{const reason=prompt("Owner/manager refund reason");if(!reason)return;try{await refundBill(selected.id,reason,localStorage.getItem("device_id")||undefined);setSelected(undefined);notify("Sale refunded; inventory and accounts reversed");dispatchEvent(new Event("dukora:attention"));await load()}catch{notify("Owner or manager authorization is required")}};
   const print=async()=>{try{let bill=selected;if(selected.status==="Held")bill=await updateBill(selected.id,{...revisionPayload(),reason:"Revision saved before unpaid printing"});const credit=bill.status!=="Paid",receiptStatus=bill.status==="Held"||bill.status==="PendingApproval"?"UNPAID":bill.status==="Paid"?"PAID":"CREDIT";const text=buildSaleReceipt({id:String(bill.receiptNumber),customerName:bill.customerName||selected.customerName||"Walk-in customer",cashierName:bill.cashierName||selected.cashierName||user.name,method:bill.payments?.at(-1)?.method||"Unpaid",status:receiptStatus,credit,items:bill.items.map((x:any)=>({name:x.productName,quantity:Number(x.quantity),unitPrice:Number(x.unitPrice)})),total:Number(bill.total)});await printReceiptText(bill.status==="Held"||bill.status==="PendingApproval"?`${text}\nREVISION: ${bill.revision}`:text);setSelected(undefined);notify(`Revision ${bill.revision} saved and ${receiptStatus} receipt sent to the configured printer`);dispatchEvent(new Event("dukora:attention"));await load()}catch(e){notify(e instanceof Error?e.message:"Bill could not be validated and printed")}};
