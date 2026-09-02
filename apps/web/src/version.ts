@@ -1,6 +1,7 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.2";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.3";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Demo/live dashboard activity is scoped through institution staff identities, and approval alerts reconcile only unresolved bills",
   "Supplier directory moved into a focused modal with audited archive actions that preserve purchase history",
   "Session lock with in-place staff PIN re-authentication after inactivity",
   "Purchasing workspace with suppliers, purchase orders, partial receiving and weighted stock cost",

@@ -49,7 +49,11 @@ public static class InsightsEndpoints
         var velocityStart=DateTimeOffset.UtcNow.AddDays(-30);var recentSales=allSales.Where(x=>(x.PostedAt??x.OccurredAt)>=velocityStart).ToList();var recentLines=recentSales.SelectMany(x=>x.Items).GroupBy(x=>x.ProductId).ToDictionary(x=>x.Key,x=>x.Sum(line=>line.Quantity)/30m);
         var customerSales=allSales.Where(x=>x.CustomerId!=null).ToList();
         var rangePayments=financialSales.SelectMany(x=>x.Payments).Where(x=>x.PaidAt>=start&&x.PaidAt<end).ToList();
-        var activity=(await db.AuditEvents.AsNoTracking().Take(500).ToListAsync()).OrderByDescending(x=>x.OccurredAt).Take(12).ToList();
+        // AuditEvent predates the demo/live split and has no IsDemo column. Scope activity
+        // through the staff identities that belong to the current data set so demo actions
+        // can never leak into a live institution's dashboard (or vice versa).
+        var activityStaffIds=await db.Staff.AsNoTracking().Where(x=>x.IsDemo==demo).Select(x=>x.Id).ToListAsync();
+        var activity=(await db.AuditEvents.AsNoTracking().Where(x=>x.StaffId.HasValue&&activityStaffIds.Contains(x.StaffId.Value)).OrderByDescending(x=>x.OccurredAt).Take(500).ToListAsync()).Take(12).ToList();
         var revenue = sales.Sum(x => x.Total);
         var salesCollected=sales.SelectMany(x=>x.Payments).Sum(x=>x.Amount);
         var collectionRate=revenue<=0?0:Math.Clamp(salesCollected/revenue*100m,0m,100m);

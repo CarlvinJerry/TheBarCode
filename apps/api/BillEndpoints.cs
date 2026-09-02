@@ -220,7 +220,12 @@ public static class BillEndpoints
         {
             var now=DateTimeOffset.UtcNow;
             var demo=Security.IsDemo(principal);var bills=(await db.Sales.AsNoTracking().Where(x=>x.IsDemo==demo&&(x.Status=="Held"||x.Status=="PendingApproval"||x.Status=="Credit"||x.Status=="PartiallyPaid")).Select(x=>new{x.Id,x.ReceiptNumber,x.Status,x.Total,x.DueAt,x.CustomerId}).ToListAsync()).OrderByDescending(x=>x.Total).ToList();
-            var billIds=bills.Select(x=>x.Id).ToHashSet();var approvalRows=IsManager(principal)?(await db.BillRevisions.AsNoTracking().Where(x=>x.Action=="ApprovalRequested").Select(x=>new{x.Id,x.SaleId,x.Reason,x.CreatedAt}).ToListAsync()).Where(x=>billIds.Contains(x.SaleId)).OrderBy(x=>x.CreatedAt).ToList():[];
+            var billIds=bills.Select(x=>x.Id).ToHashSet();
+            // Approval requests are tied to a sale, so filter them through the already
+            // institution-scoped bill set. Resolved requests no longer count.
+            var approvalRows=IsManager(principal)
+                ? (await db.BillRevisions.AsNoTracking().Where(x=>x.Action=="ApprovalRequested"&&billIds.Contains(x.SaleId)).Select(x=>new{x.Id,x.SaleId,x.Reason,x.CreatedAt}).ToListAsync()).OrderBy(x=>x.CreatedAt).ToList()
+                : [];
             var lowStock=(await db.Products.AsNoTracking().Where(x=>x.IsDemo==demo&&x.Active&&x.Stock<=x.MinStock*1.5m).Select(x=>new{x.Id,x.Name,x.Stock,x.MinStock}).ToListAsync()).OrderBy(x=>x.Stock).ToList();
             var unpaidExpenses=(await db.Expenses.AsNoTracking().Where(x=>x.IsDemo==demo&&x.Active&&(x.Status=="PendingApproval"||(x.Status=="Approved"&&x.PaidAmount<x.Amount))).Select(x=>new{x.Id,x.Description,x.Amount,x.PaidAmount,x.Status}).ToListAsync()).OrderBy(x=>x.Status=="PendingApproval"?0:1).ThenByDescending(x=>x.Amount-x.PaidAmount).ToList();
              var creditSales=await db.Sales.AsNoTracking().Include(x=>x.Payments).Where(x=>x.IsDemo==demo&&x.CustomerId!=null&&(x.Status=="Credit"||x.Status=="PartiallyPaid")).ToListAsync();
