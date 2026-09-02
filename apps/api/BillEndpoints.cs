@@ -230,7 +230,7 @@ public static class BillEndpoints
              var customerAlerts=overdue.Select(x=>new{x.Id,label=x.CustomerId is Guid id?(customers.ContainsKey(id)?customers[id].Name:"Customer"):"Customer",dueAt=x.DueAt,total=x.Total}).Concat(creditBreaches.Select(x=>new{x.Id,label=$"{x.Name} · credit limit reached",dueAt=(DateTimeOffset?)null,total=x.Debt})).ToList();
             return Results.Ok(new
             {
-                 Total=billCount+inventoryCount+expenseCount+creditBreaches.Count,Sell=bills.Count(x=>x.Status=="Held"),Bills=billCount,Customers=customerAlerts.Count,Inventory=inventoryCount,Approvals=approvalRows.Count,Expenses=expenseCount,AuditTrail=0,Settings=0,
+                 Total=billCount+inventoryCount+expenseCount+creditBreaches.Count+approvalRows.Count,Sell=bills.Count(x=>x.Status=="Held"),Bills=billCount,Customers=customerAlerts.Count,Inventory=inventoryCount,Approvals=approvalRows.Count,Expenses=expenseCount,AuditTrail=0,Settings=0,
                 Details=new{
                     bills=bills.Take(8).Select(x=>new{x.Id,label=$"Bill #{x.ReceiptNumber}",x.Status,x.Total,customer=x.CustomerId is Guid id?(customers.ContainsKey(id)?customers[id].Name:"Customer"):"Walk-in"}),
                     approvals=approvalRows.Take(8).Select(x=>new{x.Id,label=bills.FirstOrDefault(b=>b.Id==x.SaleId) is {} bill?$"Bill #{bill.ReceiptNumber}":"Held bill",x.Reason,x.CreatedAt}),
