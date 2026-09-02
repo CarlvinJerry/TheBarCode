@@ -9,12 +9,12 @@ public static class BulkProductEndpoints
     public static void MapBulkProductApi(this WebApplication app)
     {
         app.MapPost("/api/products/single", CreateSingle)
-            .RequireAuthorization(p => p.RequireRole("Owner", "Manager", "Storekeeper"));
+            .RequireAuthorization(p => p.RequirePermission("inventory"));
         app.MapPost("/api/products/bulk-import", Import)
-            .RequireAuthorization(p => p.RequireRole("Owner", "Manager", "Storekeeper"));
+            .RequireAuthorization(p => p.RequirePermission("inventory"));
         app.MapGet("/api/products/import-batches", async (AppDbContext db) =>
             await db.ProductImportBatches.AsNoTracking().OrderByDescending(x => x.CreatedAt).Take(25).ToListAsync())
-            .RequireAuthorization(p => p.RequireRole("Owner", "Manager", "Storekeeper"));
+            .RequireAuthorization(p => p.RequirePermission("inventory"));
         app.MapPost("/api/products/import-batches/{id:guid}/reverse", Reverse)
             .RequireAuthorization(p => p.RequireRole("Owner", "Manager"));
     }
