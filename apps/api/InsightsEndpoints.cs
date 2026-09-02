@@ -33,7 +33,7 @@ public static class InsightsEndpoints
             var startDate = from ?? endDate.AddDays(-29);
             var snapshot = await BuildSnapshot(db, startDate, endDate,Security.IsDemo(principal));
             return Results.Ok(await service.Generate(snapshot, ct));
-        }).RequireAuthorization(p => p.RequireRole("Owner", "Manager", "Auditor"));
+        }).RequireAuthorization(p => p.RequirePermission("reports"));
     }
 
     public static async Task<OperationalSnapshot> BuildSnapshot(AppDbContext db, DateOnly from, DateOnly to,bool demo=false)
@@ -53,7 +53,9 @@ public static class InsightsEndpoints
         // through the staff identities that belong to the current data set so demo actions
         // can never leak into a live institution's dashboard (or vice versa).
         var activityStaffIds=await db.Staff.AsNoTracking().Where(x=>x.IsDemo==demo).Select(x=>x.Id).ToListAsync();
-        var activity=(await db.AuditEvents.AsNoTracking().Where(x=>x.StaffId.HasValue&&activityStaffIds.Contains(x.StaffId.Value)).OrderByDescending(x=>x.OccurredAt).Take(500).ToListAsync()).Take(12).ToList();
+        // SQLite cannot translate DateTimeOffset ordering; materialize the bounded
+        // institution-scoped set first, then order in memory for both providers.
+        var activity=(await db.AuditEvents.AsNoTracking().Where(x=>x.StaffId.HasValue&&activityStaffIds.Contains(x.StaffId.Value)).Take(500).ToListAsync()).OrderByDescending(x=>x.OccurredAt).Take(12).ToList();
         var revenue = sales.Sum(x => x.Total);
         var salesCollected=sales.SelectMany(x=>x.Payments).Sum(x=>x.Amount);
         var collectionRate=revenue<=0?0:Math.Clamp(salesCollected/revenue*100m,0m,100m);

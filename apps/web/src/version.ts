@@ -1,6 +1,9 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.3";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.4";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Explicit owner or manager-assigned permissions now authorize reports, audit, accounting, approvals, expenses and inventory independently of the base staff role",
+  "Permissions refresh automatically while signed in so access changes take effect without a forced logout",
+  "Staff access management is available to owners and managers; identity and PIN changes remain owner-only",
   "Demo/live dashboard activity is scoped through institution staff identities, and approval alerts reconcile only unresolved bills",
   "Supplier directory moved into a focused modal with audited archive actions that preserve purchase history",
   "Session lock with in-place staff PIN re-authentication after inactivity",

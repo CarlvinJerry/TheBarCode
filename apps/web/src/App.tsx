@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { bootstrap, getBills, getLoginStaff, getNotifications, getSettings, holdBill, login, postBill, session, syncOutbox, updateBill, verifyLocalPin } from "./api";
+import { bootstrap, getBills, getLoginStaff, getNotifications, getSettings, holdBill, login, refreshSession, postBill, session, syncOutbox, updateBill, verifyLocalPin } from "./api";
 import {
   db,
   queueCustomer,
@@ -89,6 +89,7 @@ export default function App() {
   useEffect(()=>{if(!user)return;void getSettings().then(settings=>{if(!settings?.organization)return;setOrganizationProfile(settings.organization);localStorage.setItem("organization_profile",JSON.stringify(settings.organization))}).catch(()=>0)},[user?.id]);
   useEffect(()=>{if(!user)return;const refreshProfile=()=>{void getSettings().then(settings=>{if(settings?.organization){setOrganizationProfile(settings.organization);localStorage.setItem("organization_profile",JSON.stringify(settings.organization))}}).catch(()=>0)};addEventListener("thebarcode:data-changed",refreshProfile);return()=>removeEventListener("thebarcode:data-changed",refreshProfile)},[user?.id]);
   useEffect(()=>{if(!user)return;const refresh=async()=>{const request=++notificationRequest.current;try{const current=await getNotifications();if(request===notificationRequest.current)setNotifications(current)}catch{}};const attention=()=>void refresh();const visible=()=>{if(document.visibilityState==="visible")void refresh()};addEventListener("dukora:attention",attention);addEventListener("focus",attention);document.addEventListener("visibilitychange",visible);void refresh();const timer=setInterval(refresh,10000);return()=>{removeEventListener("dukora:attention",attention);removeEventListener("focus",attention);document.removeEventListener("visibilitychange",visible);clearInterval(timer)}},[user?.id]);
+  useEffect(()=>{if(!user)return;let active=true;const refreshAccess=async()=>{try{const updated=await refreshSession();if(active)setUser((current:any)=>current?{...current,...updated}:current)}catch{}};const timer=setInterval(refreshAccess,15000);addEventListener("focus",refreshAccess);return()=>{active=false;removeEventListener("focus",refreshAccess);clearInterval(timer)}},[user?.id]);
   useEffect(()=>{if(!message)return;const timer=setTimeout(()=>setMessage(""),5000);return()=>clearTimeout(timer)},[message]);
   useEffect(()=>{if(seenNotificationFingerprint)localStorage.setItem("notification_seen",seenNotificationFingerprint)},[seenNotificationFingerprint]);
   const messageIsError=/unable|failed|failure|could not|cannot|invalid|error|required|permission|expired|unavailable|refused|correction/i.test(message);

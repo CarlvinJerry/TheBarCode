@@ -102,7 +102,7 @@ public static class BillEndpoints
             var saleIds=pending.Select(x=>x.SaleId).Distinct().ToList();var sales=await db.Sales.AsNoTracking().Where(x=>saleIds.Contains(x.Id)&&x.Status=="PendingApproval"&&x.IsDemo==Security.IsDemo(principal)).ToDictionaryAsync(x=>x.Id);
             var staffIds=pending.Select(x=>x.StaffId).Distinct().ToList();var staff=await db.Staff.AsNoTracking().Where(x=>staffIds.Contains(x.Id)).ToDictionaryAsync(x=>x.Id,x=>x.Name);
             return pending.Where(x=>sales.ContainsKey(x.SaleId)).Select(x=>{var change=JsonSerializer.Deserialize<UpdateBillRequest>(x.SnapshotJson);var sale=sales[x.SaleId];var requestedTotal=change is null?sale.Total:Math.Max(0,change.Items.Sum(i=>i.Quantity*i.UnitPrice-i.Discount)-change.Discount);return new{x.Id,x.SaleId,sale.ReceiptNumber,x.Revision,x.Reason,x.CreatedAt,currentTotal=sale.Total,requestedTotal,itemCount=change?.Items.Count??0,requestedBy=staff.GetValueOrDefault(x.StaffId,"Unknown")};}).ToList();
-        }).RequireAuthorization(p=>p.RequireRole("Owner","Manager"));
+        }).RequireAuthorization(p=>p.RequirePermission("approvals"));
 
         api.MapPost("/bill-approvals/{requestId:guid}/resolve",async(Guid requestId,ResolveBillApprovalRequest r,AppDbContext db,ClaimsPrincipal principal)=>
         {
@@ -114,7 +114,7 @@ public static class BillEndpoints
             if(sale.Status!="PendingApproval"||sale.Revision!=change.ExpectedRevision)return Results.Conflict(new{error="The bill changed after this request. Reject it and review the current bill."});
             var products=await Products(change.Items,db,Security.IsDemo(principal));if(products is null)return Results.BadRequest(new{error="One or more items are unavailable in the requested quantity"});
             await using var tx=await db.Database.BeginTransactionAsync();var oldTotal=sale.Total;var oldItems=sale.Items.ToList();await db.SaleItems.Where(x=>x.SaleId==sale.Id).ExecuteDeleteAsync();foreach(var oldItem in oldItems)db.Entry(oldItem).State=EntityState.Detached;sale.Items.Clear();ReplaceLines(sale,change.Items,products);db.SaleItems.AddRange(sale.Items);sale.CustomerId=change.CustomerId;sale.Discount=Math.Max(0,change.Discount);sale.Notes=change.Notes?.Trim();sale.Total=Total(sale);sale.Status="Held";sale.Revision++;sale.UpdatedAt=DateTimeOffset.UtcNow;request.Action="Approved";request.UpdatedAt=DateTimeOffset.UtcNow;db.BillRevisions.Add(Revision(sale,StaffId(principal),"Approved",$"Request {request.Id} · {r.Reason}"));db.AuditEvents.Add(Audit(principal,"Approved",sale,$"Bill {sale.ReceiptNumber} · {oldTotal} to {sale.Total} · {r.Reason}",r.DeviceId));await db.SaveChangesAsync();await tx.CommitAsync();return Results.Ok(BillView(sale,null,principal.Identity?.Name));
-        }).RequireAuthorization(p=>p.RequireRole("Owner","Manager"));
+        }).RequireAuthorization(p=>p.RequirePermission("approvals"));
 
         api.MapPost("/bills/{id:guid}/post", async (Guid id, PostBillRequest r, AppDbContext db, ClaimsPrincipal principal) =>
         {
@@ -189,7 +189,7 @@ public static class BillEndpoints
             var before=payment.Method; payment.Method=r.Method.Trim(); payment.UpdatedAt=DateTimeOffset.UtcNow;
             db.AuditEvents.Add(Audit(principal,"Updated",sale,$"Payment {payment.Id}: {before} → {payment.Method}; {r.Reason.Trim()}",r.DeviceId)); await db.SaveChangesAsync();
             return Results.Ok(new { payment.Id, payment.Method, payment.Amount, payment.PaidAt });
-        }).RequireAuthorization(p=>p.RequireRole("Owner","Manager"));
+        }).RequireAuthorization(p=>p.RequirePermission("approvals"));
 
         api.MapPost("/bills/{id:guid}/cancel", async (Guid id, string reason, string? deviceId, AppDbContext db, ClaimsPrincipal principal) =>
         {
@@ -250,9 +250,9 @@ public static class BillEndpoints
         {
             var demo=Security.IsDemo(principal);var staffIds=await db.Staff.Where(x=>x.IsDemo==demo).Select(x=>x.Id).ToListAsync();return (await db.AuditEvents.AsNoTracking().Where(x=>x.StaffId==null?!demo:staffIds.Contains(x.StaffId.Value)).Take(1000).ToListAsync()).OrderByDescending(x=>x.OccurredAt).Take(Math.Clamp(take??250,1,1000)).ToList();
         })
-            .RequireAuthorization(p=>p.RequireRole("Owner","Manager","Auditor"));
+            .RequireAuthorization(p=>p.RequirePermission("audit"));
 
-        api.MapGet("/reports/accurate",async(DateOnly from,DateOnly to,AppDbContext db,ClaimsPrincipal principal)=>{if(to<from)(from,to)=(to,from);var demo=Security.IsDemo(principal);var start=from.ToDateTime(TimeOnly.MinValue,DateTimeKind.Utc);var end=to.AddDays(1).ToDateTime(TimeOnly.MinValue,DateTimeKind.Utc);var sales=(await db.Sales.AsNoTracking().Where(x=>x.IsDemo==demo&&(x.Status=="Paid"||x.Status=="Credit"||x.Status=="PartiallyPaid")).Include(x=>x.Items).Include(x=>x.Payments).ToListAsync()).Where(x=>x.OccurredAt>=start&&x.OccurredAt<end).ToList();var payments=sales.SelectMany(x=>x.Payments).Where(x=>x.PaidAt>=start&&x.PaidAt<end).ToList();var expenses=await db.Expenses.AsNoTracking().Where(x=>x.IsDemo==demo&&x.Active&&x.Status=="Approved"&&x.Date>=from&&x.Date<=to).ToListAsync();var revenue=sales.Sum(x=>x.Total);var cost=sales.SelectMany(x=>x.Items).Sum(x=>x.UnitCost*x.Quantity);var expenseTotal=expenses.Sum(x=>x.Amount);return Results.Ok(new{from,to,revenue,cost,grossProfit=revenue-cost,expenses=expenseTotal,netProfit=revenue-cost-expenseTotal,collected=payments.Sum(x=>x.Amount),salesCount=sales.Count,paymentMix=payments.GroupBy(x=>x.Method).Select(g=>new{method=g.Key,amount=g.Sum(x=>x.Amount)}).OrderByDescending(x=>x.amount)});}).RequireAuthorization(p=>p.RequireRole("Owner","Manager","Auditor"));
+        api.MapGet("/reports/accurate",async(DateOnly from,DateOnly to,AppDbContext db,ClaimsPrincipal principal)=>{if(to<from)(from,to)=(to,from);var demo=Security.IsDemo(principal);var start=from.ToDateTime(TimeOnly.MinValue,DateTimeKind.Utc);var end=to.AddDays(1).ToDateTime(TimeOnly.MinValue,DateTimeKind.Utc);var sales=(await db.Sales.AsNoTracking().Where(x=>x.IsDemo==demo&&(x.Status=="Paid"||x.Status=="Credit"||x.Status=="PartiallyPaid")).Include(x=>x.Items).Include(x=>x.Payments).ToListAsync()).Where(x=>x.OccurredAt>=start&&x.OccurredAt<end).ToList();var payments=sales.SelectMany(x=>x.Payments).Where(x=>x.PaidAt>=start&&x.PaidAt<end).ToList();var expenses=await db.Expenses.AsNoTracking().Where(x=>x.IsDemo==demo&&x.Active&&x.Status=="Approved"&&x.Date>=from&&x.Date<=to).ToListAsync();var revenue=sales.Sum(x=>x.Total);var cost=sales.SelectMany(x=>x.Items).Sum(x=>x.UnitCost*x.Quantity);var expenseTotal=expenses.Sum(x=>x.Amount);return Results.Ok(new{from,to,revenue,cost,grossProfit=revenue-cost,expenses=expenseTotal,netProfit=revenue-cost-expenseTotal,collected=payments.Sum(x=>x.Amount),salesCount=sales.Count,paymentMix=payments.GroupBy(x=>x.Method).Select(g=>new{method=g.Key,amount=g.Sum(x=>x.Amount)}).OrderByDescending(x=>x.amount)});}).RequireAuthorization(p=>p.RequirePermission("reports"));
 
         api.MapPut("/products/{id:guid}", async (Guid id, ProductUpdateRequest r, AppDbContext db, ClaimsPrincipal principal) =>
         {
@@ -274,10 +274,10 @@ public static class BillEndpoints
         {
             if (!HasRole(principal,"Owner")) return Denied("Only the Owner can change staff accounts and roles.");var x=await db.Staff.FindAsync(id);if(x is null)return Results.NotFound();if(string.IsNullOrWhiteSpace(r.Reason))return Results.BadRequest(new{error="A reason is required"});x.Name=r.Name.Trim();x.Role=r.Role;x.Active=r.Active;if(!string.IsNullOrWhiteSpace(r.NewPin)){if(r.NewPin.Length<6)return Results.BadRequest(new{error="PIN must be at least 6 characters"});x.PinHash=Security.HashPin(r.NewPin);}x.UpdatedAt=DateTimeOffset.UtcNow;db.AuditEvents.Add(Audit(principal,"Updated",x.Id,"Staff",r.Reason));await db.SaveChangesAsync();return Results.Ok(new{x.Id,x.Name,x.Role,x.Active,x.UpdatedAt});
         });
-        api.MapGet("/staff/access", async (AppDbContext db, ClaimsPrincipal principal) => { if (!Security.HasRole(principal, "Owner")) return Results.Forbid(); return Results.Ok(await db.Staff.OrderBy(x=>x.Name).Select(x=>new { x.Id,x.Name,x.Role,x.Active,x.CreatedAt,x.Permissions }).ToListAsync()); }).RequireAuthorization();
+        api.MapGet("/staff/access", async (AppDbContext db, ClaimsPrincipal principal) => { if (!Security.HasRole(principal, "Owner", "Manager")) return Results.Forbid(); return Results.Ok(await db.Staff.OrderBy(x=>x.Name).Select(x=>new { x.Id,x.Name,x.Role,x.Active,x.CreatedAt,x.Permissions }).ToListAsync()); }).RequireAuthorization();
         api.MapPut("/staff/{id:guid}/permissions", async (Guid id, PermissionUpdateRequest r, AppDbContext db, ClaimsPrincipal principal) =>
         {
-            if (!Security.HasRole(principal, "Owner")) return Denied("Only the Owner can change staff permissions.");
+            if (!Security.HasRole(principal, "Owner", "Manager")) return Denied("Only an Owner or Manager can change staff permissions.");
             var user = await db.Staff.FindAsync(id); if (user is null) return Results.NotFound();
             if (string.IsNullOrWhiteSpace(r.Reason)) return Results.BadRequest(new { error = "A reason is required" });
             var normalized = Security.ParsePermissions(r.Permissions);
@@ -296,8 +296,8 @@ public static class BillEndpoints
     static async Task<(int Order,int? WalkIn)> NextDailyNumbers(AppDbContext db,bool walkIn,bool demo){var today=DateOnly.FromDateTime(DateTime.Today);var rows=await db.Sales.AsNoTracking().Where(x=>x.IsDemo==demo).Select(x=>new{x.OccurredAt,x.DailyOrderNumber,x.WalkInNumber}).ToListAsync();var current=rows.Where(x=>DateOnly.FromDateTime(x.OccurredAt.LocalDateTime)==today).ToList();return(current.Select(x=>x.DailyOrderNumber).DefaultIfEmpty(0).Max()+1,walkIn?current.Where(x=>x.WalkInNumber!=null).Select(x=>x.WalkInNumber!.Value).DefaultIfEmpty(0).Max()+1:null);}
     static Guid StaffId(ClaimsPrincipal p)=>Guid.TryParse(p.FindFirstValue(ClaimTypes.NameIdentifier),out var id)?id:Guid.Empty;
     static bool HasRole(ClaimsPrincipal p,params string[] roles)=>p.Claims.Any(c=>(c.Type==ClaimTypes.Role||c.Type=="role"||c.Type.EndsWith("/role",StringComparison.OrdinalIgnoreCase))&&roles.Contains(c.Value,StringComparer.OrdinalIgnoreCase));
-    static bool IsManager(ClaimsPrincipal p)=>HasRole(p,"Owner","Manager");
-    static bool IsInventoryManager(ClaimsPrincipal p)=>HasRole(p,"Owner","Manager","Storekeeper");
+    static bool IsManager(ClaimsPrincipal p)=>Security.HasPermission(p,"approvals");
+    static bool IsInventoryManager(ClaimsPrincipal p)=>Security.HasPermission(p,"inventory");
     static IResult Denied(string reason)=>Results.Json(new{error=reason},statusCode:StatusCodes.Status403Forbidden);
     static BillRevision Revision(Sale sale,Guid staffId,string action,string reason)=>new(){SaleId=sale.Id,Revision=sale.Revision,StaffId=staffId,Action=action,Reason=reason,SnapshotJson=JsonSerializer.Serialize(new{sale.CustomerId,sale.Status,sale.Discount,sale.Total,Items=sale.Items.Select(x=>new{x.ProductId,x.ProductName,x.Quantity,x.UnitPrice,x.Discount})})};
     static AuditEvent Audit(ClaimsPrincipal p,string action,Sale sale,string details,string? device)=>Audit(p,action,sale.Id,"Sale",details,device);
