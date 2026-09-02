@@ -125,9 +125,21 @@ public static class BillEndpoints
             if (!PostedStatuses.Contains(r.Status)) return Results.BadRequest(new { error = "Status must be Paid, Credit or PartiallyPaid" });
             if (r.Status != "Paid" && sale.CustomerId is null) return Results.BadRequest(new { error = "Credit requires a registered customer" });
             var amount = Math.Clamp(r.AmountPaid, 0, sale.Total);
-            if (r.Status == "Paid" && amount < sale.Total) return Results.BadRequest(new { error = "A paid sale requires full payment" });
-            if (r.Status == "Credit" && amount > 0) return Results.BadRequest(new { error = "Use PartiallyPaid when receiving a deposit" });
-            await using var tx = await db.Database.BeginTransactionAsync();
+             if (r.Status == "Paid" && amount < sale.Total) return Results.BadRequest(new { error = "A paid sale requires full payment" });
+             if (r.Status == "Credit" && amount > 0) return Results.BadRequest(new { error = "Use PartiallyPaid when receiving a deposit" });
+             if (r.Status is "Credit" or "PartiallyPaid" && sale.CustomerId is Guid customerId)
+             {
+                 var customer=await db.Customers.AsNoTracking().SingleOrDefaultAsync(x=>x.Id==customerId&&x.IsDemo==Security.IsDemo(principal)&&x.Active);
+                 if(customer is null)return Results.BadRequest(new{error="The selected credit customer is no longer active"});
+                 if(customer.CreditLimit>0)
+                 {
+                     var outstandingSales=await db.Sales.AsNoTracking().Include(x=>x.Payments).Where(x=>x.IsDemo==Security.IsDemo(principal)&&x.CustomerId==customerId&&(x.Status=="Credit"||x.Status=="PartiallyPaid")).ToListAsync();
+                     var existingDebt=outstandingSales.Sum(x=>Math.Max(0,x.Total-x.Payments.Sum(p=>p.Amount)));var newBalance=sale.Total-amount;
+                     if(existingDebt+newBalance>customer.CreditLimit)
+                         return Results.Conflict(new{error=$"Credit limit exceeded for {customer.Name}. Available credit: {Math.Max(0,customer.CreditLimit-existingDebt):0.00}; requested: {newBalance:0.00}",customerId,customerName=customer.Name,creditLimit=customer.CreditLimit,existingDebt,newBalance});
+                 }
+             }
+             await using var tx = await db.Database.BeginTransactionAsync();
             var ids = sale.Items.Select(x => x.ProductId).ToList();
             var products = await db.Products.Where(x => ids.Contains(x.Id)).ToDictionaryAsync(x => x.Id);
             foreach (var line in sale.Items)
@@ -211,16 +223,19 @@ public static class BillEndpoints
             var billIds=bills.Select(x=>x.Id).ToHashSet();var approvalRows=IsManager(principal)?(await db.BillRevisions.AsNoTracking().Where(x=>x.Action=="ApprovalRequested").Select(x=>new{x.Id,x.SaleId,x.Reason,x.CreatedAt}).ToListAsync()).Where(x=>billIds.Contains(x.SaleId)).OrderBy(x=>x.CreatedAt).ToList():[];
             var lowStock=(await db.Products.AsNoTracking().Where(x=>x.IsDemo==demo&&x.Active&&x.Stock<=x.MinStock*1.5m).Select(x=>new{x.Id,x.Name,x.Stock,x.MinStock}).ToListAsync()).OrderBy(x=>x.Stock).ToList();
             var unpaidExpenses=(await db.Expenses.AsNoTracking().Where(x=>x.IsDemo==demo&&x.Active&&(x.Status=="PendingApproval"||(x.Status=="Approved"&&x.PaidAmount<x.Amount))).Select(x=>new{x.Id,x.Description,x.Amount,x.PaidAmount,x.Status}).ToListAsync()).OrderBy(x=>x.Status=="PendingApproval"?0:1).ThenByDescending(x=>x.Amount-x.PaidAmount).ToList();
-            var customerIds=bills.Where(x=>x.CustomerId!=null).Select(x=>x.CustomerId!.Value).Distinct().ToList();var customers=await db.Customers.AsNoTracking().Where(x=>customerIds.Contains(x.Id)).ToDictionaryAsync(x=>x.Id,x=>x.Name);
-            var overdue=bills.Where(x=>x.DueAt<now).ToList();var billCount=bills.Count;var inventoryCount=lowStock.Count;var expenseCount=unpaidExpenses.Count;
+             var creditSales=await db.Sales.AsNoTracking().Include(x=>x.Payments).Where(x=>x.IsDemo==demo&&x.CustomerId!=null&&(x.Status=="Credit"||x.Status=="PartiallyPaid")).ToListAsync();
+             var customerIds=bills.Where(x=>x.CustomerId!=null).Select(x=>x.CustomerId!.Value).Concat(creditSales.Where(x=>x.CustomerId!=null).Select(x=>x.CustomerId!.Value)).Distinct().ToList();var customers=await db.Customers.AsNoTracking().Where(x=>customerIds.Contains(x.Id)).ToDictionaryAsync(x=>x.Id,x=>x);
+             var creditBreaches=creditSales.GroupBy(x=>x.CustomerId!.Value).Select(g=>{var customer=customers.GetValueOrDefault(g.Key);var debt=g.Sum(x=>Math.Max(0,x.Total-x.Payments.Sum(p=>p.Amount)));return new{Id=g.Key,Name=customer?.Name??"Customer",Debt=debt,Limit=customer?.CreditLimit??0m};}).Where(x=>x.Limit>0&&x.Debt>=x.Limit).OrderByDescending(x=>x.Debt).ToList();
+             var overdue=bills.Where(x=>x.DueAt<now).ToList();var billCount=bills.Count;var inventoryCount=lowStock.Count;var expenseCount=unpaidExpenses.Count;
+             var customerAlerts=overdue.Select(x=>new{x.Id,label=x.CustomerId is Guid id?(customers.ContainsKey(id)?customers[id].Name:"Customer"):"Customer",dueAt=x.DueAt,total=x.Total}).Concat(creditBreaches.Select(x=>new{x.Id,label=$"{x.Name} · credit limit reached",dueAt=(DateTimeOffset?)null,total=x.Debt})).ToList();
             return Results.Ok(new
             {
-                Total=billCount+inventoryCount+expenseCount,Sell=bills.Count(x=>x.Status=="Held"),Bills=billCount,Customers=overdue.Count,Inventory=inventoryCount,Approvals=approvalRows.Count,Expenses=expenseCount,AuditTrail=0,Settings=0,
+                 Total=billCount+inventoryCount+expenseCount+creditBreaches.Count,Sell=bills.Count(x=>x.Status=="Held"),Bills=billCount,Customers=customerAlerts.Count,Inventory=inventoryCount,Approvals=approvalRows.Count,Expenses=expenseCount,AuditTrail=0,Settings=0,
                 Details=new{
-                    bills=bills.Take(8).Select(x=>new{x.Id,label=$"Bill #{x.ReceiptNumber}",x.Status,x.Total,customer=x.CustomerId is Guid id?customers.GetValueOrDefault(id,"Customer"):"Walk-in"}),
+                    bills=bills.Take(8).Select(x=>new{x.Id,label=$"Bill #{x.ReceiptNumber}",x.Status,x.Total,customer=x.CustomerId is Guid id?(customers.ContainsKey(id)?customers[id].Name:"Customer"):"Walk-in"}),
                     approvals=approvalRows.Take(8).Select(x=>new{x.Id,label=bills.FirstOrDefault(b=>b.Id==x.SaleId) is {} bill?$"Bill #{bill.ReceiptNumber}":"Held bill",x.Reason,x.CreatedAt}),
                     inventory=lowStock.Take(8).Select(x=>new{x.Id,label=x.Name,x.Stock,x.MinStock}),
-                    customers=overdue.Take(8).Select(x=>new{x.Id,label=x.CustomerId is Guid id?customers.GetValueOrDefault(id,"Customer"):"Customer",x.DueAt,x.Total}),
+                     customers=customerAlerts.Take(8),
                     expenses=unpaidExpenses.Take(8).Select(x=>new{x.Id,label=x.Description,balance=x.Amount-x.PaidAmount,x.Status})
                 }
             });
