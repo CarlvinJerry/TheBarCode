@@ -130,7 +130,7 @@ public static class BillEndpoints
              if (r.Status is "Credit" or "PartiallyPaid" && sale.CustomerId is Guid customerId)
              {
                  var customer=await db.Customers.AsNoTracking().SingleOrDefaultAsync(x=>x.Id==customerId&&x.IsDemo==Security.IsDemo(principal)&&x.Active);
-                 if(customer is null)return Results.BadRequest(new{error="The selected credit customer is no longer active"});
+                 if(customer is null || customer.Name.Equals("Walk-in",StringComparison.OrdinalIgnoreCase))return Results.BadRequest(new{error="Credit requires an active registered customer; Walk-in sales cannot be posted as credit"});
                  if(customer.CreditLimit>0)
                  {
                      var outstandingSales=await db.Sales.AsNoTracking().Include(x=>x.Payments).Where(x=>x.IsDemo==Security.IsDemo(principal)&&x.CustomerId==customerId&&(x.Status=="Credit"||x.Status=="PartiallyPaid")).ToListAsync();
