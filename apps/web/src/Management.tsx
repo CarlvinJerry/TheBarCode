@@ -98,7 +98,7 @@ import {
   recordWastage,
 } from "./api";
 const canAccess=(user:any,key:string)=>user?.role==="Owner"||user?.permissions?.includes(key)||((({Manager:["reports","approvals","accounting","audit","expenses","inventory"],Auditor:["reports","audit","accounting"],Storekeeper:["inventory"],Cashier:["sales","expenses"]} as Record<string,string[]>)[user?.role]||[]).includes(key));
-import { categoryLabel, enabledModules, industryProfiles, profileFor } from "./industryProfiles";
+import { categoryLabel, enabledModules, industryProfiles, productMeasure, profileFor } from "./industryProfiles";
 import {
   db,
   queueCustomer,
@@ -1652,6 +1652,7 @@ function Purchasing({products,notify}:{products:Product[];notify:(x:string)=>voi
 }
 
 function Stocktake({products,user,notify}:{products:Product[];user:any;notify:(x:string)=>void}){
+  products=products.map(p=>({...p,unit:productMeasure(p)?`${p.unit} · ${productMeasure(p)}`:p.unit}));
   const [rows,setRows]=useState<any[]>([]),[expiring,setExpiring]=useState<any[]>([]),[name,setName]=useState("Monthly stocktake"),[counts,setCounts]=useState<Record<string,number>>({}),[wastage,setWastage]=useState({productId:products[0]?.id||"",quantity:1,lotNumber:"",reason:"Spoilage"}),[busy,setBusy]=useState(false);
   const load=async()=>{try{const [s,e]=await Promise.all([getStocktakes(),getExpiringLots(30)]);setRows(s);setExpiring(e)}catch(e){notify(e instanceof Error?e.message:"Stocktake data could not be loaded")}};useEffect(()=>{void load()},[]);useEffect(()=>{if(!wastage.productId&&products[0])setWastage(x=>({...x,productId:products[0].id}))},[products,wastage.productId]);
   async function save(e:FormEvent){e.preventDefault();const lines=products.filter(p=>p.active).map(p=>({productId:p.id,countedQuantity:Number.isFinite(counts[p.id])?counts[p.id]:p.stock,lotNumber:null,expiryDate:null,notes:null}));setBusy(true);try{await saveStocktake({name,countDate:new Date().toISOString().slice(0,10),lines});setCounts({});await load();notify("Stocktake saved as open; submit it for approval")}catch(e){notify(e instanceof Error?e.message:"Stocktake could not be saved")}finally{setBusy(false)}}

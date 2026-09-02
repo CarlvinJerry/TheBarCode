@@ -11,7 +11,7 @@ import {
 } from "./db";
 import { Management } from "./Management";
 import { buildSaleReceipt, cachedOrganizationSettings, cachedReceiptSettings, printReceiptText } from "./receiptPrinter";
-import { enabledModules, profileFor } from "./industryProfiles";
+import { enabledModules, productMeasure, profileFor } from "./industryProfiles";
 import { APP_VERSION } from "./version";
 import "./App.css";
 
@@ -326,7 +326,7 @@ export default function App() {
                     <span className="product-copy">
                       <b>{p.name}</b>
                       <small>
-                        {p.category} · {p.unit}
+                        {p.category} · {p.unit}{productMeasure(p) && ` · ${productMeasure(p)}`}
                       </small>
                     </span>
                     <span className="product-price">

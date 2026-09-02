@@ -12,3 +12,12 @@ export const industryProfiles:IndustryProfile[]=[
 export const profileFor=(key?:string)=>industryProfiles.find(x=>x.key===key)||industryProfiles[0];
 export const categoryLabel=(value:string)=>value.replace(/([a-z])([A-Z])/g,"$1 $2");
 export const enabledModules=(value?:string)=>new Set((value||"sales,inventory,expenses,reports,ai,production,accounting").split(',').map(x=>x.trim().toLowerCase()).filter(Boolean));
+export function productMeasure(product:{packageQuantity?:number;packageUnit?:string;unit?:string}){
+ const quantity=Number(product.packageQuantity),packageUnit=String(product.packageUnit||"").trim(),stockUnit=String(product.unit||"").trim();
+ if(!packageUnit||!Number.isFinite(quantity)||quantity<=0)return "";
+ const normalized=packageUnit.toLowerCase(),stockNormalized=stockUnit.toLowerCase();
+ if(quantity===1&&normalized==="item")return "";
+ if(quantity===1&&normalized===stockNormalized&&!(["ml","l","g","kg"].includes(normalized)))return "";
+ const formatted=Number.isInteger(quantity)?String(quantity):quantity.toLocaleString(undefined,{maximumFractionDigits:3});
+ return `${formatted} ${packageUnit}`;
+}
