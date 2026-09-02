@@ -19,5 +19,6 @@ public static class ModularOperationsMigration
  var staffPermissions=db.Database.IsSqlite()?"ALTER TABLE staff ADD COLUMN permissions TEXT NOT NULL DEFAULT ''":"ALTER TABLE staff ADD COLUMN IF NOT EXISTS permissions text NOT NULL DEFAULT ''";
  try{await db.Database.ExecuteSqlRawAsync(staffPermissions);}catch{ /* Existing column: safe and expected on subsequent starts. */ }
  await AccountingMigration.Apply(db);
+ await AdvancedInventoryMigration.Apply(db);
  }
 }

@@ -46,6 +46,10 @@ export default function App() {
     [navigationLayout,setNavigationLayout]=useState(localStorage.getItem("navigation_layout")||"Vertical"),
     [organizationProfile,setOrganizationProfile]=useState(cachedOrganizationSettings()),
     [expandedGroups,setExpandedGroups]=useState<Record<string,boolean>>({Operations:false,"Data & Setup":false}),
+    [locked,setLocked]=useState(false),
+    [lockStaffId,setLockStaffId]=useState(session.user?.id||""),
+    [lockPin,setLockPin]=useState(""),
+    [lockError,setLockError]=useState(""),
     [collapsed, setCollapsed] = useState(
       localStorage.getItem("sidebar_collapsed") === "true",
     );
@@ -53,6 +57,7 @@ export default function App() {
   const notificationFingerprint=JSON.stringify(Object.values(notifications.Details||{}).flat().map((x:any)=>[x.id,x.status,x.stock,x.minStock,x.balance,x.total]));
   const notificationsSeen=Boolean(notificationFingerprint)&&seenNotificationFingerprint===notificationFingerprint;
   const attention=notifications;
+  const activityRef=useRef(Date.now());
   useEffect(() => {
     document.documentElement.dataset.theme = (
       localStorage.getItem("theme") || "Forest"
@@ -73,6 +78,14 @@ export default function App() {
       clearInterval(timer);
     };
   }, []);
+  useEffect(()=>{
+    if(!user)return;
+    const markActivity=()=>{activityRef.current=Date.now()};
+    const events=["pointerdown","keydown","touchstart","mousemove"];
+    events.forEach(x=>addEventListener(x,markActivity,{passive:true}));
+    const timer=window.setInterval(()=>{if(!locked&&Date.now()-activityRef.current>=5*60*1000){setLocked(true);setLockStaffId(session.user?.id||user.id);setLockPin("");setLockError("");setAlertsOpen(false)}},15000);
+    return()=>{events.forEach(x=>removeEventListener(x,markActivity));clearInterval(timer)};
+  },[user?.id,locked]);
   useEffect(()=>{if(!user)return;void getSettings().then(settings=>{if(!settings?.organization)return;setOrganizationProfile(settings.organization);localStorage.setItem("organization_profile",JSON.stringify(settings.organization))}).catch(()=>0)},[user?.id]);
   useEffect(()=>{if(!user)return;const refreshProfile=()=>{void getSettings().then(settings=>{if(settings?.organization){setOrganizationProfile(settings.organization);localStorage.setItem("organization_profile",JSON.stringify(settings.organization))}}).catch(()=>0)};addEventListener("thebarcode:data-changed",refreshProfile);return()=>removeEventListener("thebarcode:data-changed",refreshProfile)},[user?.id]);
   useEffect(()=>{if(!user)return;const refresh=async()=>{const request=++notificationRequest.current;try{const current=await getNotifications();if(request===notificationRequest.current)setNotifications(current)}catch{}};const attention=()=>void refresh();const visible=()=>{if(document.visibilityState==="visible")void refresh()};addEventListener("dukora:attention",attention);addEventListener("focus",attention);document.addEventListener("visibilitychange",visible);void refresh();const timer=setInterval(refresh,10000);return()=>{removeEventListener("dukora:attention",attention);removeEventListener("focus",attention);document.removeEventListener("visibilitychange",visible);clearInterval(timer)}},[user?.id]);
@@ -94,6 +107,7 @@ export default function App() {
     () => cart.reduce((s, x) => s + x.quantity * x.sellingPrice, 0),
     [cart],
   );
+  async function unlock(e:React.FormEvent){e.preventDefault();setLockError("");try{const signedIn=await login(lockStaffId,lockPin);await bootstrap();setUser(signedIn);setLocked(false);setLockPin("");activityRef.current=Date.now();setMessage(`Welcome back, ${signedIn.name}`)}catch{setLockError("Unable to unlock. Check the staff PIN and connection.")}}
   if (!user) return <Login staff={staff} onLogin={setUser} message={message} />;
   const add = (p: Product) => setCart((c) => {const current=c.find(x=>x.id===p.id)?.quantity||0;if(current>=p.stock){setMessage(`${p.name} is limited to ${p.stock} available unit${p.stock===1?"":"s"}`);return c}return c.some(x=>x.id===p.id)?c.map(x=>x.id===p.id?{...x,quantity:Math.min(p.stock,x.quantity+1)}:x):[...c,{...p,quantity:1}]});
   const qty = (id: string, d: number) =>
@@ -169,7 +183,7 @@ export default function App() {
   }
   const primaryViews=["Sell","Dashboard","Bills","Inventory"];
   const institutionModules=enabledModules(organizationProfile.enabledModules||(organizationProfile as any).EnabledModules),industry=profileFor(organizationProfile.industryProfile||(organizationProfile as any).IndustryProfile);
-  const menuGroups={Operations:["Expense",...(institutionModules.has("accounting")?["Accounting"]:[]),...(institutionModules.has("production")?["Production"]:[]),...(institutionModules.has("reports")?["Reports"]:[]),"Audit trail"],"Data & Setup":["Customers","Staff & Roles","Item Setup"]};
+  const menuGroups={Operations:["Expense",...(institutionModules.has("accounting")?["Accounting"]:[]),...(institutionModules.has("production")?["Production"]:[]),...(institutionModules.has("inventory")?["Purchasing","Stocktake"]:[]),...(institutionModules.has("reports")?["Reports"]:[]),"Audit trail"],"Data & Setup":["Customers","Staff & Roles","Item Setup"]};
   const alertKeys:Record<string,string>={Bills:"Bills",Inventory:"Inventory",Customers:"Customers",Expenses:"Expenses",Expense:"Expenses","Audit trail":"AuditTrail",Settings:"Settings"};
   const today = new Intl.DateTimeFormat("en-GB", {
     weekday: "long",
@@ -437,6 +451,7 @@ export default function App() {
           </section>
         </div>
       )}
+      {locked && <div className="modal lock-modal" role="dialog" aria-modal="true" aria-label="Unlock TheBarcode"><section><img className="lock-mark" src="/thebarcode-logo-dark-text.png" alt="TheBarcode"/><h2>Session locked</h2><p>Your session is still active. Re-enter a staff PIN to continue; held bills and offline work are preserved.</p><form onSubmit={unlock}><label>Staff<select value={lockStaffId} onChange={e=>setLockStaffId(e.target.value)}>{staff.map(x=><option key={x.id} value={x.id}>{x.name} · {x.role}</option>)}</select></label><label>PIN<input autoFocus type="password" inputMode="numeric" minLength={6} value={lockPin} onChange={e=>setLockPin(e.target.value)} required /></label><button className="print">Unlock</button>{lockError&&<small className="lock-error">{lockError}</small>}</form><small className="lock-hint">Locked after 5 minutes of inactivity.</small></section></div>}
     </div>
   );
 }

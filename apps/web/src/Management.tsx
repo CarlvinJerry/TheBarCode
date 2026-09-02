@@ -84,6 +84,17 @@ import {
   getAccountingOverview,
   getAccountingTrialBalance,
   getAccountingJournals,
+  getSuppliers,
+  saveSupplier,
+  getPurchaseOrders,
+  savePurchaseOrder,
+  sendPurchaseOrder,
+  receivePurchaseOrder,
+  getStocktakes,
+  saveStocktake,
+  submitStocktake,
+  approveStocktake,
+  getExpiringLots,
 } from "./api";
 const canAccess=(user:any,key:string)=>user?.role==="Owner"||user?.permissions?.includes(key)||((({Manager:["reports","approvals","accounting","audit","expenses","inventory"],Auditor:["reports","audit","accounting"],Storekeeper:["inventory"],Cashier:["sales","expenses"]} as Record<string,string[]>)[user?.role]||[]).includes(key));
 import { categoryLabel, enabledModules, industryProfiles, profileFor } from "./industryProfiles";
@@ -111,6 +122,8 @@ export function Management({ view, products, user, notify, navigate }: Props) {
   if (view === "Customers") return <Customers notify={notify} />;
   if (view === "Expenses" || view === "Expense") return <Expenses user={user} notify={notify} />;
   if (view === "Production") return <Production products={products} user={user} notify={notify} />;
+  if (view === "Purchasing") return <Purchasing products={products} notify={notify} />;
+  if (view === "Stocktake") return <Stocktake products={products} user={user} notify={notify} />;
   if (view === "Accounting") return <Accounting user={user} />;
   if (view === "Reports") return <Reports user={user} />;
   if (view === "Smart Insights" || view === "Smart insights") return <SmartInsights user={user} />;
@@ -1593,4 +1606,25 @@ function Table({ heads, rows, rowClasses=[] }: { heads: string[]; rows: ReactNod
       </div>
     </div>
   );
+}
+
+function Purchasing({products,notify}:{products:Product[];notify:(x:string)=>void}){
+  const [suppliers,setSuppliers]=useState<any[]>([]),[orders,setOrders]=useState<any[]>([]),[supplier,setSupplier]=useState({name:"",phone:"",email:"",taxNumber:""}),[selectedSupplier,setSelectedSupplier]=useState(""),[lines,setLines]=useState<any[]>([]),[line,setLine]=useState({productId:products[0]?.id||"",quantity:1,unitCost:0}),[busy,setBusy]=useState(false);
+  const load=async()=>{try{const [s,o]=await Promise.all([getSuppliers(),getPurchaseOrders()]);setSuppliers(s);setOrders(o);if(!selectedSupplier&&s[0])setSelectedSupplier(s[0].id)}catch(e){notify(e instanceof Error?e.message:"Purchasing data could not be loaded")}};
+  useEffect(()=>{void load()},[]);
+  useEffect(()=>{if(!line.productId&&products[0])setLine(x=>({...x,productId:products[0].id,unitCost:products[0].costPrice}))},[products]);
+  async function addSupplier(e:FormEvent){e.preventDefault();try{const saved=await saveSupplier({...supplier,active:true});setSupplier({name:"",phone:"",email:"",taxNumber:""});await load();setSelectedSupplier(saved.id);notify("Supplier saved")}catch(e){notify(e instanceof Error?e.message:"Supplier could not be saved")}}
+  async function createOrder(e:FormEvent){e.preventDefault();if(!selectedSupplier||!lines.length){notify("Choose a supplier and add at least one item");return}setBusy(true);try{await savePurchaseOrder({supplierId:selectedSupplier,branchId:null,orderedDate:new Date().toISOString().slice(0,10),expectedDate:null,notes:"Created from purchasing workspace",lines});setLines([]);await load();notify("Purchase order saved")}catch(e){notify(e instanceof Error?e.message:"Purchase order could not be saved")}finally{setBusy(false)}}
+  async function send(id:string){try{await sendPurchaseOrder(id);await load();notify("Purchase order marked as ordered")}catch(e){notify(e instanceof Error?e.message:"Purchase order could not be sent")}}
+  async function receive(order:any){const remaining=order.lines.filter((x:any)=>x.quantityReceived<x.quantityOrdered);if(!remaining.length){notify("This order is already fully received");return}const first=remaining[0],value=Number(prompt(`Receive quantity for ${first.productName} (remaining ${first.quantityOrdered-first.quantityReceived})`,String(first.quantityOrdered-first.quantityReceived)));if(!Number.isFinite(value)||value<=0)return;const lot=prompt("Lot number (optional)")||null;const expiry=prompt("Expiry date YYYY-MM-DD (optional)")||null;try{await receivePurchaseOrder(order.id,{notes:"Received from purchasing workspace",deviceId:localStorage.getItem("device_id"),lines:[{lineId:first.id,quantity:value,unitCost:first.unitCost,lotNumber:lot,expiryDate:expiry}]});await load();dispatchEvent(new Event("thebarcode:data-changed"));notify("Receipt recorded; stock and cost updated")}catch(e){notify(e instanceof Error?e.message:"Purchase receipt could not be recorded")}}
+  return <Page><Intro title="Purchasing" text="Suppliers, purchase orders and goods received update inventory and weighted cost together."/><div className="spec-two"><Panel title="Add supplier"><form className="inline-form" onSubmit={addSupplier}><input placeholder="Supplier name" value={supplier.name} onChange={e=>setSupplier({...supplier,name:e.target.value})} required/><input placeholder="Phone" value={supplier.phone} onChange={e=>setSupplier({...supplier,phone:e.target.value})}/><input placeholder="Email" value={supplier.email} onChange={e=>setSupplier({...supplier,email:e.target.value})}/><button>Save supplier</button></form></Panel><Panel title="New purchase order"><form className="inline-form" onSubmit={createOrder}><select value={selectedSupplier} onChange={e=>setSelectedSupplier(e.target.value)} required><option value="">Select supplier</option>{suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><select value={line.productId} onChange={e=>{const p=products.find(x=>x.id===e.target.value);setLine({...line,productId:e.target.value,unitCost:p?.costPrice||0})}}>{products.filter(x=>x.active).map(p=><option key={p.id} value={p.id}>{p.name} · {p.unit}</option>)}</select><input type="number" min="0.001" step="0.001" value={line.quantity} onChange={e=>setLine({...line,quantity:Number(e.target.value)})}/><input type="number" min="0" step="0.01" value={line.unitCost} onChange={e=>setLine({...line,unitCost:Number(e.target.value)})}/><button type="button" onClick={()=>{if(line.productId&&line.quantity>0)setLines(x=>[...x.filter(y=>y.productId!==line.productId),line])}}>Add item</button><button disabled={busy}>Save order ({lines.length})</button></form>{lines.length>0&&<p className="muted">{lines.map(x=>`${products.find(p=>p.id===x.productId)?.name||"Item"} × ${x.quantity}`).join(" · ")}</p>}</Panel></div><Panel title="Purchase orders"><Table heads={["Number","Supplier","Status","Total","Ordered","Action"]} rows={orders.map(o=>[o.number,o.supplierName,o.status,money(o.total),String(o.orderedDate),<span className="button-row"><button className="table-action" disabled={o.status!=="Draft"} onClick={()=>send(o.id)}>Send</button><button className="table-action" disabled={o.status==="Received"||o.status==="Cancelled"} onClick={()=>receive(o)}>Receive</button></span>])}/></Panel></Page>
+}
+
+function Stocktake({products,user,notify}:{products:Product[];user:any;notify:(x:string)=>void}){
+  const [rows,setRows]=useState<any[]>([]),[expiring,setExpiring]=useState<any[]>([]),[name,setName]=useState("Monthly stocktake"),[counts,setCounts]=useState<Record<string,number>>({}),[busy,setBusy]=useState(false);
+  const load=async()=>{try{const [s,e]=await Promise.all([getStocktakes(),getExpiringLots(30)]);setRows(s);setExpiring(e)}catch(e){notify(e instanceof Error?e.message:"Stocktake data could not be loaded")}};useEffect(()=>{void load()},[]);
+  async function save(e:FormEvent){e.preventDefault();const lines=products.filter(p=>p.active).map(p=>({productId:p.id,countedQuantity:Number.isFinite(counts[p.id])?counts[p.id]:p.stock,lotNumber:null,expiryDate:null,notes:null}));setBusy(true);try{await saveStocktake({name,countDate:new Date().toISOString().slice(0,10),lines});setCounts({});await load();notify("Stocktake saved as open; submit it for approval")}catch(e){notify(e instanceof Error?e.message:"Stocktake could not be saved")}finally{setBusy(false)}}
+  async function submit(id:string){try{await submitStocktake(id);await load();dispatchEvent(new Event("thebarcode:data-changed"));notify("Stocktake submitted for owner approval")}catch(e){notify(e instanceof Error?e.message:"Stocktake could not be submitted")}}
+  async function approve(id:string,approve:boolean){try{await approveStocktake(id,{approve,reason:approve?"Approved from stocktake workspace":"Rejected from stocktake workspace",deviceId:localStorage.getItem("device_id")});await load();dispatchEvent(new Event("thebarcode:data-changed"));notify(approve?"Stocktake approved; inventory adjusted and audited":"Stocktake rejected")}catch(e){notify(e instanceof Error?e.message:"Stocktake approval failed")}}
+  return <Page><Intro title="Stocktake & lots" text="Count inventory, approve variances, and track expiry by lot without allowing negative stock."/><Panel title="Start a stocktake"><form className="inline-form" onSubmit={save}><input value={name} onChange={e=>setName(e.target.value)} placeholder="Stocktake name" required/><button disabled={busy}>Save current counts</button></form><div className="stocktake-grid">{products.filter(p=>p.active).map(p=><label key={p.id}><span><b>{p.name}</b><small>{p.unit} · expected {p.stock}</small></span><input type="number" min="0" step="0.001" value={counts[p.id]??p.stock} onChange={e=>setCounts(x=>({...x,[p.id]:Number(e.target.value)}))}/></label>)}</div></Panel><div className="spec-two"><Panel title="Stocktake sessions"><Table heads={["Name","Date","Status","Action"]} rows={rows.map(x=>[x.name,String(x.countDate),x.status,<span className="button-row"><button className="table-action" disabled={x.status!=="Open"} onClick={()=>submit(x.id)}>Submit</button><button className="table-action" disabled={x.status!=="Submitted"||!(["Owner","Manager"].includes(user.role))} onClick={()=>approve(x.id,true)}>Approve</button></span>])}/></Panel><Panel title="Lots expiring in 30 days"><Table heads={["Lot","Product","Expiry","Qty"]} rows={expiring.map(x=>[x.lotNumber,products.find(p=>p.id===x.productId)?.name||"Item",String(x.expiryDate),x.quantity])}/></Panel></div></Page>
 }

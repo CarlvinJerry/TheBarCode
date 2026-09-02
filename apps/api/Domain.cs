@@ -45,6 +45,12 @@ public sealed class LedgerAccount : Entity { public required string Code { get; 
 public sealed class JournalEntry : Entity { public DateOnly Date { get; set; } public required string SourceType { get; set; } public string? SourceId { get; set; } public required string Memo { get; set; } public string Status { get; set; } = "Posted"; public bool IsDemo { get; set; } public List<JournalLine> Lines { get; set; } = []; }
 public sealed class JournalLine : Entity { public Guid JournalEntryId { get; set; } public Guid AccountId { get; set; } public required string Description { get; set; } public decimal Debit { get; set; } public decimal Credit { get; set; } }
 public sealed class AccountingPeriod : Entity { public required string Name { get; set; } public DateOnly Start { get; set; } public DateOnly End { get; set; } public bool Locked { get; set; } public bool IsDemo { get; set; } }
+public sealed class Supplier : Entity { public required string Name { get; set; } public string? Phone { get; set; } public string? Email { get; set; } public string? TaxNumber { get; set; } public bool Active { get; set; } = true; public bool IsDemo { get; set; } }
+public sealed class PurchaseOrder : Entity { public required string Number { get; set; } public Guid SupplierId { get; set; } public Guid StaffId { get; set; } public Guid? BranchId { get; set; } public string Status { get; set; } = "Draft"; public DateOnly OrderedDate { get; set; } public DateOnly? ExpectedDate { get; set; } public string? Notes { get; set; } public decimal Total { get; set; } public bool IsDemo { get; set; } public List<PurchaseOrderLine> Lines { get; set; } = []; }
+public sealed class PurchaseOrderLine : Entity { public Guid PurchaseOrderId { get; set; } public Guid ProductId { get; set; } public decimal QuantityOrdered { get; set; } public decimal QuantityReceived { get; set; } public decimal UnitCost { get; set; } public decimal LineTotal { get; set; } }
+public sealed class StockLot : Entity { public Guid ProductId { get; set; } public Guid? SupplierId { get; set; } public string LotNumber { get; set; } = ""; public DateOnly? ExpiryDate { get; set; } public decimal Quantity { get; set; } public decimal UnitCost { get; set; } public bool IsDemo { get; set; } }
+public sealed class StocktakeSession : Entity { public required string Name { get; set; } public Guid StaffId { get; set; } public string Status { get; set; } = "Open"; public DateOnly CountDate { get; set; } public DateTimeOffset? SubmittedAt { get; set; } public DateTimeOffset? ApprovedAt { get; set; } public bool IsDemo { get; set; } public List<StocktakeLine> Lines { get; set; } = []; }
+public sealed class StocktakeLine : Entity { public Guid StocktakeSessionId { get; set; } public Guid ProductId { get; set; } public decimal ExpectedQuantity { get; set; } public decimal CountedQuantity { get; set; } public decimal Variance { get; set; } public string? LotNumber { get; set; } public DateOnly? ExpiryDate { get; set; } public string? Notes { get; set; } }
 public record LedgerAccountRequest(string Code,string Name,string Type);
 public record AccountingPeriodRequest(string Name,DateOnly Start,DateOnly End);
 public record AdjustmentJournalRequest(DateOnly Date,string Memo,List<AdjustmentLineRequest> Lines);
@@ -53,3 +59,11 @@ public record RecipeIngredientRequest(Guid ProductId,decimal Quantity,decimal Wa
 public record RecipeRequest(Guid ProductId,string Name,decimal YieldQuantity,string? Notes,List<RecipeIngredientRequest> Ingredients);
 public record ProductionRunRequest(Guid RecipeId,decimal Quantity,string? Notes,string? DeviceId);
 public record IndustryConfigurationRequest(string IndustryProfile,string BusinessCategory,List<string> EnabledModules);
+public record SupplierRequest(Guid? Id,string Name,string? Phone,string? Email,string? TaxNumber,bool Active);
+public record PurchaseOrderLineRequest(Guid ProductId,decimal Quantity,decimal UnitCost);
+public record PurchaseOrderRequest(Guid? Id,Guid SupplierId,Guid? BranchId,DateOnly OrderedDate,DateOnly? ExpectedDate,string? Notes,List<PurchaseOrderLineRequest> Lines);
+public record ReceivePurchaseRequest(List<ReceivePurchaseLineRequest> Lines,string? Notes,string? DeviceId);
+public record ReceivePurchaseLineRequest(Guid LineId,decimal Quantity,decimal? UnitCost,string? LotNumber,DateOnly? ExpiryDate);
+public record StocktakeLineRequest(Guid ProductId,decimal CountedQuantity,string? LotNumber,DateOnly? ExpiryDate,string? Notes);
+public record StocktakeRequest(Guid? Id,string Name,DateOnly CountDate,List<StocktakeLineRequest> Lines);
+public record StocktakeApprovalRequest(bool Approve,string? Reason,string? DeviceId);
