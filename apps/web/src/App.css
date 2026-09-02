@@ -105,3 +105,18 @@ form.inline-form:has(input[placeholder="Stocktake name"]){grid-template-columns:
 .stocktake-grid input{box-sizing:border-box;background:var(--surface);color:var(--text);font:inherit;text-align:right}
 @media(max-width:900px){.purchasing-supplier-form,.purchasing-order-form{grid-template-columns:1fr 1fr}.purchasing-supplier-form button,.purchasing-order-form button:last-child{grid-column:1/-1}.stocktake-start-form{grid-template-columns:1fr auto}}
 @media(max-width:600px){.purchasing-supplier-form,.purchasing-order-form,.stocktake-start-form{grid-template-columns:1fr}.inline-form input,.inline-form select,.inline-form button,.wastage-form input,.wastage-form select,.wastage-form>button{min-height:44px;height:44px;font-size:16px}.inline-form button,.wastage-form>button{width:100%}.wastage-form>button{justify-self:stretch}.stocktake-grid input{min-height:40px;font-size:16px}}
+
+/* Accounting presentation: quiet semantic colour and CPA-style negatives. */
+.accounting-positive{color:var(--forest);font-variant-numeric:tabular-nums}
+.accounting-negative{color:#b74f3c;font-variant-numeric:tabular-nums}
+.accounting-zero{color:#c05a48;font-weight:650;font-variant-numeric:tabular-nums}
+.accounting-balance-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 10px;color:var(--text-soft);font-size:10px}
+.accounting-balance-good,.accounting-balance-bad{border-radius:99px;padding:5px 8px;font-size:9px;font-weight:650}
+.accounting-balance-good{color:#287558;background:#e9f5ef;border:1px solid #cde8dc}
+.accounting-balance-bad{color:#a43e31;background:#faece7;border:1px solid #efc8c0}
+.accounting-chart-legend{display:flex;gap:12px;justify-content:flex-end;color:var(--text-soft);font-size:9px;margin-top:4px}
+.accounting-chart-legend span::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px}
+.accounting-chart-legend .debit::before{background:#2f8065}
+.accounting-chart-legend .credit::before{background:#d9a34c}
+.accounting-chart-note{margin:8px 0 0;color:var(--text-soft);font-size:9px}
+@media(max-width:760px){.accounting-chart-legend{justify-content:flex-start}.accounting-chart-note{font-size:10px}}

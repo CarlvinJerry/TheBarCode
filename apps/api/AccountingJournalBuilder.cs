@@ -21,7 +21,13 @@ public static class AccountingJournalBuilder
     {
         var accounts = await db.LedgerAccounts.Where(x => x.IsDemo == demo && x.Active).ToDictionaryAsync(x => x.Code);
         if (accounts.Count == 0) return;
-        var entries = await db.JournalEntries.AsNoTracking().Include(x => x.Lines).Where(x => x.IsDemo == demo && x.SourceId != null).ToListAsync();
+        // Older builds used append-only "correction:" entries. Retain those rows for
+        // audit history, but exclude them from the active ledger and migrate the source
+        // snapshot to the current, authoritative operational values below.
+        var oldCorrections = await db.JournalEntries.Where(x => x.IsDemo == demo && x.SourceId != null && x.SourceId.StartsWith("correction:") && x.Status != "Superseded").ToListAsync();
+        foreach (var correction in oldCorrections) correction.Status = "Superseded";
+        if (oldCorrections.Count > 0) await db.SaveChangesAsync();
+        var entries = await db.JournalEntries.Include(x => x.Lines).Where(x => x.IsDemo == demo && x.SourceId != null && x.Status != "Superseded").ToListAsync();
         var latest = entries.GroupBy(x => x.SourceId!).ToDictionary(x => x.Key, x => x.OrderByDescending(y => y.CreatedAt).First());
         var sales = await db.Sales.AsNoTracking().Include(x => x.Items).Include(x => x.Payments).Where(x => x.IsDemo == demo && x.Status != "Held" && x.Status != "PendingApproval" && x.Status != "Cancelled").ToListAsync();
         foreach (var sale in sales)
@@ -38,6 +44,11 @@ public static class AccountingJournalBuilder
 
     static List<JournalLine> SaleLines(Sale sale, Dictionary<string, LedgerAccount> accounts)
     {
+        // A refunded sale is no longer an active economic event. The refund
+        // endpoint records the negative payment and restores stock; replacing
+        // the source snapshot with no lines keeps the active trial balance
+        // neutral while the immutable prior snapshot remains in journal history.
+        if (sale.Status.Equals("Refunded", StringComparison.OrdinalIgnoreCase)) return new List<JournalLine>();
         var lines = sale.Payments.Select(payment => new JournalLine { AccountId = payment.Method.Equals("M-Pesa", StringComparison.OrdinalIgnoreCase) ? accounts["1010"].Id : accounts["1000"].Id, Description = payment.Method, Debit = Math.Round(payment.Amount, 2) }).ToList();
         var paid = sale.Payments.Sum(x => x.Amount); if (sale.Total > paid) lines.Add(new JournalLine { AccountId = accounts["1100"].Id, Description = "Customer receivable", Debit = Math.Round(sale.Total - paid, 2) }); lines.Add(new JournalLine { AccountId = accounts["4000"].Id, Description = "Sales revenue", Credit = Math.Round(sale.Total, 2) }); var cost = sale.Items.Sum(x => x.UnitCost * x.Quantity); if (cost > 0) { lines.Add(new JournalLine { AccountId = accounts["5000"].Id, Description = "Cost of goods sold", Debit = Math.Round(cost, 2) }); lines.Add(new JournalLine { AccountId = accounts["1200"].Id, Description = "Inventory issued", Credit = Math.Round(cost, 2) }); } return lines;
     }
@@ -45,7 +56,11 @@ public static class AccountingJournalBuilder
     {
         if (prior is null) { var entry = new JournalEntry { SourceType = sourceType, SourceId = sourceKey, Memo = memo, Date = date, Status = status, IsDemo = demo }; entry.Lines.AddRange(current); db.JournalEntries.Add(entry); return; }
         if (prior.CreatedAt >= sourceUpdated) return;
-        var correctionKey = $"correction:{sourceKey}:{sourceUpdated.ToUnixTimeMilliseconds()}"; if (db.JournalEntries.Any(x => x.SourceId == correctionKey && x.IsDemo == demo)) return;
-        var correction = new JournalEntry { SourceType = "Correction", SourceId = correctionKey, Memo = $"Correction · {memo}", Date = date, Status = "Posted", IsDemo = demo }; foreach (var line in prior.Lines) correction.Lines.Add(new JournalLine { AccountId = line.AccountId, Description = $"Reverse {line.Description}", Debit = line.Credit, Credit = line.Debit }); correction.Lines.AddRange(current); db.JournalEntries.Add(correction);
+        // A source journal is an immutable snapshot. Supersede the previous snapshot
+        // and write the new balanced snapshot; the old row remains queryable for audit.
+        prior.Status = "Superseded";
+        var replacement = new JournalEntry { SourceType = sourceType, SourceId = sourceKey, Memo = memo, Date = date, Status = status, IsDemo = demo };
+        replacement.Lines.AddRange(current);
+        db.JournalEntries.Add(replacement);
     }
 }
