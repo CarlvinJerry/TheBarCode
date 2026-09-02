@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { bootstrap, getBills, getLoginStaff, getNotifications, getSettings, holdBill, login, postBill, session, syncOutbox, updateBill } from "./api";
+import { bootstrap, getBills, getLoginStaff, getNotifications, getSettings, holdBill, login, postBill, session, syncOutbox, updateBill, verifyLocalPin } from "./api";
 import {
   db,
   queueCustomer,
@@ -107,7 +107,7 @@ export default function App() {
     () => cart.reduce((s, x) => s + x.quantity * x.sellingPrice, 0),
     [cart],
   );
-  async function unlock(e:React.FormEvent){e.preventDefault();setLockError("");try{const signedIn=await login(lockStaffId,lockPin);await bootstrap();setUser(signedIn);setLocked(false);setLockPin("");activityRef.current=Date.now();setMessage(`Welcome back, ${signedIn.name}`)}catch{setLockError("Unable to unlock. Check the staff PIN and connection.")}}
+  async function unlock(e:React.FormEvent){e.preventDefault();setLockError("");if(!lockStaffId){setLockError("Choose a staff account to unlock this session.");return}try{const signedIn=await login(lockStaffId,lockPin);setUser(signedIn);setLocked(false);setLockPin("");activityRef.current=Date.now();try{await bootstrap();setMessage(`Welcome back, ${signedIn.name}`)}catch{setMessage(`Welcome back, ${signedIn.name}. Using cached data until the server reconnects.`)}}catch(error){const networkFailure=!navigator.onLine||/failed to fetch|network|connection|refused|unavailable/i.test(String(error));const current=session.user;const localMatch=Boolean(current&&current.id===lockStaffId&&await verifyLocalPin(lockStaffId,lockPin));if(networkFailure&&localMatch){setLocked(false);setLockPin("");activityRef.current=Date.now();setMessage(`Unlocked offline, ${current!.name}. Changes will sync when the server reconnects.`);return}setLockError(error instanceof Error&&error.message?error.message:"Unable to unlock. Check the staff PIN and connection.")}}
   if (!user) return <Login staff={staff} onLogin={setUser} message={message} />;
   const add = (p: Product) => setCart((c) => {const current=c.find(x=>x.id===p.id)?.quantity||0;if(current>=p.stock){setMessage(`${p.name} is limited to ${p.stock} available unit${p.stock===1?"":"s"}`);return c}return c.some(x=>x.id===p.id)?c.map(x=>x.id===p.id?{...x,quantity:Math.min(p.stock,x.quantity+1)}:x):[...c,{...p,quantity:1}]});
   const qty = (id: string, d: number) =>
