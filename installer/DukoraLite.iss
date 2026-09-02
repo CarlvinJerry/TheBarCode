@@ -1,26 +1,26 @@
 #ifndef AppVersion
-#define AppVersion "1.8.12"
+#define AppVersion "1.12.1"
 #endif
 #define StageDir "stage-lite"
 
 [Setup]
 AppId={{39B83C6A-CB14-46E7-94E8-4915E6AFA6E8}
-AppName=Dukora Lite
+AppName=TheBarcode
 AppVersion={#AppVersion}
 AppPublisher=Beyond Raw Data
-DefaultDirName={autopf}\Beyond Raw Data\Dukora Lite
-DefaultGroupName=Dukora Lite
+DefaultDirName={autopf}\Beyond Raw Data\TheBarcode
+DefaultGroupName=TheBarcode
 OutputDir=output
-OutputBaseFilename=Dukora-Lite-Setup-{#AppVersion}-x64
+OutputBaseFilename=TheBarcode-Setup-{#AppVersion}-x64
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 Compression=lzma2/max
 SolidCompression=yes
-SetupIconFile=branding\dukora.ico
-UninstallDisplayIcon={app}\dukora.ico
+SetupIconFile=branding\thebarcode.ico
+UninstallDisplayIcon={app}\thebarcode.ico
 WizardStyle=modern
-WizardSmallImageFile=branding\dukora-logo.png
+WizardSmallImageFile=branding\thebarcode-mark.png
 
 [Files]
 Source: "{#StageDir}\desktop\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -28,22 +28,23 @@ Source: "{#StageDir}\server\*"; DestDir: "{app}\server"; Flags: ignoreversion re
 Source: "{#StageDir}\print-bridge\*"; DestDir: "{app}\print-bridge"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#StageDir}\prerequisites\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 Source: "{#StageDir}\driver\Xprinter-Receipt-Driver-2025.12.22.01.exe"; DestDir: "{app}\driver"; Flags: ignoreversion
-Source: "branding\dukora.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "branding\thebarcode.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "branding\thebarcode-mark.png"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#StageDir}\driver-launcher\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Tasks]
-Name: "desktopicon"; Description: "Create a Dukora Lite desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: checkedonce
+Name: "desktopicon"; Description: "Create a TheBarcode desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: checkedonce
 Name: "printerdriver"; Description: "Run the Xprinter receipt-printer driver setup"; GroupDescription: "Optional printer support:"; Flags: unchecked
 
 [Icons]
-Name: "{group}\Dukora Lite"; Filename: "{app}\Dukora.Desktop.exe"; IconFilename: "{app}\dukora.ico"
-Name: "{autodesktop}\Dukora Lite"; Filename: "{app}\Dukora.Desktop.exe"; IconFilename: "{app}\dukora.ico"; Tasks: desktopicon
-Name: "{group}\Install Xprinter Driver"; Filename: "{app}\Dukora.DriverInstaller.exe"; IconFilename: "{app}\dukora.ico"
+Name: "{group}\TheBarcode"; Filename: "{app}\TheBarcode.Desktop.exe"; IconFilename: "{app}\thebarcode.ico"
+Name: "{autodesktop}\TheBarcode"; Filename: "{app}\TheBarcode.Desktop.exe"; IconFilename: "{app}\thebarcode.ico"; Tasks: desktopicon
+Name: "{group}\Install Xprinter Driver"; Filename: "{app}\Dukora.DriverInstaller.exe"; IconFilename: "{app}\thebarcode.ico"
 
 [Run]
 Filename: "{tmp}\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; Parameters: "/silent /install"; StatusMsg: "Installing the Microsoft Edge WebView2 desktop runtime..."; Flags: runhidden waituntilterminated; Check: NeedsWebView2
 Filename: "{app}\Dukora.DriverInstaller.exe"; StatusMsg: "Installing Xprinter receipt-printer support..."; Flags: waituntilterminated; Tasks: printerdriver
-Filename: "{app}\Dukora.Desktop.exe"; Description: "Open Dukora Lite"; Flags: postinstall nowait
+Filename: "{app}\TheBarcode.Desktop.exe"; Description: "Open TheBarcode"; Flags: postinstall nowait
 
 [Code]
 function WebView2Installed(): Boolean;
@@ -65,5 +66,5 @@ end;
 function InitializeSetup(): Boolean;
 begin
   Result := IsWin64;
-  if not Result then MsgBox('Dukora Lite requires 64-bit Windows.', mbError, MB_OK);
+  if not Result then MsgBox('TheBarcode requires 64-bit Windows.', mbError, MB_OK);
 end;

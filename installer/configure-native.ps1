@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-  throw 'Dukora configuration requires Administrator privileges. Run the installer as Administrator.'
+  throw 'TheBarcode configuration requires Administrator privileges. Run the installer as Administrator.'
 }
 
 function New-HexSecret([int]$Length) {
@@ -24,7 +24,7 @@ if (-not $hasXprinter -and (Test-Path -LiteralPath $driver)) {
 
 $postgres = Get-Service 'postgresql*' -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
 if (-not $postgres) {
-  if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw 'PostgreSQL is missing and winget is unavailable. Install PostgreSQL 17 or 18, then rerun Configure Dukora.' }
+  if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw 'PostgreSQL is missing and winget is unavailable. Install PostgreSQL 17 or 18, then rerun Configure TheBarcode.' }
   Write-Host 'Installing PostgreSQL 18. Record the postgres administrator password selected by its installer.' -ForegroundColor Yellow
   winget install --id PostgreSQL.PostgreSQL.18 --exact --interactive --accept-source-agreements --accept-package-agreements
   if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL installation did not complete.' }
@@ -35,7 +35,7 @@ if ($postgres.Status -ne 'Running') { Start-Service $postgres.Name }
 
 $psql = Get-ChildItem 'C:\Program Files\PostgreSQL' -Filter psql.exe -Recurse -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
 if (-not $psql) { throw 'psql.exe was not found.' }
-$ownerPin = Read-Host 'Choose Dukora owner PIN (at least 6 characters)' -AsSecureString
+$ownerPin = Read-Host 'Choose TheBarcode owner PIN (at least 6 characters)' -AsSecureString
 $ownerPinText = [Net.NetworkCredential]::new('', $ownerPin).Password
 if ($ownerPinText.Length -lt 6) { throw 'Owner PIN must contain at least 6 characters.' }
 $pgSecret = Read-Host 'Enter the PostgreSQL postgres administrator password' -AsSecureString
@@ -64,11 +64,11 @@ $api = Join-Path $InstallRoot 'server\TheBarcode.Api.exe'
 & sc.exe stop TheBarcodeApi 2>$null | Out-Null
 & sc.exe delete TheBarcodeApi 2>$null | Out-Null
 for ($attempt = 1; $attempt -le 20 -and (Get-Service TheBarcodeApi -ErrorAction SilentlyContinue); $attempt++) { Start-Sleep -Milliseconds 250 }
-& sc.exe create TheBarcodeApi binPath= "`"$api`" --urls http://0.0.0.0:8088" start= auto DisplayName= "Dukora Local Server" | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'Windows could not register the Dukora Local Server service.' }
-& sc.exe description TheBarcodeApi 'Local API and shared business data service for Dukora' | Out-Null
+& sc.exe create TheBarcodeApi binPath= "`"$api`" --urls http://0.0.0.0:8088" start= auto DisplayName= "TheBarcode Local Server" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Windows could not register the TheBarcode Local Server service.' }
+& sc.exe description TheBarcodeApi 'Local API and shared business data service for TheBarcode' | Out-Null
 & sc.exe start TheBarcodeApi | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'Windows could not start the Dukora Local Server service.' }
+if ($LASTEXITCODE -ne 0) { throw 'Windows could not start the TheBarcode Local Server service.' }
 & netsh.exe advfirewall firewall delete rule name='TheBarcode Local Server' 2>$null | Out-Null
 & netsh.exe advfirewall firewall add rule name='TheBarcode Local Server' dir=in action=allow protocol=TCP localport=8088 profile=private | Out-Null
 
@@ -82,7 +82,7 @@ for ($attempt = 1; $attempt -le 20; $attempt++) {
 }
 if (-not $healthy) {
   $serviceState = (Get-Service TheBarcodeApi -ErrorAction SilentlyContinue).Status
-  throw "Dukora Local Server did not become ready on port 8088. Service status: $serviceState. Re-run Configure Dukora as Administrator."
+  throw "TheBarcode Local Server did not become ready on port 8088. Service status: $serviceState. Re-run Configure TheBarcode as Administrator."
 }
 
 $bridge = Join-Path $InstallRoot 'print-bridge\TheBarcode.PrintBridge.exe'
@@ -90,7 +90,7 @@ $startup = Join-Path ([Environment]::GetFolderPath('Startup')) 'TheBarcode Print
 "@echo off`r`nstart `"`" /min `"$bridge`" --urls http://127.0.0.1:17777" | Set-Content -LiteralPath $startup -Encoding ascii
 Start-Process -FilePath $bridge -ArgumentList '--urls http://127.0.0.1:17777' -WindowStyle Hidden
 
-Write-Host 'Dukora native installation is configured and responding on port 8088.' -ForegroundColor Green
+Write-Host 'TheBarcode installation is configured and responding on port 8088.' -ForegroundColor Green
 Write-Host 'Other terminals on this outlet network can use this computer IP on port 8088.' -ForegroundColor Cyan
 Start-Process 'http://localhost:8088'
 Read-Host 'Press Enter to close'

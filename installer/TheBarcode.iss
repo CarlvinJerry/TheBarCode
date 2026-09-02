@@ -1,26 +1,26 @@
 #ifndef AppVersion
-  #define AppVersion "1.8.12"
+  #define AppVersion "1.12.1"
 #endif
 #define StageDir "stage"
 
 [Setup]
 AppId={{B1D3FE72-6935-4FB0-A1F4-2B55E0D6AF19}
-AppName=Dukora
+AppName=TheBarcode
 AppVersion={#AppVersion}
 AppPublisher=Beyond Raw Data
-DefaultDirName={autopf}\Beyond Raw Data\Dukora
-DefaultGroupName=Dukora
+DefaultDirName={autopf}\Beyond Raw Data\TheBarcode
+DefaultGroupName=TheBarcode
 OutputDir=output
-OutputBaseFilename=Dukora-Setup-{#AppVersion}-x64
+OutputBaseFilename=TheBarcode-Setup-{#AppVersion}-x64
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 Compression=lzma2/max
 SolidCompression=yes
-SetupIconFile=branding\dukora.ico
-UninstallDisplayIcon={app}\branding\dukora.ico
+SetupIconFile=branding\thebarcode.ico
+UninstallDisplayIcon={app}\branding\thebarcode.ico
 WizardStyle=modern
-WizardSmallImageFile=branding\dukora-logo.png
+WizardSmallImageFile=branding\thebarcode-mark.png
 
 [Files]
 Source: "{#StageDir}\api\*"; DestDir: "{app}\server"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -28,14 +28,13 @@ Source: "{#StageDir}\print-bridge\*"; DestDir: "{app}\print-bridge"; Flags: igno
 Source: "{#StageDir}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#StageDir}\driver\*"; DestDir: "{app}\driver"; Flags: ignoreversion
 Source: "{#StageDir}\release\*"; DestDir: "{app}\release"; Flags: ignoreversion
-Source: "branding\dukora-logo.png"; DestDir: "{app}\branding"; Flags: ignoreversion
-Source: "branding\dukora-full-logo.png"; DestDir: "{app}\branding"; Flags: ignoreversion
-Source: "branding\dukora.ico"; DestDir: "{app}\branding"; Flags: ignoreversion
+Source: "branding\thebarcode-mark.png"; DestDir: "{app}\branding"; Flags: ignoreversion
+Source: "branding\thebarcode.ico"; DestDir: "{app}\branding"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Dukora"; Filename: "http://localhost:8088"; IconFilename: "{app}\branding\dukora.ico"
-Name: "{autodesktop}\Dukora"; Filename: "http://localhost:8088"; IconFilename: "{app}\branding\dukora.ico"; Tasks: desktopicon
-Name: "{group}\Configure Dukora"; Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\configure-native-launcher.ps1"" -InstallRoot ""{app}"""; IconFilename: "{app}\branding\dukora.ico"
+Name: "{group}\TheBarcode"; Filename: "http://localhost:8088"; IconFilename: "{app}\branding\thebarcode.ico"
+Name: "{autodesktop}\TheBarcode"; Filename: "http://localhost:8088"; IconFilename: "{app}\branding\thebarcode.ico"; Tasks: desktopicon
+Name: "{group}\Configure TheBarcode"; Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\configure-native-launcher.ps1"" -InstallRoot ""{app}"""; IconFilename: "{app}\branding\thebarcode.ico"
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: checkedonce
@@ -53,5 +52,5 @@ Filename: "netsh.exe"; Parameters: "advfirewall firewall delete rule name=""TheB
 function InitializeSetup(): Boolean;
 begin
   Result := IsWin64;
-  if not Result then MsgBox('Dukora requires 64-bit Windows.', mbError, MB_OK);
+  if not Result then MsgBox('TheBarcode requires 64-bit Windows.', mbError, MB_OK);
 end;

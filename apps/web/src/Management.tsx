@@ -1120,8 +1120,8 @@ function Settings({
   user: Props["user"];
   notify: (x: string) => void;
 }) {
-  const primaryUpdateManifest="https://dukora.beyondrawdata.com/releases/lite/latest.json";
-  const fallbackUpdateManifest="https://dukora.beyondrawdata.co.ke/releases/lite/latest.json";
+  const primaryUpdateManifest="https://thebarcode.beyondrawdata.com/releases/lite/latest.json";
+  const fallbackUpdateManifest="https://thebarcode.beyondrawdata.co.ke/releases/lite/latest.json";
   const [theme, setTheme] = useState(localStorage.getItem("theme") ?? "Forest");
   const [settingsTab,setSettingsTab]=useState(sessionStorage.getItem("dukora_settings_tab")||"appearance");
   const [navigationLayout,setNavigationLayout]=useState(localStorage.getItem("navigation_layout")??"Vertical");

@@ -13,7 +13,11 @@ public static class MaintenanceEndpoints
         {
             var directory = BackupDirectory(configuration);
             Directory.CreateDirectory(directory);
-            return Directory.GetFiles(directory, "dukora-manual-*.db")
+            // Keep exposing backups created by older Dukora Lite builds while
+            // writing all new backups with the TheBarcode prefix.
+            return Directory.GetFiles(directory, "thebarcode-manual-*.db")
+                .Concat(Directory.GetFiles(directory, "dukora-manual-*.db"))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Select(path => new FileInfo(path))
                 .OrderByDescending(x => x.CreationTimeUtc)
                 .Select(x => new { fileName = x.Name, createdAt = x.CreationTimeUtc, sizeBytes = x.Length });
@@ -84,10 +88,10 @@ public static class MaintenanceEndpoints
 
     static async Task<BackupResult> CreateBackup(AppDbContext db, IConfiguration configuration, string purpose)
     {
-        if (db.Database.GetDbConnection() is not SqliteConnection source) throw new InvalidOperationException("Local backup and purge is available in Dukora Lite only.");
+        if (db.Database.GetDbConnection() is not SqliteConnection source) throw new InvalidOperationException("Local backup and purge is available in TheBarcode Lite only.");
         var directory = BackupDirectory(configuration);
         Directory.CreateDirectory(directory);
-        var fileName = $"dukora-manual-{purpose}-{DateTime.Now:yyyyMMdd-HHmmss}.db";
+        var fileName = $"thebarcode-manual-{purpose}-{DateTime.Now:yyyyMMdd-HHmmss}.db";
         var path = Path.Combine(directory, fileName);
         await source.OpenAsync();
         await using var destination = new SqliteConnection($"Data Source={path}");

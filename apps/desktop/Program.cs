@@ -17,7 +17,7 @@ internal static class Program
     [STAThread]
     static async Task Main()
     {
-        using var single = new Mutex(true, "BeyondRawData.Dukora.Lite", out var first);
+        using var single = new Mutex(true, "BeyondRawData.TheBarcode", out var first);
         if (!first) { MessageBox.Show("TheBarcode is already open.", "TheBarcode", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
         ApplicationConfiguration.Initialize();
         try
@@ -94,9 +94,9 @@ internal static class Program
     {
         if (!File.Exists(paths.DatabaseFile) || new FileInfo(paths.DatabaseFile).Length == 0) return;
         Directory.CreateDirectory(paths.BackupDir);
-        var daily = Path.Combine(paths.BackupDir, $"dukora-{DateTime.Today:yyyyMMdd}.db");
+        var daily = Path.Combine(paths.BackupDir, $"thebarcode-{DateTime.Today:yyyyMMdd}.db");
         if (!File.Exists(daily)) File.Copy(paths.DatabaseFile, daily);
-        foreach (var old in Directory.GetFiles(paths.BackupDir, "dukora-*.db").OrderByDescending(File.GetCreationTimeUtc).Skip(14)) File.Delete(old);
+        foreach (var old in Directory.GetFiles(paths.BackupDir, "thebarcode-*.db").OrderByDescending(File.GetCreationTimeUtc).Skip(14)) File.Delete(old);
     }
 
     static async Task<bool> IsHealthy()
@@ -130,7 +130,7 @@ internal sealed class DukoraWindow : Form
     {
         this.url = url; this.paths = paths;
         Text = "TheBarcode — Smarter Business Operations";
-        Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "dukora.ico"));
+        Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "thebarcode.ico"));
         MinimumSize = new Size(960, 640);
         WindowState = FormWindowState.Maximized;
         Controls.Add(browser);
@@ -174,10 +174,10 @@ internal sealed class DukoraWindow : Form
             if(MessageBox.Show($"Install TheBarcode {command.Version}?\n\nTheBarcode will verify the download, back up your database, close, install the update and reopen.","TheBarcode update",MessageBoxButtons.YesNo,MessageBoxIcon.Information)!=DialogResult.Yes){Reply(false,"Update cancelled");return;}
             if(!Uri.TryCreate(command.DownloadUrl,UriKind.Absolute,out var download)||download.Scheme!="https"||!TrustedReleaseHost(download.Host))throw new InvalidOperationException("The release URL is not an approved Beyond Raw Data HTTPS address.");
             if(string.IsNullOrWhiteSpace(command.Sha256)||command.Sha256.Length!=64)throw new InvalidOperationException("The release manifest does not contain a valid SHA-256 checksum.");
-            var updates=Path.Combine(paths.Root,"Updates");Directory.CreateDirectory(updates);var installer=Path.Combine(updates,$"Dukora-Lite-Setup-{SafeVersion(command.Version??"update")}-x64.exe");
+            var updates=Path.Combine(paths.Root,"Updates");Directory.CreateDirectory(updates);var installer=Path.Combine(updates,$"TheBarcode-Setup-{SafeVersion(command.Version??"update")}-x64.exe");
             using(var client=new HttpClient{Timeout=TimeSpan.FromMinutes(15)})await using(var input=await client.GetStreamAsync(download))await using(var output=File.Create(installer)){await input.CopyToAsync(output);}
             await using(var stream=File.OpenRead(installer)){var actual=Convert.ToHexString(await SHA256.HashDataAsync(stream));if(!actual.Equals(command.Sha256,StringComparison.OrdinalIgnoreCase)){File.Delete(installer);throw new InvalidOperationException("The downloaded installer failed checksum verification and was deleted.");}}
-            if(File.Exists(paths.DatabaseFile)){Directory.CreateDirectory(paths.BackupDir);File.Copy(paths.DatabaseFile,Path.Combine(paths.BackupDir,$"dukora-before-update-{DateTime.Now:yyyyMMdd-HHmmss}.db"),true);}
+            if(File.Exists(paths.DatabaseFile)){Directory.CreateDirectory(paths.BackupDir);File.Copy(paths.DatabaseFile,Path.Combine(paths.BackupDir,$"thebarcode-before-update-{DateTime.Now:yyyyMMdd-HHmmss}.db"),true);}
             Reply(true,$"TheBarcode {command.Version} verified. Windows will now request permission to install it.");
             Process.Start(new ProcessStartInfo(installer,"/SILENT /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS"){UseShellExecute=true,Verb="runas",WorkingDirectory=updates});
             await Task.Delay(700);BeginInvoke(Application.Exit);
@@ -212,9 +212,26 @@ internal sealed record AppPaths(string Root, string ConfigFile, string DatabaseF
 {
     public static AppPaths Create()
     {
-        var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Beyond Raw Data", "Dukora Lite");
+        var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Beyond Raw Data", "TheBarcode");
+        var legacy = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Beyond Raw Data", "Dukora Lite");
+        MigrateLegacyRoot(legacy, root);
         Directory.CreateDirectory(root); var logs = Path.Combine(root, "Logs"); Directory.CreateDirectory(logs);
-        return new(root, Path.Combine(root,"configuration.json"), Path.Combine(root,"dukora.db"), Path.Combine(logs,"api.log"), Path.Combine(logs,"desktop.log"), Path.Combine(root,"WebView2"),Path.Combine(root,"Backups"));
+        var database = Path.Combine(root,"thebarcode.db");
+        var legacyDatabase = Path.Combine(root,"dukora.db");
+        if (!File.Exists(database) && File.Exists(legacyDatabase)) File.Move(legacyDatabase, database);
+        return new(root, Path.Combine(root,"configuration.json"), database, Path.Combine(logs,"api.log"), Path.Combine(logs,"desktop.log"), Path.Combine(root,"WebView2"),Path.Combine(root,"Backups"));
+    }
+
+    static void MigrateLegacyRoot(string legacy, string current)
+    {
+        if (!Directory.Exists(legacy) || string.Equals(legacy,current,StringComparison.OrdinalIgnoreCase)) return;
+        Directory.CreateDirectory(current);
+        foreach (var entry in Directory.GetFileSystemEntries(legacy))
+        {
+            var target = Path.Combine(current, Path.GetFileName(entry));
+            if (File.Exists(entry) && !File.Exists(target)) File.Move(entry,target);
+            else if (Directory.Exists(entry) && !Directory.Exists(target)) Directory.Move(entry,target);
+        }
     }
 }
 

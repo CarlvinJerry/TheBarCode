@@ -5,9 +5,9 @@
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <ApplicationIcon>dukora.ico</ApplicationIcon>
+    <ApplicationIcon>thebarcode.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>Dukora.DriverInstaller</AssemblyName>
   </PropertyGroup>
-  <ItemGroup><Content Include="dukora.ico" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup><Content Include="thebarcode.ico" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
 </Project>

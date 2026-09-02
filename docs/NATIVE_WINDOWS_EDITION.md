@@ -1,4 +1,4 @@
-# Dukora native Windows edition
+# TheBarcode native Windows edition
 
 ## Release discipline
 
@@ -13,7 +13,7 @@ The native edition runs without Docker. It packages the touchscreen web interfac
 Build output:
 
 ```text
-installer\output\Dukora-Setup-1.3.0-x64.exe
+installer\output\TheBarcode-Setup-<version>-x64.exe
 ```
 
 The build script prints the SHA-256 checksum for each newly generated installer. Publish that checksum with the matching release rather than reusing a previous version's checksum.
@@ -67,7 +67,7 @@ The client already supports a configurable API base URL and durable device-side 
 1. Publish a tenant-aware HTTPS API backed by managed PostgreSQL.
 2. Put its address into **Shared local or hosted API URL**.
 3. Register the institution, outlet and device against the hosted service.
-4. Publish the Lite manifest at `https://dukora.beyondrawdata.com/releases/lite/latest.json` and the matching installer under the same `/releases/lite/` directory. Dukora falls back to `https://dukora.beyondrawdata.co.ke/releases/lite/latest.json` when the primary endpoint is unavailable. Custom HTTPS manifest endpoints can still be saved in Settings.
+4. Publish the Lite manifest at `https://thebarcode.beyondrawdata.com/releases/lite/latest.json` and the matching installer under the same `/releases/lite/` directory. TheBarcode falls back to `https://thebarcode.beyondrawdata.co.ke/releases/lite/latest.json` when the primary endpoint is unavailable. Custom HTTPS manifest endpoints can still be saved in Settings.
 
 The release manifest contains the latest version, summary, download URL, SHA-256 and release notes. Dukora compares semantic versions, accepts installer downloads only from Beyond Raw Data HTTPS domains, verifies SHA-256, creates a pre-update database backup and requests Owner and Windows approval before installing and restarting. Sign production installers with the Beyond Raw Data Authenticode certificate when available.
 

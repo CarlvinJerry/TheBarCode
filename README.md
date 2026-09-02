@@ -1,4 +1,4 @@
-# Dukora
+# TheBarcode
 
 **Smarter Business Operations**
 
@@ -6,8 +6,8 @@ Current version: **1.11.5** (see `VERSION`). Native installers must be rebuilt a
 
 Windows deployment profiles:
 
-- **Dukora Lite:** SQLite plus a branded WebView2 desktop host; no PostgreSQL, Docker or Windows service.
-- **Dukora Server:** PostgreSQL-backed local-network installation for concurrent terminals.
+- **TheBarcode Lite:** SQLite plus a branded WebView2 desktop host; no PostgreSQL, Docker or Windows service.
+- **TheBarcode Server:** PostgreSQL-backed local-network installation for concurrent terminals.
 - **Docker:** retained for capable hosts and future cloud deployments.
 
 Windows-first, offline-capable point of sale and inventory system for a bar, café, food counter, and kitchen. The repository replaces the Shiny proof of concept while preserving its operational workflows.
