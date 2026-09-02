@@ -1,6 +1,7 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.1";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.2";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Supplier directory moved into a focused modal with audited archive actions that preserve purchase history",
   "Session lock with in-place staff PIN re-authentication after inactivity",
   "Purchasing workspace with suppliers, purchase orders, partial receiving and weighted stock cost",
   "Stocktake sessions with submitted/approved variances, lot numbers and expiry tracking",

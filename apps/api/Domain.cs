@@ -60,6 +60,7 @@ public record RecipeRequest(Guid ProductId,string Name,decimal YieldQuantity,str
 public record ProductionRunRequest(Guid RecipeId,decimal Quantity,string? Notes,string? DeviceId);
 public record IndustryConfigurationRequest(string IndustryProfile,string BusinessCategory,List<string> EnabledModules);
 public record SupplierRequest(Guid? Id,string Name,string? Phone,string? Email,string? TaxNumber,bool Active);
+public record SupplierDeleteRequest(string? Reason);
 public record PurchaseOrderLineRequest(Guid ProductId,decimal Quantity,decimal UnitCost);
 public record PurchaseOrderRequest(Guid? Id,Guid SupplierId,Guid? BranchId,DateOnly OrderedDate,DateOnly? ExpectedDate,string? Notes,List<PurchaseOrderLineRequest> Lines);
 public record ReceivePurchaseRequest(List<ReceivePurchaseLineRequest> Lines,string? Notes,string? DeviceId);

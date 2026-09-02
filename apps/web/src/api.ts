@@ -71,6 +71,7 @@ export async function createAccountingPeriod(value:Record<string,unknown>){retur
 export async function lockAccountingPeriod(id:string){return request(`/accounting/periods/${id}/lock`,{method:'PUT'});}
 export async function getSuppliers(){return request('/purchasing/suppliers');}
 export async function saveSupplier(value:Record<string,unknown>){return request('/purchasing/suppliers',{method:'POST',body:JSON.stringify(value)});}
+export async function deleteSupplier(id:string,reason:string){return request(`/purchasing/suppliers/${id}`,{method:'DELETE',body:JSON.stringify({reason})});}
 export async function getPurchaseOrders(){return request('/purchasing/orders');}
 export async function savePurchaseOrder(value:Record<string,unknown>){return request('/purchasing/orders',{method:'POST',body:JSON.stringify(value)});}
 export async function sendPurchaseOrder(id:string){return request(`/purchasing/orders/${id}/send`,{method:'POST'});}

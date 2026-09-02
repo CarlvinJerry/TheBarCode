@@ -22,6 +22,18 @@ public static class AdvancedInventoryEndpoints
             if (action == "Created") db.Suppliers.Add(supplier);
             db.AuditEvents.Add(Audit(p, action, "Supplier", supplier.Id, supplier.Name)); await db.SaveChangesAsync(); return Results.Ok(supplier);
         }).RequireAuthorization(x => x.RequireRole("Owner", "Manager", "Storekeeper"));
+        purchasing.MapDelete("/suppliers/{id:guid}", async (Guid id, SupplierDeleteRequest? r, AppDbContext db, ClaimsPrincipal p) =>
+        {
+            var supplier = await db.Suppliers.SingleOrDefaultAsync(x => x.Id == id && x.IsDemo == Security.IsDemo(p));
+            if (supplier is null) return Results.NotFound(new { error = "Supplier not found" });
+            if (!supplier.Active) return Results.Conflict(new { error = "Supplier is already archived" });
+            supplier.Active = false;
+            supplier.UpdatedAt = DateTimeOffset.UtcNow;
+            var reason = string.IsNullOrWhiteSpace(r?.Reason) ? "Archived from supplier directory" : r!.Reason!.Trim();
+            db.AuditEvents.Add(Audit(p, "Archived", "Supplier", supplier.Id, $"{supplier.Name}; {reason}"));
+            await db.SaveChangesAsync();
+            return Results.Ok(new { supplier.Id, supplier.Name, supplier.Active });
+        }).RequireAuthorization(x => x.RequireRole("Owner", "Manager", "Storekeeper"));
         purchasing.MapGet("/orders", async (AppDbContext db, ClaimsPrincipal p) =>
         {
             var demo = Security.IsDemo(p); var orders = (await db.PurchaseOrders.AsNoTracking().Include(x => x.Lines).Where(x => x.IsDemo == demo).Take(500).ToListAsync()).OrderByDescending(x => x.OrderedDate).ThenByDescending(x => x.CreatedAt).ToList();
