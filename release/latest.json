@@ -1,9 +1,9 @@
 {
-  "version": "1.12.5",
+  "version": "1.12.6",
   "channel": "local-windows",
-  "summary": "TheBarcode 1.12.5: native PostgreSQL installation, upgrade-safe configuration and printer setup.",
-  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.5/TheBarcode-Setup-1.12.5-x64.exe",
-  "sha256": "4C31F59C850A59B44489613B779F4315E4E30BBF61F30EFA04F7D81C122A94A6",
+  "summary": "TheBarcode 1.12.6: automatic Lite-to-PostgreSQL migration, native upgrades and printer setup.",
+  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.6/TheBarcode-Setup-1.12.6-x64.exe",
+  "sha256": "",
   "publishedAt": "2026-09-03T00:00:00+03:00",
   "notes": [
     "Owner and manager-assigned permissions now authorize reports, audit, accounting, approvals, expenses and inventory independently of base staff roles.",

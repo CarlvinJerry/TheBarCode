@@ -8,7 +8,7 @@ The first launch creates the shared organization, main branch and receipt defaul
 
 The native edition runs without Docker. It packages the touchscreen web interface, a self-contained ASP.NET local server, the PostgreSQL data connection, the XP-80 ESC/POS print bridge, and the verified Xprinter receipt-driver installer. The installer also includes the official PostgreSQL 18.6 Windows bootstrap and installs it silently when no PostgreSQL service is present.
 
-The native edition preserves an existing native PostgreSQL configuration during upgrades. The older Lite edition stores data in SQLite and is intentionally detected and blocked by the native setup rather than silently creating a second empty environment; retain the Lite installation until a supported SQLite-to-PostgreSQL migration has been run.
+The native edition preserves an existing native PostgreSQL configuration during upgrades. If the older Lite edition is detected, setup takes a local backup and migrates its SQLite records and relationships into PostgreSQL before starting the shared server. The original SQLite files are never deleted.
 
 ## Installer
 
@@ -26,12 +26,21 @@ The setup executable requires administrator rights. During configuration it:
 2. Checks for a PostgreSQL service. If missing, silently installs the bundled official PostgreSQL 18.6 package and waits for its service to become ready.
 3. Generates a secure database administrator secret for a new PostgreSQL installation and asks only for the private TheBarcode owner PIN. If PostgreSQL/configuration already exists, it preserves the existing credentials and data.
 4. Creates an isolated `thebarcode` role and database for a first-time native setup.
-5. Installs the self-contained API as the automatic **TheBarcode Local Server** Windows service.
-6. Adds a Private-network firewall rule for TCP 8088.
-7. Starts the local XP-80 print bridge and registers it at Windows sign-in.
-8. Creates optional desktop and Start-menu shortcuts that open the local web app.
+5. If Lite SQLite data is found, copies a timestamped backup and migrates all shared tables transactionally, validating each table before commit.
+6. Installs the self-contained API as the automatic **TheBarcode Local Server** Windows service.
+7. Adds a Private-network firewall rule for TCP 8088.
+8. Starts the local XP-80 print bridge and registers it at Windows sign-in.
+9. Creates optional desktop and Start-menu shortcuts that open the local web app.
 
 Do not distribute the installer publicly until it has been code-signed by Beyond Raw Data. Windows may warn about an unsigned application even though the bundled Xprinter driver and PostgreSQL vendor installer are signed by their respective vendors.
+
+The build supports Authenticode signing when Beyond Raw Data provides a certificate. Supply the PFX path (and, if needed, its password) to the release build; the script locates `signtool.exe`, applies SHA-256 signing with a timestamp, verifies the signature, and only then prints the release checksum:
+
+```powershell
+.\scripts\build-native-installer.ps1 -Version 1.12.6 -SigningCertificate C:\secure\BeyondRawData.pfx -SigningPassword $env:THEBARCODE_SIGNING_PASSWORD
+```
+
+No certificate is stored in this repository. A self-signed certificate is not a substitute for a trusted commercial/organization certificate and will not remove SmartScreen warnings.
 
 ## One institution, multiple terminals
 

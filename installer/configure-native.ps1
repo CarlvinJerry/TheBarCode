@@ -16,12 +16,13 @@ $legacyInstallRoots = @(
   (Join-Path ${env:ProgramFiles(x86)} 'Beyond Raw Data\Dukora Lite')
 ) | Where-Object { $_ -and $_ -notlike '\\Beyond Raw Data\\' } | Select-Object -Unique
 
-# Lite uses a separate SQLite data engine. Never silently replace that data
-# with a new empty PostgreSQL database during a native upgrade. A dedicated
-# migration utility can be run later after the operator has made a backup.
+# Lite uses a separate SQLite data engine. When it is present, migrate it into
+# the shared PostgreSQL database below instead of silently creating an empty
+# native environment.
 $legacyLiteDataRoots = @(
   (Join-Path ${env:LOCALAPPDATA} 'Beyond Raw Data\Dukora Lite'),
-  (Join-Path ${env:LOCALAPPDATA} 'Beyond Raw Data\Dukora')
+  (Join-Path ${env:LOCALAPPDATA} 'Beyond Raw Data\Dukora'),
+  (Join-Path ${env:LOCALAPPDATA} 'Beyond Raw Data\TheBarcode')
 ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique
 $legacyLiteDatabase = $legacyLiteDataRoots |
   ForEach-Object { Join-Path $_ 'thebarcode.db'; Join-Path $_ 'dukora.db' } |
@@ -43,9 +44,7 @@ if (-not (Test-Path -LiteralPath $currentConfig)) {
 }
 
 $nativeConfigFound = Test-Path -LiteralPath $currentConfig
-if ($legacyLiteDatabase -and -not $nativeConfigFound) {
-  throw "Lite SQLite data was detected at $legacyLiteDatabase. Native setup was stopped so it cannot create a second empty database. Keep the Lite installation/data intact and run the supported SQLite-to-PostgreSQL migration before switching editions."
-}
+$needsLiteMigration = [bool]($legacyLiteDatabase -and -not $nativeConfigFound)
 
 function New-HexSecret([int]$Length) {
   $bytes = New-Object byte[] $Length
@@ -140,6 +139,36 @@ if (-not $preserveExisting) {
   $config | Set-Content -LiteralPath $currentConfig -Encoding utf8
 } else {
   Write-Host 'Existing PostgreSQL configuration preserved; no new database credentials were generated.' -ForegroundColor Cyan
+}
+
+$targetConnectionString = if ($preserveExisting) {
+  [string]$existing.ConnectionStrings.Postgres
+} else {
+  "Host=127.0.0.1;Port=5432;Database=thebarcode;Username=thebarcode;Password=$dbPassword"
+}
+
+if ($needsLiteMigration) {
+  $migration = Join-Path $InstallRoot 'tools\TheBarcode.Migration.exe'
+  if (-not (Test-Path -LiteralPath $migration)) { throw 'The SQLite-to-PostgreSQL migration tool is missing from this installer.' }
+  $liteProcesses = Get-Process -Name 'TheBarcode.Desktop','Dukora.Desktop' -ErrorAction SilentlyContinue
+  if ($liteProcesses) {
+    Write-Host 'Closing the Lite desktop host before taking the migration backup...' -ForegroundColor Yellow
+    $liteProcesses | Stop-Process -Force
+    Start-Sleep -Seconds 1
+  }
+  $migrationBackupRoot = Join-Path ${env:LOCALAPPDATA} 'Beyond Raw Data\TheBarcode\MigrationBackups'
+  New-Item -ItemType Directory -Force -Path $migrationBackupRoot | Out-Null
+  $migrationBackup = Join-Path $migrationBackupRoot ("lite-before-native-{0:yyyyMMdd-HHmmss}.db" -f (Get-Date))
+  Copy-Item -LiteralPath $legacyLiteDatabase -Destination $migrationBackup -Force
+  foreach ($suffix in @('-wal','-shm')) {
+    if (Test-Path -LiteralPath ($legacyLiteDatabase + $suffix)) {
+      Copy-Item -LiteralPath ($legacyLiteDatabase + $suffix) -Destination ($migrationBackup + $suffix) -Force
+    }
+  }
+  Write-Host "Migrating Lite records from $legacyLiteDatabase into the shared PostgreSQL database..." -ForegroundColor Yellow
+  & $migration --sqlite $legacyLiteDatabase --postgres $targetConnectionString
+  if ($LASTEXITCODE -ne 0) { throw 'SQLite-to-PostgreSQL migration failed. The original Lite database backup was retained.' }
+  Write-Host "Lite data migrated successfully. Backup retained at $migrationBackup." -ForegroundColor Green
 }
 
 $api = Join-Path $InstallRoot 'server\TheBarcode.Api.exe'

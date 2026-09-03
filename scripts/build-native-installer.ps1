@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$Version)
+param([string]$Version,[string]$SigningCertificate,[string]$SigningPassword)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $versionFile = Join-Path $root 'VERSION'
@@ -34,6 +34,7 @@ try {
 dotnet publish (Join-Path $root 'apps\api\TheBarcode.Api.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\api"
 dotnet publish (Join-Path $root 'apps\print-bridge\TheBarcode.PrintBridge.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\print-bridge"
 dotnet publish (Join-Path $root 'apps\driver-launcher\Dukora.DriverInstaller.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\driver-launcher"
+dotnet publish (Join-Path $root 'apps\migration\TheBarcode.Migration.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\tools"
 Copy-Item -Path "$web\dist\*" -Destination "$stage\api\wwwroot" -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $root 'installer\configure-native.ps1') -Destination "$stage\tools\configure-native.ps1"
 Copy-Item -LiteralPath (Join-Path $root 'installer\configure-native-launcher.ps1') -Destination "$stage\tools\configure-native-launcher.ps1"
@@ -51,6 +52,22 @@ if (-not $isccPath) { throw 'Inno Setup 6 is required to compile the final insta
 if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
 $installer = Join-Path $root "installer\output\TheBarcode-Setup-$Version-x64.exe"
 if (-not (Test-Path -LiteralPath $installer)) { throw 'Installer output was not created.' }
+if ($SigningCertificate) {
+  if (-not (Test-Path -LiteralPath $SigningCertificate)) { throw "Signing certificate was not found: $SigningCertificate" }
+  $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
+  if (-not $signtool) {
+    $signtoolPath = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter signtool.exe -Recurse -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
+    if ($signtoolPath) { $signtool = @{ Source = $signtoolPath.FullName } }
+  }
+  if (-not $signtool) { throw 'signtool.exe was not found. Install the Windows SDK or provide it on PATH.' }
+  $signArgs = @('sign','/fd','SHA256','/tr','http://timestamp.digicert.com','/td','SHA256','/f',$SigningCertificate)
+  if ($SigningPassword) { $signArgs += @('/p',$SigningPassword) }
+  $signArgs += $installer
+  & $signtool.Source @signArgs
+  if ($LASTEXITCODE -ne 0) { throw 'Authenticode signing failed.' }
+  & $signtool.Source 'verify','/pa','/all',$installer
+  if ($LASTEXITCODE -ne 0) { throw 'Authenticode signature verification failed.' }
+}
 $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash
 Write-Host "Installer created: $installer" -ForegroundColor Green
 Write-Host "SHA256: $hash" -ForegroundColor Green
