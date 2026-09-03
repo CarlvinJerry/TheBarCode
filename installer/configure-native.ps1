@@ -67,7 +67,9 @@ if (-not $postgres) {
   if ($bundledPostgres) {
     $postgresAdminPassword = New-HexSecret 32
     Write-Host 'Installing the bundled PostgreSQL service. This may take a few minutes.' -ForegroundColor Yellow
-    $postgresArgs = @('--mode','unattended','--unattendedmodeui','none','--superpassword',$postgresAdminPassword,'--serverport','5432','--prefix',(Join-Path ${env:ProgramFiles} 'PostgreSQL\18'))
+    # Let the vendor installer choose its versioned default directory. This
+    # keeps the bootstrap compatible with future PostgreSQL 18.x refreshes.
+    $postgresArgs = @('--mode','unattended','--unattendedmodeui','none','--superpassword',$postgresAdminPassword,'--serverport','5432')
     $postgresProcess = Start-Process -FilePath $bundledPostgres.FullName -ArgumentList $postgresArgs -Verb RunAs -Wait -PassThru
     if ($postgresProcess.ExitCode -notin @(0, 1641, 3010)) {
       throw "Bundled PostgreSQL setup exited with code $($postgresProcess.ExitCode)."

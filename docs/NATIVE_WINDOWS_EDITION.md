@@ -6,7 +6,7 @@
 
 The first launch creates the shared organization, main branch and receipt defaults in PostgreSQL. Owners or managers can then configure business identity, industry profile, branches, terminals and receipt behaviour from Settings. Windows printer selection remains terminal-specific.
 
-The native edition runs without Docker. It packages the touchscreen web interface, a self-contained ASP.NET local server, the PostgreSQL data connection, the XP-80 ESC/POS print bridge, and the verified Xprinter receipt-driver installer.
+The native edition runs without Docker. It packages the touchscreen web interface, a self-contained ASP.NET local server, the PostgreSQL data connection, the XP-80 ESC/POS print bridge, and the verified Xprinter receipt-driver installer. The installer also includes the official PostgreSQL 18.6 Windows bootstrap and installs it silently when no PostgreSQL service is present.
 
 ## Installer
 
@@ -20,16 +20,16 @@ The build script prints the SHA-256 checksum for each newly generated installer.
 
 The setup executable requires administrator rights. During configuration it:
 
-1. Checks for an installed Xprinter/XP-80 queue and opens the bundled signed vendor driver when missing.
-2. Checks for PostgreSQL. If missing, it invokes the official PostgreSQL 18 package through Windows Package Manager.
-3. Requests the PostgreSQL administrator password and a private Dukora owner PIN.
-4. Creates an isolated `thebarcode` role and database.
-5. Installs the self-contained API as the automatic **Dukora Local Server** Windows service.
+1. Checks for an installed Xprinter/XP-80 queue and opens the bundled vendor driver with elevation when missing.
+2. Checks for a PostgreSQL service. If missing, silently installs the bundled official PostgreSQL 18.6 package and waits for its service to become ready.
+3. Generates a secure database administrator secret for a new PostgreSQL installation and asks only for the private TheBarcode owner PIN. If PostgreSQL/configuration already exists, it preserves the existing credentials and data.
+4. Creates an isolated `thebarcode` role and database for a first-time native setup.
+5. Installs the self-contained API as the automatic **TheBarcode Local Server** Windows service.
 6. Adds a Private-network firewall rule for TCP 8088.
 7. Starts the local XP-80 print bridge and registers it at Windows sign-in.
-8. Creates desktop and Start-menu shortcuts.
+8. Creates optional desktop and Start-menu shortcuts that open the local web app.
 
-Do not distribute the installer publicly until it has been code-signed by Beyond Raw Data. Windows may warn about an unsigned application even though the bundled Xprinter driver itself has a valid DigiCert-backed vendor signature.
+Do not distribute the installer publicly until it has been code-signed by Beyond Raw Data. Windows may warn about an unsigned application even though the bundled Xprinter driver and PostgreSQL vendor installer are signed by their respective vendors.
 
 ## One institution, multiple terminals
 

@@ -1,9 +1,9 @@
 {
-  "version": "1.12.4",
+  "version": "1.12.5",
   "channel": "local-windows",
-  "summary": "TheBarcode 1.12.4: permissions, live accounting, production, purchasing and migration-safe Windows release.",
-  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.4/TheBarcode-Setup-1.12.4-x64.exe",
-  "sha256": "2BC6816EE80EAC80254F16F43E50A59B5859A7F02F6FEFC4AA4744737B04DF48",
+  "summary": "TheBarcode 1.12.5: native PostgreSQL installation, upgrade-safe configuration and printer setup.",
+  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.5/TheBarcode-Setup-1.12.5-x64.exe",
+  "sha256": "674447F3943C178C9AAFA4D14D26D93E6878E3B471963307A957F5C5BEAEBA87",
   "publishedAt": "2026-09-03T00:00:00+03:00",
   "notes": [
     "Owner and manager-assigned permissions now authorize reports, audit, accounting, approvals, expenses and inventory independently of base staff roles.",
@@ -14,6 +14,7 @@
     "Expenses support submission, approval, editing, payments, archival and authoritative notification clearing.",
     "TheBarcode branding, theme-aware transparent artwork and Beyond Raw Data publisher identity are included in the installer.",
     "The installer preserves the institution database, bundles WebView2 and the verified Xprinter driver, and creates the local server and print bridge.",
+    "PostgreSQL 18.6 is bundled and installed silently when no PostgreSQL service is detected; existing PostgreSQL credentials and data are preserved.",
     "Font scaling, responsive touch layouts, full-screen mode, collapsible navigation and global grid search/sorting are included."
   ]
 }
