@@ -8,6 +8,8 @@ The first launch creates the shared organization, main branch and receipt defaul
 
 The native edition runs without Docker. It packages the touchscreen web interface, a self-contained ASP.NET local server, the PostgreSQL data connection, the XP-80 ESC/POS print bridge, and the verified Xprinter receipt-driver installer. The installer also includes the official PostgreSQL 18.6 Windows bootstrap and installs it silently when no PostgreSQL service is present.
 
+The native edition preserves an existing native PostgreSQL configuration during upgrades. The older Lite edition stores data in SQLite and is intentionally detected and blocked by the native setup rather than silently creating a second empty environment; retain the Lite installation until a supported SQLite-to-PostgreSQL migration has been run.
+
 ## Installer
 
 Build output:

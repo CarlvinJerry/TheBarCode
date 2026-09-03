@@ -16,6 +16,18 @@ $legacyInstallRoots = @(
   (Join-Path ${env:ProgramFiles(x86)} 'Beyond Raw Data\Dukora Lite')
 ) | Where-Object { $_ -and $_ -notlike '\\Beyond Raw Data\\' } | Select-Object -Unique
 
+# Lite uses a separate SQLite data engine. Never silently replace that data
+# with a new empty PostgreSQL database during a native upgrade. A dedicated
+# migration utility can be run later after the operator has made a backup.
+$legacyLiteDataRoots = @(
+  (Join-Path ${env:LOCALAPPDATA} 'Beyond Raw Data\Dukora Lite'),
+  (Join-Path ${env:LOCALAPPDATA} 'Beyond Raw Data\Dukora')
+) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique
+$legacyLiteDatabase = $legacyLiteDataRoots |
+  ForEach-Object { Join-Path $_ 'thebarcode.db'; Join-Path $_ 'dukora.db' } |
+  Where-Object { Test-Path -LiteralPath $_ } |
+  Select-Object -First 1
+
 # A branded folder change must not create a second environment. Reuse the
 # previous native install configuration when the new directory is empty.
 if (-not (Test-Path -LiteralPath $currentConfig)) {
@@ -28,6 +40,11 @@ if (-not (Test-Path -LiteralPath $currentConfig)) {
     Copy-Item -LiteralPath $legacyConfig -Destination $currentConfig -Force
     Write-Host "Reused the existing TheBarcode database configuration from $legacyConfig." -ForegroundColor Cyan
   }
+}
+
+$nativeConfigFound = Test-Path -LiteralPath $currentConfig
+if ($legacyLiteDatabase -and -not $nativeConfigFound) {
+  throw "Lite SQLite data was detected at $legacyLiteDatabase. Native setup was stopped so it cannot create a second empty database. Keep the Lite installation/data intact and run the supported SQLite-to-PostgreSQL migration before switching editions."
 }
 
 function New-HexSecret([int]$Length) {
