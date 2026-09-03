@@ -44,7 +44,7 @@ On additional terminals:
 
 ## Smart Insights and optional AI
 
-Smart Insights works immediately after installation using Dukora's local rule engine. It reads PostgreSQL aggregates for sales, profit, expenses, customer credit and inventory, so no internet connection or AI account is required.
+Smart Insights works immediately after installation using TheBarcode's local rule engine. It reads PostgreSQL aggregates for sales, profit, expenses, customer credit and inventory, so no internet connection or AI account is required.
 
 Optional AI analysis is configured on the API host—not in a browser. Set these Windows service environment values and restart **TheBarcode Local Server**:
 
@@ -52,7 +52,7 @@ Optional AI analysis is configured on the API host—not in a browser. Set these
 - `Insights__Model`: the model identifier provided by the host
 - `Insights__ApiKey`: the secret API key
 
-Only aggregate business metrics are included in AI requests. Customer names, phone numbers and receipt-level records are excluded. If the endpoint is unavailable, Dukora automatically continues with its local rule engine.
+Only aggregate business metrics are included in AI requests. Customer names, phone numbers and receipt-level records are excluded. If the endpoint is unavailable, TheBarcode automatically continues with its local rule engine.
 5. Keep the shared API address as `/api` when the UI was opened from the outlet server.
 6. Install the local print bridge only on terminals that have their own receipt printer.
 
@@ -69,7 +69,7 @@ The client already supports a configurable API base URL and durable device-side 
 3. Register the institution, outlet and device against the hosted service.
 4. Publish the Lite manifest at `https://thebarcode.beyondrawdata.com/releases/lite/latest.json` and the matching installer under the same `/releases/lite/` directory. TheBarcode falls back to `https://thebarcode.beyondrawdata.co.ke/releases/lite/latest.json` when the primary endpoint is unavailable. Custom HTTPS manifest endpoints can still be saved in Settings.
 
-The release manifest contains the latest version, summary, download URL, SHA-256 and release notes. Dukora compares semantic versions, accepts installer downloads only from Beyond Raw Data HTTPS domains, verifies SHA-256, creates a pre-update database backup and requests Owner and Windows approval before installing and restarting. Sign production installers with the Beyond Raw Data Authenticode certificate when available.
+The release manifest contains the latest version, summary, download URL, SHA-256 and release notes. TheBarcode compares semantic versions, accepts installer downloads only from Beyond Raw Data HTTPS domains, verifies SHA-256, creates a pre-update database backup and requests Owner and Windows approval before installing and restarting. Sign production installers with the Beyond Raw Data Authenticode certificate when available.
 
 ## Deployment profiles
 
