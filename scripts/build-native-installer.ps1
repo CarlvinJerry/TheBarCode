@@ -11,6 +11,9 @@ $driver = Join-Path $root 'installer\vendor\Xprinter-Receipt-Driver-2025.12.22.0
 $postgres = Get-ChildItem (Join-Path $root 'installer\vendor') -Filter 'postgresql-*-windows-x64.exe' -File -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
 if (-not (Test-Path -LiteralPath $driver)) { throw 'The verified Xprinter installer is missing from installer\vendor.' }
 if (-not $postgres) { throw 'The official PostgreSQL Windows installer is missing from installer\vendor.' }
+if ((Get-Item -LiteralPath $postgres.FullName).Length -lt 100MB) { throw 'The PostgreSQL installer appears incomplete; download the full official Windows package before building.' }
+$postgresSignature = Get-AuthenticodeSignature -LiteralPath $postgres.FullName
+if ($postgresSignature.Status -ne 'Valid') { throw "The PostgreSQL installer signature is not valid ($($postgresSignature.Status))." }
 
 if (Test-Path -LiteralPath $stage) {
   $resolvedStage = [IO.Path]::GetFullPath($stage)
