@@ -1,5 +1,5 @@
 #ifndef AppVersion
-#define AppVersion "1.12.4"
+#define AppVersion "1.12.5"
 #endif
 #define StageDir "stage-lite"
 
@@ -9,12 +9,15 @@ AppName=TheBarcode
 AppVersion={#AppVersion}
 AppPublisher=Beyond Raw Data
 DefaultDirName={autopf}\Beyond Raw Data\TheBarcode
+UsePreviousAppDir=yes
 DefaultGroupName=TheBarcode
 OutputDir=output
 OutputBaseFilename=TheBarcode-Setup-{#AppVersion}-x64
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
+CloseApplications=yes
+RestartApplications=no
 Compression=lzma2/max
 SolidCompression=yes
 SetupIconFile=branding\thebarcode.ico

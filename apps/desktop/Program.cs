@@ -213,8 +213,9 @@ internal sealed record AppPaths(string Root, string ConfigFile, string DatabaseF
     public static AppPaths Create()
     {
         var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Beyond Raw Data", "TheBarcode");
-        var legacy = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Beyond Raw Data", "Dukora Lite");
-        MigrateLegacyRoot(legacy, root);
+        var baseRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Beyond Raw Data");
+        foreach (var legacyName in new[] { "Dukora Lite", "Dukora" })
+            MigrateLegacyRoot(Path.Combine(baseRoot, legacyName), root);
         Directory.CreateDirectory(root); var logs = Path.Combine(root, "Logs"); Directory.CreateDirectory(logs);
         var database = Path.Combine(root,"thebarcode.db");
         var legacyDatabase = Path.Combine(root,"dukora.db");
@@ -229,8 +230,23 @@ internal sealed record AppPaths(string Root, string ConfigFile, string DatabaseF
         foreach (var entry in Directory.GetFileSystemEntries(legacy))
         {
             var target = Path.Combine(current, Path.GetFileName(entry));
-            if (File.Exists(entry) && !File.Exists(target)) File.Move(entry,target);
-            else if (Directory.Exists(entry) && !Directory.Exists(target)) Directory.Move(entry,target);
+            if (File.Exists(entry) && !File.Exists(target)) File.Copy(entry,target);
+            else if (Directory.Exists(entry)) MergeMissingEntries(entry,target);
+        }
+    }
+
+    static void MergeMissingEntries(string source, string target)
+    {
+        Directory.CreateDirectory(target);
+        foreach (var entry in Directory.GetFileSystemEntries(source))
+        {
+            var destination = Path.Combine(target, Path.GetFileName(entry));
+            if (File.Exists(entry) && !File.Exists(destination)) File.Copy(entry,destination);
+            else if (Directory.Exists(entry))
+            {
+                if (!Directory.Exists(destination)) Directory.CreateDirectory(destination);
+                MergeMissingEntries(entry,destination);
+            }
         }
     }
 }

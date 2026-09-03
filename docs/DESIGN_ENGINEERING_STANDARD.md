@@ -6,6 +6,7 @@ Product-specific guidance may extend this standard, but it must not silently wea
 
 ## How this standard is used
 
+
 - Read this file before planning, implementing, or reviewing UI work.
 - Include relevant compliance checks in the implementation plan and definition of done.
 - Reuse shared tokens, components, and patterns before adding local variants.

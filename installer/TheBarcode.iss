@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "1.12.4"
+  #define AppVersion "1.12.5"
 #endif
 #define StageDir "stage"
 
@@ -9,12 +9,15 @@ AppName=TheBarcode
 AppVersion={#AppVersion}
 AppPublisher=Beyond Raw Data
 DefaultDirName={autopf}\Beyond Raw Data\TheBarcode
+UsePreviousAppDir=yes
 DefaultGroupName=TheBarcode
 OutputDir=output
 OutputBaseFilename=TheBarcode-Setup-{#AppVersion}-x64
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
+CloseApplications=yes
+RestartApplications=no
 Compression=lzma2/max
 SolidCompression=yes
 SetupIconFile=branding\thebarcode.ico
@@ -27,6 +30,8 @@ Source: "{#StageDir}\api\*"; DestDir: "{app}\server"; Flags: ignoreversion recur
 Source: "{#StageDir}\print-bridge\*"; DestDir: "{app}\print-bridge"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#StageDir}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#StageDir}\driver\*"; DestDir: "{app}\driver"; Flags: ignoreversion
+Source: "{#StageDir}\driver-launcher\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#StageDir}\prerequisites\*"; DestDir: "{app}\prerequisites"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#StageDir}\release\*"; DestDir: "{app}\release"; Flags: ignoreversion
 Source: "branding\thebarcode-mark.png"; DestDir: "{app}\branding"; Flags: ignoreversion
 Source: "branding\thebarcode.ico"; DestDir: "{app}\branding"; Flags: ignoreversion
@@ -35,11 +40,14 @@ Source: "branding\thebarcode.ico"; DestDir: "{app}\branding"; Flags: ignoreversi
 Name: "{group}\TheBarcode"; Filename: "http://localhost:8088"; IconFilename: "{app}\branding\thebarcode.ico"
 Name: "{autodesktop}\TheBarcode"; Filename: "http://localhost:8088"; IconFilename: "{app}\branding\thebarcode.ico"; Tasks: desktopicon
 Name: "{group}\Configure TheBarcode"; Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\configure-native-launcher.ps1"" -InstallRoot ""{app}"""; IconFilename: "{app}\branding\thebarcode.ico"
+Name: "{group}\Install Xprinter Driver"; Filename: "{app}\Dukora.DriverInstaller.exe"; IconFilename: "{app}\branding\thebarcode.ico"
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: checkedonce
+Name: "printerdriver"; Description: "Install or repair the Xprinter receipt-printer driver"; GroupDescription: "Printer support:"; Flags: checkedonce
 
 [Run]
+Filename: "{app}\Dukora.DriverInstaller.exe"; Description: "Install or repair the Xprinter receipt-printer driver"; StatusMsg: "Installing Xprinter receipt-printer support..."; Flags: waituntilterminated; Tasks: printerdriver
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\configure-native.ps1"" -InstallRoot ""{app}"""; Description: "Configure database, printer and Windows services"; Flags: waituntilterminated
 
 [UninstallRun]

@@ -8,7 +8,9 @@ if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'VERSION must use semantic ver
 $stage = Join-Path $root 'installer\stage'
 $web = Join-Path $root 'apps\web'
 $driver = Join-Path $root 'installer\vendor\Xprinter-Receipt-Driver-2025.12.22.01.exe'
+$postgres = Get-ChildItem (Join-Path $root 'installer\vendor') -Filter 'postgresql-*-windows-x64.exe' -File -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
 if (-not (Test-Path -LiteralPath $driver)) { throw 'The verified Xprinter installer is missing from installer\vendor.' }
+if (-not $postgres) { throw 'The official PostgreSQL Windows installer is missing from installer\vendor.' }
 
 if (Test-Path -LiteralPath $stage) {
   $resolvedStage = [IO.Path]::GetFullPath($stage)
@@ -16,7 +18,7 @@ if (Test-Path -LiteralPath $stage) {
   if (-not $resolvedStage.StartsWith($resolvedInstaller, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe staging path.' }
   Remove-Item -LiteralPath $resolvedStage -Recurse -Force
 }
-New-Item -ItemType Directory -Force -Path "$stage\api\wwwroot","$stage\print-bridge","$stage\tools","$stage\driver","$stage\release" | Out-Null
+New-Item -ItemType Directory -Force -Path "$stage\api\wwwroot","$stage\print-bridge","$stage\tools","$stage\driver","$stage\driver-launcher","$stage\prerequisites","$stage\release" | Out-Null
 
 Push-Location $web
 try {
@@ -28,10 +30,12 @@ try {
 } finally { Remove-Item Env:VITE_APP_VERSION -ErrorAction SilentlyContinue; Pop-Location }
 dotnet publish (Join-Path $root 'apps\api\TheBarcode.Api.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\api"
 dotnet publish (Join-Path $root 'apps\print-bridge\TheBarcode.PrintBridge.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\print-bridge"
+dotnet publish (Join-Path $root 'apps\driver-launcher\Dukora.DriverInstaller.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\driver-launcher"
 Copy-Item -Path "$web\dist\*" -Destination "$stage\api\wwwroot" -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $root 'installer\configure-native.ps1') -Destination "$stage\tools\configure-native.ps1"
 Copy-Item -LiteralPath (Join-Path $root 'installer\configure-native-launcher.ps1') -Destination "$stage\tools\configure-native-launcher.ps1"
 Copy-Item -LiteralPath $driver -Destination "$stage\driver\Xprinter-Receipt-Driver-2025.12.22.01.exe"
+Copy-Item -LiteralPath $postgres.FullName -Destination "$stage\prerequisites\$($postgres.Name)"
 Copy-Item -LiteralPath (Join-Path $root 'release\latest.json') -Destination "$stage\release\latest.json"
 
 $iscc = Get-Command iscc.exe -ErrorAction SilentlyContinue

@@ -1,4 +1,4 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.4";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.5";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
   "Explicit owner or manager-assigned permissions now authorize reports, audit, accounting, approvals, expenses and inventory independently of the base staff role",
