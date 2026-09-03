@@ -13,4 +13,5 @@ installer/stage/
 installer/stage-lite/
 installer/output/
 installer/vendor/MicrosoftEdgeWebView2RuntimeInstallerX64.exe
+installer/vendor/postgresql-*-windows-x64.exe
 installer/install-xprinter-driver.ps1
