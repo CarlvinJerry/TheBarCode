@@ -1,23 +1,19 @@
 {
-  "version": "1.4.1",
+  "version": "1.12.4",
   "channel": "local-windows",
-  "summary": "Verified Windows service setup and branded Dukora desktop launcher.",
-  "downloadUrl": "",
-  "sha256": "41829DE12649E060CEF5626593EF7D8E2E9C058BDE89699564FA178BB6055CAA",
-  "publishedAt": "2026-08-22T00:00:00+03:00",
+  "summary": "TheBarcode 1.12.4: permissions, live accounting, production, purchasing and migration-safe Windows release.",
+  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.4/TheBarcode-Setup-1.12.4-x64.exe",
+  "sha256": "2BC6816EE80EAC80254F16F43E50A59B5859A7F02F6FEFC4AA4744737B04DF48",
+  "publishedAt": "2026-09-03T00:00:00+03:00",
   "notes": [
-    "Kept installer configuration elevated and verify the local API health endpoint before launch.",
-    "Added a multi-resolution Dukora logo icon to Setup, shortcuts and the uninstall entry.",
-    "Connected dashboard KPIs, payment mix, top sellers, activity, expenses and reports to PostgreSQL records.",
-    "Added Smart Insights with an offline rule engine and optional privacy-conscious LLM integration.",
-    "Fixed installer, Start menu and desktop URL launch handling.",
-    "Rebranded the product and Windows installer as Dukora.",
-    "Integrated the transparent Dukora icon and Smarter Business Operations tagline.",
-    "Added PostgreSQL-backed organization, branch and terminal configuration.",
-    "Added 58 mm and 80 mm receipt layouts with configurable fields and print policies.",
-    "Added native Windows installation profile while preserving Docker deployment.",
-    "Added version display, update checks, logout, themes and collapsible navigation.",
-    "Added institution, outlet, terminal and shared API configuration.",
-    "Bundled the verified Xprinter receipt-driver installer."
+    "Owner and manager-assigned permissions now authorize reports, audit, accounting, approvals, expenses and inventory independently of base staff roles.",
+    "Demo and live institution data remain strictly isolated across dashboards, bills, expenses, reports, insights and notifications.",
+    "Accounting journals, trial balance, financial position and operational corrections reconcile from live transactions.",
+    "Purchasing, stocktakes, lot-aware wastage and production runs update inventory, weighted cost, accounting and audit history transactionally.",
+    "Held bills support revisions, new products, approval workflows, cash or M-Pesa posting and explicit unpaid, paid or credit receipts.",
+    "Expenses support submission, approval, editing, payments, archival and authoritative notification clearing.",
+    "TheBarcode branding, theme-aware transparent artwork and Beyond Raw Data publisher identity are included in the installer.",
+    "The installer preserves the institution database, bundles WebView2 and the verified Xprinter driver, and creates the local server and print bridge.",
+    "Font scaling, responsive touch layouts, full-screen mode, collapsible navigation and global grid search/sorting are included."
   ]
 }

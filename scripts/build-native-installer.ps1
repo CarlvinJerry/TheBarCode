@@ -42,7 +42,7 @@ if (-not $iscc) {
 if (-not $isccPath) { throw 'Inno Setup 6 is required to compile the final installer. Install it with: winget install JRSoftware.InnoSetup' }
 & $isccPath "/DAppVersion=$Version" (Join-Path $root 'installer\TheBarcode.iss')
 if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
-$installer = Join-Path $root "installer\output\Dukora-Setup-$Version-x64.exe"
+$installer = Join-Path $root "installer\output\TheBarcode-Setup-$Version-x64.exe"
 if (-not (Test-Path -LiteralPath $installer)) { throw 'Installer output was not created.' }
 $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash
 Write-Host "Installer created: $installer" -ForegroundColor Green
