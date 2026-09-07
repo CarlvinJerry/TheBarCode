@@ -7,6 +7,8 @@ public static class ExpenseEndpoints
 {
     public static void MapExpenseApi(this WebApplication app)
     {
+        // Expenses is part of every package and this group contains legacy
+        // route/body handlers, so keep its core authorization unchanged.
         var api=app.MapGroup("/api/expenses").RequireAuthorization();
         api.MapGet("/production",async(DateOnly? from,DateOnly? to,string? category,string? status,AppDbContext db,ClaimsPrincipal principal)=>
         {

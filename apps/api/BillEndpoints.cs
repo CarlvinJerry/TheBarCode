@@ -10,7 +10,12 @@ public static class BillEndpoints
 
     public static void MapBillApi(this WebApplication app)
     {
+        // Sales is a core capability in every package. Keep this legacy group
+        // free of an endpoint filter because several endpoints combine route
+        // values and request bodies; optional modules are gated on their own
+        // route groups below.
         var api = app.MapGroup("/api").RequireAuthorization();
+        var reports = app.MapGroup("/api/reports").RequireAuthorization().RequireModule("reports");
 
         api.MapGet("/auth/permissions", (ClaimsPrincipal principal) => Results.Ok(new { permissions = principal.Claims.Where(c=>c.Type=="permission").Select(c=>c.Value).Distinct().OrderBy(x=>x).ToArray() }));
 
@@ -252,7 +257,7 @@ public static class BillEndpoints
         })
             .RequireAuthorization(p=>p.RequirePermission("audit"));
 
-        api.MapGet("/reports/accurate",async(DateOnly from,DateOnly to,AppDbContext db,ClaimsPrincipal principal)=>{if(to<from)(from,to)=(to,from);var demo=Security.IsDemo(principal);var start=from.ToDateTime(TimeOnly.MinValue,DateTimeKind.Utc);var end=to.AddDays(1).ToDateTime(TimeOnly.MinValue,DateTimeKind.Utc);var sales=(await db.Sales.AsNoTracking().Where(x=>x.IsDemo==demo&&(x.Status=="Paid"||x.Status=="Credit"||x.Status=="PartiallyPaid")).Include(x=>x.Items).Include(x=>x.Payments).ToListAsync()).Where(x=>x.OccurredAt>=start&&x.OccurredAt<end).ToList();var payments=sales.SelectMany(x=>x.Payments).Where(x=>x.PaidAt>=start&&x.PaidAt<end).ToList();var expenses=await db.Expenses.AsNoTracking().Where(x=>x.IsDemo==demo&&x.Active&&x.Status=="Approved"&&x.Date>=from&&x.Date<=to).ToListAsync();var revenue=sales.Sum(x=>x.Total);var cost=sales.SelectMany(x=>x.Items).Sum(x=>x.UnitCost*x.Quantity);var expenseTotal=expenses.Sum(x=>x.Amount);return Results.Ok(new{from,to,revenue,cost,grossProfit=revenue-cost,expenses=expenseTotal,netProfit=revenue-cost-expenseTotal,collected=payments.Sum(x=>x.Amount),salesCount=sales.Count,paymentMix=payments.GroupBy(x=>x.Method).Select(g=>new{method=g.Key,amount=g.Sum(x=>x.Amount)}).OrderByDescending(x=>x.amount)});}).RequireAuthorization(p=>p.RequirePermission("reports"));
+        reports.MapGet("/accurate",async(DateOnly from,DateOnly to,AppDbContext db,ClaimsPrincipal principal)=>{if(to<from)(from,to)=(to,from);var demo=Security.IsDemo(principal);var start=from.ToDateTime(TimeOnly.MinValue,DateTimeKind.Utc);var end=to.AddDays(1).ToDateTime(TimeOnly.MinValue,DateTimeKind.Utc);var sales=(await db.Sales.AsNoTracking().Where(x=>x.IsDemo==demo&&(x.Status=="Paid"||x.Status=="Credit"||x.Status=="PartiallyPaid")).Include(x=>x.Items).Include(x=>x.Payments).ToListAsync()).Where(x=>x.OccurredAt>=start&&x.OccurredAt<end).ToList();var payments=sales.SelectMany(x=>x.Payments).Where(x=>x.PaidAt>=start&&x.PaidAt<end).ToList();var expenses=await db.Expenses.AsNoTracking().Where(x=>x.IsDemo==demo&&x.Active&&x.Status=="Approved"&&x.Date>=from&&x.Date<=to).ToListAsync();var revenue=sales.Sum(x=>x.Total);var cost=sales.SelectMany(x=>x.Items).Sum(x=>x.UnitCost*x.Quantity);var expenseTotal=expenses.Sum(x=>x.Amount);return Results.Ok(new{from,to,revenue,cost,grossProfit=revenue-cost,expenses=expenseTotal,netProfit=revenue-cost-expenseTotal,collected=payments.Sum(x=>x.Amount),salesCount=sales.Count,paymentMix=payments.GroupBy(x=>x.Method).Select(g=>new{method=g.Key,amount=g.Sum(x=>x.Amount)}).OrderByDescending(x=>x.amount)});}).RequireAuthorization(p=>p.RequirePermission("reports"));
 
         api.MapPut("/products/{id:guid}", async (Guid id, ProductUpdateRequest r, AppDbContext db, ClaimsPrincipal principal) =>
         {

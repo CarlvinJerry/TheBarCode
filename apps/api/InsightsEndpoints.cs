@@ -9,7 +9,7 @@ public static class InsightsEndpoints
 {
     public static void MapOperationalApi(this WebApplication app)
     {
-        var secured = app.MapGroup("/api").RequireAuthorization();
+        var secured = app.MapGroup("/api").RequireAuthorization().RequireModule("expenses"); var ai = app.MapGroup("/api").RequireAuthorization().RequireModule("ai");
 
         secured.MapGet("/operations/overview", async (DateOnly? from, DateOnly? to, AppDbContext db,System.Security.Claims.ClaimsPrincipal principal) =>
         {
@@ -27,7 +27,7 @@ public static class InsightsEndpoints
             return await query.OrderByDescending(x => x.Date).ThenByDescending(x => x.CreatedAt).ToListAsync();
         });
 
-        secured.MapGet("/insights", async (DateOnly? from, DateOnly? to, AppDbContext db, SmartInsightsService service,System.Security.Claims.ClaimsPrincipal principal,CancellationToken ct) =>
+        ai.MapGet("/insights", async (DateOnly? from, DateOnly? to, AppDbContext db, SmartInsightsService service,System.Security.Claims.ClaimsPrincipal principal,CancellationToken ct) =>
         {
             var endDate = to ?? DateOnly.FromDateTime(DateTime.UtcNow);
             var startDate = from ?? endDate.AddDays(-29);

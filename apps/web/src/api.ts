@@ -62,6 +62,9 @@ export async function updateStaffPermissions(id:string,permissions:string[],reas
 export async function getInsightsSettings(){return request('/settings/insights');}
 export async function saveInsightsSettings(value:Record<string,unknown>){return request('/settings/insights',{method:'PUT',body:JSON.stringify(value)});}
 export async function getModules(){return request('/modules');}
+export async function getRegistrationCatalog(){return request('/registration/catalog');}
+export async function getRegistration(){return request('/registration');}
+export async function saveRegistration(value:Record<string,unknown>){return request('/registration',{method:'PUT',body:JSON.stringify(value)});}
 export async function getAccountingOverview(from:string,to:string){return request(`/accounting/overview?from=${from}&to=${to}`);}
 export async function getAccountingAccounts(){return request('/accounting/accounts');}
 export async function getAccountingTrialBalance(from:string,to:string){return request(`/accounting/trial-balance?from=${from}&to=${to}`);}
