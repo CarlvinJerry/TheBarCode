@@ -1,10 +1,10 @@
 {
-  "version": "1.12.15",
+  "version": "1.12.16",
   "edition": "Lite",
   "channel": "lite-windows",
-  "summary": "TheBarcode Lite 1.12.15: safe startup for older SQLite schemas with data preservation and default Xprinter setup.",
-  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.15/TheBarcode-Setup-1.12.15-x64.exe",
-  "sha256": "22A605FFCA94D9796451AFF60AF26A0F7CD689D72853693135F846CFA5BBB69A",
+  "summary": "TheBarcode Lite 1.12.16: safe startup for older SQLite schemas, per-user data preservation and default Xprinter setup.",
+  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.16/TheBarcode-Setup-1.12.16-x64.exe",
+  "sha256": "44D2FB59DFF7FCFA71602D0AAC7ADBF3898387203686373BB9959677814BCA2D",
   "publishedAt": "2026-09-07T00:00:00+03:00",
   "notes": [
     "Shows Keep held and start new for every active held bill on Sell, without requiring unpaid receipt printing.",

@@ -1,5 +1,5 @@
 #ifndef AppVersion
-#define AppVersion "1.12.15"
+#define AppVersion "1.12.16"
 #endif
 #define StageDir "stage-lite"
 
@@ -47,7 +47,7 @@ Name: "{group}\Install Xprinter Driver"; Filename: "{app}\Dukora.DriverInstaller
 [Run]
 Filename: "{tmp}\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; Parameters: "/silent /install"; StatusMsg: "Installing the Microsoft Edge WebView2 desktop runtime..."; Flags: runhidden waituntilterminated; Check: NeedsWebView2
 Filename: "{app}\Dukora.DriverInstaller.exe"; StatusMsg: "Installing Xprinter receipt-printer support..."; Flags: waituntilterminated; Tasks: printerdriver
-Filename: "{app}\TheBarcode.Desktop.exe"; Description: "Open TheBarcode"; Flags: postinstall nowait
+Filename: "{app}\TheBarcode.Desktop.exe"; Description: "Open TheBarcode"; Flags: postinstall nowait runasoriginaluser
 
 [Code]
 function WebView2Installed(): Boolean;
