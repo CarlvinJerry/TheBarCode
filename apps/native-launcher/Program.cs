@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net.Http;
+using System.Security.Principal;
 using System.Text;
 
 namespace TheBarcode.Launcher;
@@ -34,7 +35,7 @@ internal static class Program
 
             if (!WaitForHealth())
             {
-                ShowError("TheBarcode installed successfully, but its local server is not ready. Open the Configure TheBarcode shortcut as Administrator, then try again.");
+            ShowError("TheBarcode installed successfully, but its local server is not ready. Run TheBarcode again as Administrator or repair the installation.");
                 return 1;
             }
 
@@ -63,16 +64,22 @@ internal static class Program
             .Append(" -InstallRoot ")
             .Append(Quote(installRoot))
             .ToString();
-        using var process = Process.Start(new ProcessStartInfo("powershell.exe", arguments)
+        var startInfo = new ProcessStartInfo("powershell.exe", arguments)
         {
             UseShellExecute = true,
-            Verb = "runas",
             WorkingDirectory = installRoot
-        });
+        };
+        // Setup.exe is already elevated. Requesting a second UAC elevation
+        // from inside Inno can be rejected by endpoint policy and makes a
+        // successful configuration look like a cancellation. Only elevate
+        // when the user later launches the app normally.
+        if (!IsAdministrator()) startInfo.Verb = "runas";
+        using var process = Process.Start(startInfo);
         process?.WaitForExit();
         if (process is null || process.ExitCode != 0)
         {
-            ShowError("TheBarcode configuration was cancelled or failed. Run the Configure TheBarcode shortcut as Administrator and retry.");
+            var code = process is null ? "not started" : process.ExitCode.ToString();
+            ShowError($"TheBarcode configuration failed (exit code {code}). Run TheBarcode again as Administrator or repair the installation.");
             return false;
         }
         return true;
@@ -122,6 +129,13 @@ internal static class Program
             Thread.Sleep(500);
         }
         return false;
+    }
+
+    private static bool IsAdministrator()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        var principal = new WindowsPrincipal(identity);
+        return principal.IsInRole(WindowsBuiltInRole.Administrator);
     }
 
     private static string Quote(string value) => $"\"{value.Replace("\"", "\\\"")}\"";
