@@ -37,8 +37,8 @@ Source: "branding\thebarcode-mark.png"; DestDir: "{app}\branding"; Flags: ignore
 Source: "branding\thebarcode.ico"; DestDir: "{app}\branding"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\TheBarcode"; Filename: "http://localhost:8088"; IconFilename: "{app}\branding\thebarcode.ico"
-Name: "{autodesktop}\TheBarcode"; Filename: "http://localhost:8088"; IconFilename: "{app}\branding\thebarcode.ico"; Tasks: desktopicon
+Name: "{group}\TheBarcode"; Filename: "powershell.exe"; Parameters: "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\tools\launch-native.ps1"" -InstallRoot ""{app}"""; IconFilename: "{app}\branding\thebarcode.ico"
+Name: "{autodesktop}\TheBarcode"; Filename: "powershell.exe"; Parameters: "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\tools\launch-native.ps1"" -InstallRoot ""{app}"""; IconFilename: "{app}\branding\thebarcode.ico"; Tasks: desktopicon
 Name: "{group}\Configure TheBarcode"; Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\configure-native-launcher.ps1"" -InstallRoot ""{app}"""; IconFilename: "{app}\branding\thebarcode.ico"
 Name: "{group}\Install Xprinter Driver"; Filename: "{app}\Dukora.DriverInstaller.exe"; IconFilename: "{app}\branding\thebarcode.ico"
 
@@ -49,6 +49,7 @@ Name: "printerdriver"; Description: "Install or repair the Xprinter receipt-prin
 [Run]
 Filename: "{app}\Dukora.DriverInstaller.exe"; Description: "Install or repair the Xprinter receipt-printer driver"; StatusMsg: "Installing Xprinter receipt-printer support..."; Flags: waituntilterminated; Tasks: printerdriver
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\configure-native.ps1"" -InstallRoot ""{app}"""; Description: "Configure database, printer and Windows services"; Flags: waituntilterminated
+Filename: "powershell.exe"; Parameters: "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\tools\launch-native.ps1"" -InstallRoot ""{app}"""; Description: "Open TheBarcode"; Flags: postinstall nowait runhidden skipifsilent
 
 [UninstallRun]
 Filename: "sc.exe"; Parameters: "stop TheBarcodeApi"; Flags: runhidden; RunOnceId: "StopApi"

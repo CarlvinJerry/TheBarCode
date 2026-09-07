@@ -10,6 +10,8 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 
 $currentConfig = Join-Path $InstallRoot 'server\appsettings.Production.json'
 $legacyInstallRoots = @(
+  (Join-Path ${env:ProgramFiles} 'Beyond Raw Data\TheBarcode'),
+  (Join-Path ${env:ProgramFiles(x86)} 'Beyond Raw Data\TheBarcode'),
   (Join-Path ${env:ProgramFiles} 'Beyond Raw Data\Dukora'),
   (Join-Path ${env:ProgramFiles(x86)} 'Beyond Raw Data\Dukora'),
   (Join-Path ${env:ProgramFiles} 'Beyond Raw Data\Dukora Lite'),
@@ -20,14 +22,22 @@ $legacyInstallRoots = @(
 # the shared PostgreSQL database below instead of silently creating an empty
 # native environment.
 $legacyLiteDataRoots = @(
+  (Join-Path ${env:LOCALAPPDATA} 'Beyond Raw Data\TheBarcode'),
   (Join-Path ${env:LOCALAPPDATA} 'Beyond Raw Data\Dukora Lite'),
   (Join-Path ${env:LOCALAPPDATA} 'Beyond Raw Data\Dukora'),
-  (Join-Path ${env:LOCALAPPDATA} 'Beyond Raw Data\TheBarcode')
+  (Join-Path ${env:LOCALAPPDATA} 'TheBarcode'),
+  (Join-Path ${env:APPDATA} 'Beyond Raw Data\TheBarcode'),
+  (Join-Path ${env:APPDATA} 'Beyond Raw Data\Dukora Lite')
 ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique
-$legacyLiteDatabase = $legacyLiteDataRoots |
-  ForEach-Object { Join-Path $_ 'thebarcode.db'; Join-Path $_ 'dukora.db' } |
-  Where-Object { Test-Path -LiteralPath $_ } |
-  Select-Object -First 1
+$legacyLiteDatabase = @(
+  foreach ($root in $legacyLiteDataRoots) {
+    foreach ($name in @('thebarcode.db','dukora.db','TheBarcode.db','Dukora.db')) {
+      $candidate = Join-Path $root $name
+      if (Test-Path -LiteralPath $candidate -PathType Leaf) { Get-Item -LiteralPath $candidate }
+    }
+  }
+) | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$legacyLiteDatabasePath = if ($legacyLiteDatabase) { $legacyLiteDatabase.FullName } else { $null }
 
 # A branded folder change must not create a second environment. Reuse the
 # previous native install configuration when the new directory is empty.
@@ -42,9 +52,6 @@ if (-not (Test-Path -LiteralPath $currentConfig)) {
     Write-Host "Reused the existing TheBarcode database configuration from $legacyConfig." -ForegroundColor Cyan
   }
 }
-
-$nativeConfigFound = Test-Path -LiteralPath $currentConfig
-$needsLiteMigration = [bool]($legacyLiteDatabase -and -not $nativeConfigFound)
 
 function New-HexSecret([int]$Length) {
   $bytes = New-Object byte[] $Length
@@ -72,6 +79,11 @@ if (Test-Path -LiteralPath $currentConfig) {
     -not [string]::IsNullOrWhiteSpace([string]$existing.Jwt.Key) -and
     -not [string]::IsNullOrWhiteSpace([string]$existing.Bootstrap.AdminPin)
 }
+
+# A stale or partially-created configuration must not suppress migration. Only
+# a complete PostgreSQL configuration means this machine already has a native
+# database that should be preserved.
+$needsLiteMigration = [bool]($legacyLiteDatabasePath -and -not $preserveExisting)
 
 # PostgreSQL is the canonical local data store. Prefer the installer bundled
 # with this release so a client never needs to know what winget, PATH, or
@@ -159,14 +171,14 @@ if ($needsLiteMigration) {
   $migrationBackupRoot = Join-Path ${env:LOCALAPPDATA} 'Beyond Raw Data\TheBarcode\MigrationBackups'
   New-Item -ItemType Directory -Force -Path $migrationBackupRoot | Out-Null
   $migrationBackup = Join-Path $migrationBackupRoot ("lite-before-native-{0:yyyyMMdd-HHmmss}.db" -f (Get-Date))
-  Copy-Item -LiteralPath $legacyLiteDatabase -Destination $migrationBackup -Force
+  Copy-Item -LiteralPath $legacyLiteDatabasePath -Destination $migrationBackup -Force
   foreach ($suffix in @('-wal','-shm')) {
-    if (Test-Path -LiteralPath ($legacyLiteDatabase + $suffix)) {
-      Copy-Item -LiteralPath ($legacyLiteDatabase + $suffix) -Destination ($migrationBackup + $suffix) -Force
+    if (Test-Path -LiteralPath ($legacyLiteDatabasePath + $suffix)) {
+      Copy-Item -LiteralPath ($legacyLiteDatabasePath + $suffix) -Destination ($migrationBackup + $suffix) -Force
     }
   }
-  Write-Host "Migrating Lite records from $legacyLiteDatabase into the shared PostgreSQL database..." -ForegroundColor Yellow
-  & $migration --sqlite $legacyLiteDatabase --postgres $targetConnectionString
+  Write-Host "Migrating Lite records from $legacyLiteDatabasePath into the shared PostgreSQL database..." -ForegroundColor Yellow
+  & $migration --sqlite $legacyLiteDatabasePath --postgres $targetConnectionString
   if ($LASTEXITCODE -ne 0) { throw 'SQLite-to-PostgreSQL migration failed. The original Lite database backup was retained.' }
   Write-Host "Lite data migrated successfully. Backup retained at $migrationBackup." -ForegroundColor Green
 }
@@ -203,5 +215,3 @@ Start-Process -FilePath $bridge -ArgumentList '--urls http://127.0.0.1:17777' -W
 
 Write-Host 'TheBarcode installation is configured and responding on port 8088.' -ForegroundColor Green
 Write-Host 'Other terminals on this outlet network can use this computer IP on port 8088.' -ForegroundColor Cyan
-Start-Process 'http://localhost:8088'
-Read-Host 'Press Enter to close'

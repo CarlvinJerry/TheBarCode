@@ -38,6 +38,7 @@ dotnet publish (Join-Path $root 'apps\migration\TheBarcode.Migration.csproj') -c
 Copy-Item -Path "$web\dist\*" -Destination "$stage\api\wwwroot" -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $root 'installer\configure-native.ps1') -Destination "$stage\tools\configure-native.ps1"
 Copy-Item -LiteralPath (Join-Path $root 'installer\configure-native-launcher.ps1') -Destination "$stage\tools\configure-native-launcher.ps1"
+Copy-Item -LiteralPath (Join-Path $root 'installer\launch-native.ps1') -Destination "$stage\tools\launch-native.ps1"
 Copy-Item -LiteralPath $driver -Destination "$stage\driver\Xprinter-Receipt-Driver-2025.12.22.01.exe"
 Copy-Item -LiteralPath $postgres.FullName -Destination "$stage\prerequisites\$($postgres.Name)"
 Copy-Item -LiteralPath (Join-Path $root 'release\latest.json') -Destination "$stage\release\latest.json"
