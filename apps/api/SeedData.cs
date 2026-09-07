@@ -12,6 +12,10 @@ public static class SeedData
    "CREATE TABLE IF NOT EXISTS terminals (id uuid PRIMARY KEY,created_at timestamptz NOT NULL,updated_at timestamptz NOT NULL,branch_id uuid NOT NULL,name text NOT NULL,device_key text NOT NULL,active boolean NOT NULL)",
    "CREATE UNIQUE INDEX IF NOT EXISTS ix_terminals_device_key ON terminals(device_key)",
    "CREATE TABLE IF NOT EXISTS receipt_configurations (id uuid PRIMARY KEY,created_at timestamptz NOT NULL,updated_at timestamptz NOT NULL,paper_width_mm integer NOT NULL,show_business_details boolean NOT NULL,show_customer boolean NOT NULL,show_cashier boolean NOT NULL,show_tax boolean NOT NULL,show_customer_balance boolean NOT NULL,show_powered_by boolean NOT NULL,auto_print_paid_sale boolean NOT NULL,credit_sale_print_mode text NOT NULL,payment_receipt_print_mode text NOT NULL,copies integer NOT NULL,footer text NOT NULL,receipt_prefix text NOT NULL,invoice_prefix text NOT NULL,payment_prefix text NOT NULL)"}) await db.Database.ExecuteSqlRawAsync(statement);
+  // Older Lite databases may not yet have the industry-profile columns that
+  // are part of the current Organization model. Apply that schema first so
+  // RegistrationMigration never queries an incomplete organizations table.
+  await IndustryProfileMigration.Apply(db);
   await RegistrationMigration.Apply(db);
   if(!await db.Staff.AnyAsync())
   {
