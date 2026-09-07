@@ -475,8 +475,8 @@ function Login({
     e.preventDefault();
     try {
       const signedIn=await login(staffId,pin);await bootstrap();onLogin(signedIn);
-    } catch {
-      setError("Unable to sign in. Check the PIN and server connection.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to sign in. Check the PIN and server connection.");
     }
   }
   return (
