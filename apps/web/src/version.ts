@@ -1,4 +1,4 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.10";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.11";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
   "Production hardening adds live and database readiness checks, bounded API request timeouts, and backoff for offline synchronization retries",

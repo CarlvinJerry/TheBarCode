@@ -1,8 +1,8 @@
 {
-  "version": "1.12.10",
+  "version": "1.12.11",
   "channel": "local-windows",
-  "summary": "TheBarcode 1.12.10: endpoint-safe native installation, configuration and startup recovery.",
-  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.10/TheBarcode-Setup-1.12.10-x64.exe",
+  "summary": "TheBarcode 1.12.11: endpoint-safe installation without Defender-blocked configuration shortcuts.",
+  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.11/TheBarcode-Setup-1.12.11-x64.exe",
   "sha256": "32B10614A782C90D805A177C4F6724E33EC7BABF844E0193F0153C4C0EF039F1",
   "publishedAt": "2026-09-07T00:00:00+03:00",
   "notes": [
@@ -18,6 +18,6 @@
     "Font scaling, responsive touch layouts, full-screen mode, collapsible navigation and global grid search/sorting are included.",
     "Production hardening adds live and database readiness checks, bounded API timeouts and backoff for offline synchronization retries.",
     "Native startup now uses a service-aware launcher and detects incomplete legacy configuration before deciding whether SQLite migration is required.",
-    "Windows shortcuts target a native launcher executable instead of PowerShell so endpoint protection does not block shortcut creation."
+    "Windows shortcuts target only the native launcher and printer executable; configuration runs during setup without creating a Defender-sensitive parameterized shortcut."
   ]
 }

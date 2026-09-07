@@ -1,6 +1,6 @@
 # Production readiness checklist
 
-Version 1.12.10 adds endpoint-safe native installation/configuration and safe Lite-to-PostgreSQL upgrade detection on top of the production hardening pass.
+Version 1.12.11 adds endpoint-safe native installation/configuration and safe Lite-to-PostgreSQL upgrade detection on top of the production hardening pass.
 
 ## Runtime checks
 

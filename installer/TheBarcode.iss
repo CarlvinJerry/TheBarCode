@@ -40,7 +40,6 @@ Source: "branding\thebarcode.ico"; DestDir: "{app}\branding"; Flags: ignoreversi
 [Icons]
 Name: "{group}\TheBarcode"; Filename: "{app}\TheBarcode.Launcher.exe"; IconFilename: "{app}\branding\thebarcode.ico"
 Name: "{autodesktop}\TheBarcode"; Filename: "{app}\TheBarcode.Launcher.exe"; IconFilename: "{app}\branding\thebarcode.ico"; Tasks: desktopicon
-Name: "{group}\Configure TheBarcode"; Filename: "{app}\TheBarcode.Launcher.exe"; Parameters: "--configure"; IconFilename: "{app}\branding\thebarcode.ico"
 Name: "{group}\Install Xprinter Driver"; Filename: "{app}\Dukora.DriverInstaller.exe"; IconFilename: "{app}\branding\thebarcode.ico"
 
 [Tasks]
