@@ -3,7 +3,7 @@
   "channel": "local-windows",
   "summary": "TheBarcode 1.12.12: reliable elevated configuration during installation and normal startup.",
   "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.12/TheBarcode-Setup-1.12.12-x64.exe",
-  "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "sha256": "FA6E1075E786C6FC8D9E12878242C88749321CE6CAA0425B4C5CF653F4462787",
   "publishedAt": "2026-09-07T00:00:00+03:00",
   "notes": [
     "Owner and manager-assigned permissions now authorize reports, audit, accounting, approvals, expenses and inventory independently of base staff roles.",
