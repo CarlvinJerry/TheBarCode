@@ -1,6 +1,6 @@
 # Production readiness checklist
 
-Version 1.12.7 adds the first hardening pass for hosted and multi-terminal deployments.
+Version 1.12.8 adds native startup recovery and safe Lite-to-PostgreSQL upgrade detection on top of the production hardening pass.
 
 ## Runtime checks
 
@@ -13,6 +13,7 @@ Version 1.12.7 adds the first hardening pass for hosted and multi-terminal deplo
 - API requests time out after 15 seconds with an actionable message.
 - Offline outbox retries use bounded exponential backoff (15 seconds up to five minutes) so a disconnected terminal does not create a request storm.
 - Existing idempotency keys for sales and stock movements remain the authoritative duplicate protection on the server.
+- The native Windows shortcut starts the local service when needed, waits for readiness, then opens the browser; incomplete legacy configuration cannot suppress SQLite migration detection.
 
 ## Release gates before a hosted rollout
 
