@@ -1,10 +1,10 @@
 {
-  "version": "1.12.13",
+  "version": "1.12.14",
   "edition": "Lite",
   "channel": "lite-windows",
-  "summary": "TheBarcode Lite 1.12.13: a safe SQLite upgrade that preserves existing local data and selects Xprinter setup by default.",
-  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.13/TheBarcode-Setup-1.12.13-x64.exe",
-  "sha256": "B1FD6C2918A48E05F1956641256AF3EE63E470AFC817155BB3E05FCD03018E2A",
+  "summary": "TheBarcode Lite 1.12.14: a safe SQLite upgrade that preserves existing local data and selects Xprinter setup by default.",
+  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.14/TheBarcode-Setup-1.12.14-x64.exe",
+  "sha256": "44E767965E31ED8C3A755BB4905C3A6F58D82A58DB398911ECBF3B068EA48A18",
   "publishedAt": "2026-09-07T00:00:00+03:00",
   "notes": [
     "Shows Keep held and start new for every active held bill on Sell, without requiring unpaid receipt printing.",

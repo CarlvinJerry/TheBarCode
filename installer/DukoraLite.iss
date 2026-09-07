@@ -1,5 +1,5 @@
 #ifndef AppVersion
-#define AppVersion "1.12.13"
+#define AppVersion "1.12.14"
 #endif
 #define StageDir "stage-lite"
 
@@ -37,7 +37,7 @@ Source: "{#StageDir}\driver-launcher\*"; DestDir: "{app}"; Flags: ignoreversion 
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a TheBarcode desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: checkedonce
-Name: "printerdriver"; Description: "Install or repair the Xprinter receipt-printer driver (uncheck to skip)"; GroupDescription: "Printer support:"; Flags: checkedonce
+Name: "printerdriver"; Description: "Install or repair the Xprinter receipt-printer driver (uncheck to skip)"; GroupDescription: "Printer support:"
 
 [Icons]
 Name: "{group}\TheBarcode"; Filename: "{app}\TheBarcode.Desktop.exe"; IconFilename: "{app}\thebarcode.ico"
