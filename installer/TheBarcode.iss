@@ -49,7 +49,7 @@ Name: "printerdriver"; Description: "Install or repair the Xprinter receipt-prin
 
 [Run]
 Filename: "{app}\Dukora.DriverInstaller.exe"; Description: "Install or repair the Xprinter receipt-printer driver"; StatusMsg: "Installing Xprinter receipt-printer support..."; Flags: waituntilterminated; Tasks: printerdriver
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\configure-native.ps1"" -InstallRoot ""{app}"""; Description: "Configure database, printer and Windows services"; Flags: waituntilterminated
+Filename: "{app}\TheBarcode.Launcher.exe"; Parameters: "--configure"; Description: "Configure database, printer and Windows services"; Flags: waituntilterminated
 Filename: "{app}\TheBarcode.Launcher.exe"; Description: "Open TheBarcode"; Flags: postinstall nowait skipifsilent
 
 [UninstallRun]

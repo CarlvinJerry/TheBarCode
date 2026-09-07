@@ -1,9 +1,9 @@
 {
-  "version": "1.12.9",
+  "version": "1.12.10",
   "channel": "local-windows",
-  "summary": "TheBarcode 1.12.9: native executable shortcuts that avoid Windows Defender shortcut blocking and recover local startup.",
-  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.9/TheBarcode-Setup-1.12.9-x64.exe",
-  "sha256": "2D405F5A744ABD204561C5B6BBC7475FCF45B8A1601461815FD6AB494DCE1315",
+  "summary": "TheBarcode 1.12.10: endpoint-safe native installation, configuration and startup recovery.",
+  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.10/TheBarcode-Setup-1.12.10-x64.exe",
+  "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
   "publishedAt": "2026-09-07T00:00:00+03:00",
   "notes": [
     "Owner and manager-assigned permissions now authorize reports, audit, accounting, approvals, expenses and inventory independently of base staff roles.",
