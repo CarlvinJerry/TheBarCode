@@ -1,6 +1,7 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.6";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.7";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Production hardening adds live and database readiness checks, bounded API request timeouts, and backoff for offline synchronization retries",
   "Explicit owner or manager-assigned permissions now authorize reports, audit, accounting, approvals, expenses and inventory independently of the base staff role",
   "Permissions refresh automatically while signed in so access changes take effect without a forced logout",
   "Staff access management is available to owners and managers; identity and PIN changes remain owner-only",
