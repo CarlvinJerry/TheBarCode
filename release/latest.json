@@ -3,7 +3,7 @@
   "channel": "local-windows",
   "summary": "TheBarcode 1.12.11: endpoint-safe installation without Defender-blocked configuration shortcuts.",
   "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.11/TheBarcode-Setup-1.12.11-x64.exe",
-  "sha256": "32B10614A782C90D805A177C4F6724E33EC7BABF844E0193F0153C4C0EF039F1",
+  "sha256": "82718680E0FDB9FA1DE8E964A0069C8A69DA84B6F1D7C55207101A2C3050BBAF",
   "publishedAt": "2026-09-07T00:00:00+03:00",
   "notes": [
     "Owner and manager-assigned permissions now authorize reports, audit, accounting, approvals, expenses and inventory independently of base staff roles.",
