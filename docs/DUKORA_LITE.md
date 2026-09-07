@@ -42,9 +42,9 @@ Display size is configured under **Settings → Display size**. Compact, Standar
 3. The Xprinter driver setup is selected by default so a new terminal is ready to print. Uncheck it only when the working XP-80 driver is already installed or the user explicitly wants to skip printer setup.
 4. Open TheBarcode and create the private Owner PIN.
 
-No PostgreSQL password, Docker, firewall rule or Windows service is required. Setup includes Microsoft's full offline x64 Evergreen WebView2 runtime. If the embedded view still cannot initialize, Dukora records the exact error and opens the same local interface in the default browser while keeping the API and printing process running.
+No PostgreSQL password, Docker, firewall rule or Windows service is required. Setup includes Microsoft's full offline x64 Evergreen WebView2 runtime. If the embedded view still cannot initialize, TheBarcode records the exact error and opens the same local interface in the default browser while keeping the API and printing process running.
 
-The optional Xprinter task runs during elevated setup. To install or repair it later, open **Start → TheBarcode → Install Xprinter Driver** and approve the Windows UAC prompt.
+The Xprinter task runs during elevated setup by default. To install or repair it later, open **Start → TheBarcode → Install Xprinter Driver** and approve the Windows UAC prompt.
 
 ## Backups and Server migration
 
