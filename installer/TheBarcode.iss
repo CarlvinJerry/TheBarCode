@@ -29,6 +29,7 @@ WizardSmallImageFile=branding\thebarcode-mark.png
 Source: "{#StageDir}\api\*"; DestDir: "{app}\server"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#StageDir}\print-bridge\*"; DestDir: "{app}\print-bridge"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#StageDir}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#StageDir}\launcher\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#StageDir}\driver\*"; DestDir: "{app}\driver"; Flags: ignoreversion
 Source: "{#StageDir}\driver-launcher\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#StageDir}\prerequisites\*"; DestDir: "{app}\prerequisites"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -37,9 +38,9 @@ Source: "branding\thebarcode-mark.png"; DestDir: "{app}\branding"; Flags: ignore
 Source: "branding\thebarcode.ico"; DestDir: "{app}\branding"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\TheBarcode"; Filename: "powershell.exe"; Parameters: "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\tools\launch-native.ps1"" -InstallRoot ""{app}"""; IconFilename: "{app}\branding\thebarcode.ico"
-Name: "{autodesktop}\TheBarcode"; Filename: "powershell.exe"; Parameters: "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\tools\launch-native.ps1"" -InstallRoot ""{app}"""; IconFilename: "{app}\branding\thebarcode.ico"; Tasks: desktopicon
-Name: "{group}\Configure TheBarcode"; Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\configure-native-launcher.ps1"" -InstallRoot ""{app}"""; IconFilename: "{app}\branding\thebarcode.ico"
+Name: "{group}\TheBarcode"; Filename: "{app}\TheBarcode.Launcher.exe"; IconFilename: "{app}\branding\thebarcode.ico"
+Name: "{autodesktop}\TheBarcode"; Filename: "{app}\TheBarcode.Launcher.exe"; IconFilename: "{app}\branding\thebarcode.ico"; Tasks: desktopicon
+Name: "{group}\Configure TheBarcode"; Filename: "{app}\TheBarcode.Launcher.exe"; Parameters: "--configure"; IconFilename: "{app}\branding\thebarcode.ico"
 Name: "{group}\Install Xprinter Driver"; Filename: "{app}\Dukora.DriverInstaller.exe"; IconFilename: "{app}\branding\thebarcode.ico"
 
 [Tasks]
@@ -49,7 +50,7 @@ Name: "printerdriver"; Description: "Install or repair the Xprinter receipt-prin
 [Run]
 Filename: "{app}\Dukora.DriverInstaller.exe"; Description: "Install or repair the Xprinter receipt-printer driver"; StatusMsg: "Installing Xprinter receipt-printer support..."; Flags: waituntilterminated; Tasks: printerdriver
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\configure-native.ps1"" -InstallRoot ""{app}"""; Description: "Configure database, printer and Windows services"; Flags: waituntilterminated
-Filename: "powershell.exe"; Parameters: "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\tools\launch-native.ps1"" -InstallRoot ""{app}"""; Description: "Open TheBarcode"; Flags: postinstall nowait runhidden skipifsilent
+Filename: "{app}\TheBarcode.Launcher.exe"; Description: "Open TheBarcode"; Flags: postinstall nowait skipifsilent
 
 [UninstallRun]
 Filename: "sc.exe"; Parameters: "stop TheBarcodeApi"; Flags: runhidden; RunOnceId: "StopApi"

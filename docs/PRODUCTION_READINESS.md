@@ -1,6 +1,6 @@
 # Production readiness checklist
 
-Version 1.12.8 adds native startup recovery and safe Lite-to-PostgreSQL upgrade detection on top of the production hardening pass.
+Version 1.12.9 adds native executable startup shortcuts and safe Lite-to-PostgreSQL upgrade detection on top of the production hardening pass.
 
 ## Runtime checks
 

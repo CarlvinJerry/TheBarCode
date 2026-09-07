@@ -21,7 +21,7 @@ if (Test-Path -LiteralPath $stage) {
   if (-not $resolvedStage.StartsWith($resolvedInstaller, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe staging path.' }
   Remove-Item -LiteralPath $resolvedStage -Recurse -Force
 }
-New-Item -ItemType Directory -Force -Path "$stage\api\wwwroot","$stage\print-bridge","$stage\tools","$stage\driver","$stage\driver-launcher","$stage\prerequisites","$stage\release" | Out-Null
+New-Item -ItemType Directory -Force -Path "$stage\api\wwwroot","$stage\print-bridge","$stage\tools","$stage\driver","$stage\driver-launcher","$stage\launcher","$stage\prerequisites","$stage\release" | Out-Null
 
 Push-Location $web
 try {
@@ -35,10 +35,10 @@ dotnet publish (Join-Path $root 'apps\api\TheBarcode.Api.csproj') -c Release -r 
 dotnet publish (Join-Path $root 'apps\print-bridge\TheBarcode.PrintBridge.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\print-bridge"
 dotnet publish (Join-Path $root 'apps\driver-launcher\Dukora.DriverInstaller.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\driver-launcher"
 dotnet publish (Join-Path $root 'apps\migration\TheBarcode.Migration.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\tools"
+dotnet publish (Join-Path $root 'apps\native-launcher\TheBarcode.Launcher.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\launcher"
 Copy-Item -Path "$web\dist\*" -Destination "$stage\api\wwwroot" -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $root 'installer\configure-native.ps1') -Destination "$stage\tools\configure-native.ps1"
 Copy-Item -LiteralPath (Join-Path $root 'installer\configure-native-launcher.ps1') -Destination "$stage\tools\configure-native-launcher.ps1"
-Copy-Item -LiteralPath (Join-Path $root 'installer\launch-native.ps1') -Destination "$stage\tools\launch-native.ps1"
 Copy-Item -LiteralPath $driver -Destination "$stage\driver\Xprinter-Receipt-Driver-2025.12.22.01.exe"
 Copy-Item -LiteralPath $postgres.FullName -Destination "$stage\prerequisites\$($postgres.Name)"
 Copy-Item -LiteralPath (Join-Path $root 'release\latest.json') -Destination "$stage\release\latest.json"
