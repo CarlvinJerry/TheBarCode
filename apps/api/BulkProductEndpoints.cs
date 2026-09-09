@@ -23,7 +23,7 @@ public static class BulkProductEndpoints
     {
         var row = new BulkProductRow(1, request.Name, request.Category, request.Brand, request.Barcode, request.Unit,
             request.PackageQuantity, request.PackageUnit ?? request.Unit, request.TrackingMode, request.CostPrice,
-            request.SellingPrice, request.Stock, request.MinStock, request.Supplier, request.TaxRate, request.Sellable);
+            request.SellingPrice, request.Stock, request.MinStock, request.Supplier, request.TaxRate, request.Sellable, request.ItemType);
         var errors = ProductImportRules.Validate([row]);
         if (errors.Count > 0) return Results.BadRequest(new { error = "Invalid product", errors });
         var barcode = Clean(request.Barcode);
@@ -120,7 +120,7 @@ public static class BulkProductEndpoints
         product.PackageQuantity = row.PackageQuantity; product.PackageUnit = ProductImportRules.Unit(row.PackageUnit);
         product.TrackingMode = ProductImportRules.Mode(row.TrackingMode); product.Supplier = Clean(row.Supplier);
         product.TaxRate = row.TaxRate; product.CostPrice = row.CostPrice; product.SellingPrice = row.SellingPrice;
-        product.MinStock = row.MinimumStock; product.Sellable = row.Sellable;
+        product.MinStock = row.MinimumStock; product.ItemType = ProductImportRules.ItemType(row.ItemType); product.Sellable = product.ItemType == "Ingredient" ? false : row.Sellable;
     }
 
     static void AddMovement(AppDbContext db, Product product, Guid staffId, decimal quantity, Guid batchId) =>
@@ -141,6 +141,7 @@ public static class ProductImportRules
     };
     public static string Unit(string? value) => value is not null && Units.TryGetValue(value.Trim(), out var unit) ? unit : value?.Trim() ?? "item";
     public static string Mode(string? value) => value?.Trim().Equals("Measured", StringComparison.OrdinalIgnoreCase) == true ? "Measured" : "Discrete";
+    public static string ItemType(string? value) => value?.Trim().Equals("Ingredient", StringComparison.OrdinalIgnoreCase) == true ? "Ingredient" : "Product";
     public static List<ProductImportError> Validate(IReadOnlyList<BulkProductRow> rows)
     {
         var errors = new List<ProductImportError>(); var barcodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);var variants=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -149,6 +150,7 @@ public static class ProductImportRules
             var row = rows[i]; var rowNo = row.RowNumber > 0 ? row.RowNumber : i + 2; var messages = new List<string>();
             if (string.IsNullOrWhiteSpace(row.Name)) messages.Add("Item name is required");
             if (string.IsNullOrWhiteSpace(row.Category)) messages.Add("Category is required");
+            if (!string.IsNullOrWhiteSpace(row.ItemType) && !new[] { "Product", "Ingredient" }.Contains(row.ItemType.Trim(), StringComparer.OrdinalIgnoreCase)) messages.Add("Item type must be Product or Ingredient");
             if (!Units.ContainsKey(row.StockUnit?.Trim() ?? "")) messages.Add("Stock unit is not supported");
             if (!Units.ContainsKey(row.PackageUnit?.Trim() ?? "")) messages.Add("Package unit is not supported");
             if (row.PackageQuantity <= 0) messages.Add("Package quantity must be greater than zero");
@@ -168,10 +170,11 @@ public static class ProductImportRules
 }
 
 public record BulkProductImportRequest(string DuplicatePolicy, string? DeviceId, List<BulkProductRow> Rows);
-public record BulkProductRow(int RowNumber, string Name, string Category, string? Brand, string? Barcode, string StockUnit, decimal PackageQuantity, string PackageUnit, string TrackingMode, decimal CostPrice, decimal SellingPrice, decimal OpeningStock, decimal MinimumStock, string? Supplier, decimal TaxRate, bool Sellable);
+public record BulkProductRow(int RowNumber, string Name, string Category, string? Brand, string? Barcode, string StockUnit, decimal PackageQuantity, string PackageUnit, string TrackingMode, decimal CostPrice, decimal SellingPrice, decimal OpeningStock, decimal MinimumStock, string? Supplier, decimal TaxRate, bool Sellable, string ItemType = "Product");
 public record ProductImportError(int RowNumber, List<string> Errors);
-public record ProductSnapshot(string Name,string Category,string? Brand,string? Barcode,string Unit,decimal PackageQuantity,string PackageUnit,string TrackingMode,string? Supplier,decimal TaxRate,decimal CostPrice,decimal SellingPrice,decimal Stock,decimal MinStock,bool Sellable,bool Active)
+
+public record ProductSnapshot(string Name,string Category,string? Brand,string? Barcode,string Unit,decimal PackageQuantity,string PackageUnit,string TrackingMode,string ItemType,string? Supplier,decimal TaxRate,decimal CostPrice,decimal SellingPrice,decimal Stock,decimal MinStock,bool Sellable,bool Active)
 {
-    public static ProductSnapshot From(Product x)=>new(x.Name,x.Category,x.Brand,x.Barcode,x.Unit,x.PackageQuantity,x.PackageUnit,x.TrackingMode,x.Supplier,x.TaxRate,x.CostPrice,x.SellingPrice,x.Stock,x.MinStock,x.Sellable,x.Active);
-    public void Restore(Product x){x.Name=Name;x.Category=Category;x.Brand=Brand;x.Barcode=Barcode;x.Unit=Unit;x.PackageQuantity=PackageQuantity;x.PackageUnit=PackageUnit;x.TrackingMode=TrackingMode;x.Supplier=Supplier;x.TaxRate=TaxRate;x.CostPrice=CostPrice;x.SellingPrice=SellingPrice;x.Stock=Stock;x.MinStock=MinStock;x.Sellable=Sellable;x.Active=Active;x.UpdatedAt=DateTimeOffset.UtcNow;}
+    public static ProductSnapshot From(Product x)=>new(x.Name,x.Category,x.Brand,x.Barcode,x.Unit,x.PackageQuantity,x.PackageUnit,x.TrackingMode,x.ItemType,x.Supplier,x.TaxRate,x.CostPrice,x.SellingPrice,x.Stock,x.MinStock,x.Sellable,x.Active);
+    public void Restore(Product x){x.Name=Name;x.Category=Category;x.Brand=Brand;x.Barcode=Barcode;x.Unit=Unit;x.PackageQuantity=PackageQuantity;x.PackageUnit=PackageUnit;x.TrackingMode=TrackingMode;x.ItemType=ItemType;x.Supplier=Supplier;x.TaxRate=TaxRate;x.CostPrice=CostPrice;x.SellingPrice=SellingPrice;x.Stock=Stock;x.MinStock=MinStock;x.Sellable=Sellable;x.Active=Active;x.UpdatedAt=DateTimeOffset.UtcNow;}
 }

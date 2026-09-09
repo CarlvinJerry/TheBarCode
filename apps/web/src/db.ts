@@ -1,10 +1,10 @@
 import Dexie, { type EntityTable } from 'dexie';
-export type Product={id:string;name:string;category:string;brand?:string;barcode?:string;unit:string;packageQuantity:number;packageUnit:string;trackingMode:"Discrete"|"Measured";supplier?:string;taxRate:number;costPrice:number;sellingPrice:number;stock:number;minStock:number;sellable:boolean;active:boolean;isDemo?:boolean};
+export type Product={id:string;name:string;category:string;brand?:string;barcode?:string;unit:string;packageQuantity:number;packageUnit:string;trackingMode:"Discrete"|"Measured";itemType?:"Product"|"Ingredient"|string;supplier?:string;taxRate:number;costPrice:number;sellingPrice:number;stock:number;minStock:number;sellable:boolean;active:boolean;isDemo?:boolean};
 export type Customer={id:string;name:string;phone?:string;creditLimit:number;notes?:string;active?:boolean;isDemo?:boolean};
 export type Staff={id:string;name:string;role:string;isDemo?:boolean};
 export type SaleLine={productId:string;productName:string;quantity:number;unitPrice:number;unitCost:number;discount:number};
 export type LocalSale={deviceTransactionId:string;customerId?:string;staffId:string;status:string;discount:number;occurredAt:string;deviceId:string;items:SaleLine[];payments:{method:string;amount:number}[];total:number;synced:boolean;isDemo?:boolean};
-export type StockDraft={movementId:string;productId:string;staffId:string;type:string;quantityChange:number;notes?:string;deviceId:string};
+export type StockDraft={movementId:string;productId:string;staffId:string;type:string;quantityChange:number;notes?:string;deviceId:string;affectsFinancials?:boolean;unitCost?:number;payee?:string;reference?:string};
 export type Outbox={id?:number;type:'sale'|'customer'|'stock';payload:any;createdAt:string;attempts:number;lastAttemptAt?:string;lastError?:string};
 class BarcodeDb extends Dexie{products!:EntityTable<Product,'id'>;customers!:EntityTable<Customer,'id'>;staff!:EntityTable<Staff,'id'>;sales!:EntityTable<LocalSale,'deviceTransactionId'>;outbox!:EntityTable<Outbox,'id'>;constructor(){super('thebarcode-pos');this.version(1).stores({products:'id,category,barcode,active',customers:'id,name,phone',staff:'id,name,role',sales:'deviceTransactionId,occurredAt,status,synced',outbox:'++id,type,createdAt'});this.version(2).stores({products:'id,category,barcode,active,isDemo',customers:'id,name,phone,isDemo',staff:'id,name,role,isDemo',sales:'deviceTransactionId,occurredAt,status,synced,isDemo',outbox:'++id,type,createdAt'});}}
 export const db=new BarcodeDb();

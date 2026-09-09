@@ -23,6 +23,10 @@ public static class OperationsMigration
                 "ALTER TABLE products ADD COLUMN tracking_mode TEXT NOT NULL DEFAULT 'Discrete'",
                 "ALTER TABLE products ADD COLUMN supplier TEXT NULL",
                 "ALTER TABLE products ADD COLUMN tax_rate TEXT NOT NULL DEFAULT 0",
+                "ALTER TABLE products ADD COLUMN item_type TEXT NOT NULL DEFAULT 'Product'",
+                "ALTER TABLE stock_movements ADD COLUMN affects_financials INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE stock_movements ADD COLUMN unit_cost TEXT NULL",
+                "ALTER TABLE stock_movements ADD COLUMN expense_id TEXT NULL",
                 "CREATE TABLE IF NOT EXISTS bill_revisions (id TEXT NOT NULL PRIMARY KEY, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, sale_id TEXT NOT NULL, revision INTEGER NOT NULL, staff_id TEXT NOT NULL, action TEXT NOT NULL, reason TEXT NOT NULL, snapshot_json TEXT NOT NULL, FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE)",
                 "CREATE INDEX IF NOT EXISTS ix_bill_revisions_sale_id ON bill_revisions(sale_id)"
                 ,"CREATE TABLE IF NOT EXISTS insights_configurations (id TEXT NOT NULL PRIMARY KEY, enabled INTEGER NOT NULL, endpoint TEXT NOT NULL, model TEXT NOT NULL, encrypted_api_key TEXT NULL, allow_user_names INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
@@ -38,6 +42,7 @@ public static class OperationsMigration
                 ,"ALTER TABLE expenses ADD COLUMN status TEXT NOT NULL DEFAULT 'Approved'"
                 ,"ALTER TABLE expenses ADD COLUMN branch_id TEXT NULL"
                 ,"ALTER TABLE expenses ADD COLUMN active INTEGER NOT NULL DEFAULT 1"
+                ,"ALTER TABLE expenses ADD COLUMN type TEXT NOT NULL DEFAULT 'Operating'"
                 ,"CREATE TABLE IF NOT EXISTS expense_payments (id TEXT NOT NULL PRIMARY KEY, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, expense_id TEXT NOT NULL, amount TEXT NOT NULL, method TEXT NOT NULL, reference TEXT NULL, notes TEXT NULL, staff_id TEXT NOT NULL, paid_at TEXT NOT NULL, FOREIGN KEY (expense_id) REFERENCES expenses(id) ON DELETE CASCADE)"
                 ,"CREATE INDEX IF NOT EXISTS ix_expense_payments_expense_id ON expense_payments(expense_id)"
             }
@@ -57,6 +62,10 @@ public static class OperationsMigration
                 "ALTER TABLE products ADD COLUMN IF NOT EXISTS tracking_mode text NOT NULL DEFAULT 'Discrete'",
                 "ALTER TABLE products ADD COLUMN IF NOT EXISTS supplier text NULL",
                 "ALTER TABLE products ADD COLUMN IF NOT EXISTS tax_rate numeric(18,2) NOT NULL DEFAULT 0",
+                "ALTER TABLE products ADD COLUMN IF NOT EXISTS item_type text NOT NULL DEFAULT 'Product'",
+                "ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS affects_financials boolean NOT NULL DEFAULT false",
+                "ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS unit_cost numeric(18,2) NULL",
+                "ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS expense_id uuid NULL",
                 "ALTER TABLE products ALTER COLUMN stock TYPE numeric(18,3)",
                 "ALTER TABLE products ALTER COLUMN min_stock TYPE numeric(18,3)",
                 "ALTER TABLE sale_items ALTER COLUMN quantity TYPE numeric(18,3)",
@@ -76,6 +85,7 @@ public static class OperationsMigration
                 ,"ALTER TABLE expenses ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'Approved'"
                 ,"ALTER TABLE expenses ADD COLUMN IF NOT EXISTS branch_id uuid NULL"
                 ,"ALTER TABLE expenses ADD COLUMN IF NOT EXISTS active boolean NOT NULL DEFAULT true"
+                ,"ALTER TABLE expenses ADD COLUMN IF NOT EXISTS type text NOT NULL DEFAULT 'Operating'"
                 ,"CREATE TABLE IF NOT EXISTS expense_payments (id uuid PRIMARY KEY, created_at timestamptz NOT NULL, updated_at timestamptz NOT NULL, expense_id uuid NOT NULL REFERENCES expenses(id) ON DELETE CASCADE, amount numeric(18,2) NOT NULL, method text NOT NULL, reference text NULL, notes text NULL, staff_id uuid NOT NULL, paid_at timestamptz NOT NULL)"
                 ,"CREATE INDEX IF NOT EXISTS ix_expense_payments_expense_id ON expense_payments(expense_id)"
             };

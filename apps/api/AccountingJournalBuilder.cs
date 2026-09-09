@@ -37,7 +37,14 @@ public static class AccountingJournalBuilder
         var expenses = await db.Expenses.AsNoTracking().Where(x => x.IsDemo == demo && x.Active && x.Status == "Approved").ToListAsync();
         foreach (var expense in expenses)
         {
-            var key = $"expense:{expense.Id}"; var lines = new List<JournalLine>{new() { AccountId = accounts["6000"].Id, Description = expense.Category, Debit = Math.Round(expense.Amount, 2) }}; var paid = Math.Min(expense.Amount, expense.PaidAmount); if (paid > 0) lines.Add(new JournalLine { AccountId = accounts["1000"].Id, Description = expense.Method, Credit = Math.Round(paid, 2) }); if (expense.Amount > paid) lines.Add(new JournalLine { AccountId = accounts["2000"].Id, Description = "Supplier payable", Credit = Math.Round(expense.Amount - paid, 2) }); AddOrCorrect(db, latest.GetValueOrDefault(key), key, "Expense", expense.Description, expense.UpdatedAt, expense.Date, expense.Status, lines, demo);
+            var key = $"expense:{expense.Id}";
+            var debitAccount = expense.Type.Equals("InventoryPurchase", StringComparison.OrdinalIgnoreCase) ? accounts["1200"] : accounts["6000"];
+            var debitDescription = expense.Type.Equals("InventoryPurchase", StringComparison.OrdinalIgnoreCase) ? "Inventory purchased" : expense.Category;
+            var lines = new List<JournalLine>{new() { AccountId = debitAccount.Id, Description = debitDescription, Debit = Math.Round(expense.Amount, 2) }};
+            var paid = Math.Min(expense.Amount, expense.PaidAmount);
+            if (paid > 0) lines.Add(new JournalLine { AccountId = expense.Method.Equals("M-Pesa", StringComparison.OrdinalIgnoreCase) ? accounts["1010"].Id : accounts["1000"].Id, Description = expense.Method, Credit = Math.Round(paid, 2) });
+            if (expense.Amount > paid) lines.Add(new JournalLine { AccountId = accounts["2000"].Id, Description = "Supplier payable", Credit = Math.Round(expense.Amount - paid, 2) });
+            AddOrCorrect(db, latest.GetValueOrDefault(key), key, "Expense", expense.Description, expense.UpdatedAt, expense.Date, expense.Status, lines, demo);
         }
         await db.SaveChangesAsync();
     }
