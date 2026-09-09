@@ -1,5 +1,5 @@
 #ifndef AppVersion
-#define AppVersion "1.12.17"
+#define AppVersion "1.12.18"
 #endif
 #define StageDir "stage-lite"
 

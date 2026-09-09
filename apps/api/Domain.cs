@@ -57,6 +57,7 @@ public record AdjustmentJournalRequest(DateOnly Date,string Memo,List<Adjustment
 public record AdjustmentLineRequest(Guid AccountId,decimal Debit,decimal Credit,string? Description);
 public record RecipeIngredientRequest(Guid ProductId,decimal Quantity,decimal WastePercent);
 public record RecipeRequest(Guid ProductId,string Name,decimal YieldQuantity,string? Notes,List<RecipeIngredientRequest> Ingredients);
+public record RecipeEditRequest(Guid ProductId,string Name,decimal YieldQuantity,string? Notes,string Reason,List<RecipeIngredientRequest> Ingredients,bool Active=true);
 public record ProductionRunRequest(Guid RecipeId,decimal Quantity,string? Notes,string? DeviceId);
 public record IndustryConfigurationRequest(string IndustryProfile,string BusinessCategory,List<string> EnabledModules);
 public record RegistrationRequest(string PlanCode,string IndustryProfile,string BusinessCategory,List<string>? EnabledModules,string? DeploymentMode,int BranchLimit,int TerminalLimit,int UserLimit,DateTimeOffset? TrialEndsAt,string? BillingStatus);

@@ -89,6 +89,7 @@ export async function submitStocktake(id:string){return request(`/stock/stocktak
 export async function approveStocktake(id:string,value:Record<string,unknown>){return request(`/stock/stocktakes/${id}/approve`,{method:'POST',body:JSON.stringify(value)});}
 export async function getRecipes(){return request('/recipes');}
 export async function createRecipe(value:Record<string,unknown>){return request('/recipes',{method:'POST',body:JSON.stringify(value)});}
+export async function updateRecipe(id:string,value:Record<string,unknown>){return request(`/recipes/${id}`,{method:'PUT',body:JSON.stringify(value)});}
 export async function getProductionRuns(){return request('/production-runs');}
 export async function createProductionRun(value:Record<string,unknown>){return request('/production-runs',{method:'POST',body:JSON.stringify(value)});}
 export type { LocalSale };
