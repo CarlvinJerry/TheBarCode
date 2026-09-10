@@ -31,6 +31,10 @@ dotnet publish (Join-Path $root 'apps\print-bridge\TheBarcode.PrintBridge.csproj
 dotnet publish (Join-Path $root 'apps\desktop\Dukora.Desktop.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\desktop"
 dotnet publish (Join-Path $root 'apps\driver-launcher\Dukora.DriverInstaller.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\driver-launcher"
 Copy-Item -Path "$web\dist\*" -Destination "$stage\server\wwwroot" -Recurse -Force
+# Debug symbols and XML reference documentation are not needed at runtime. Excluding
+# them keeps the installer smaller and reduces the amount Defender must scan before
+# the setup wizard becomes interactive.
+Get-ChildItem -LiteralPath $stage -Recurse -File | Where-Object { $_.Extension -in @('.pdb','.xml') } | Remove-Item -Force
 Copy-Item -LiteralPath $driver -Destination "$stage\driver\Xprinter-Receipt-Driver-2025.12.22.01.exe"
 Copy-Item -LiteralPath $webView -Destination "$stage\prerequisites\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"
 $iscc = Get-Command iscc.exe -ErrorAction SilentlyContinue

@@ -1,5 +1,5 @@
 #ifndef AppVersion
-#define AppVersion "1.12.18"
+#define AppVersion "1.12.19"
 #endif
 #define StageDir "stage-lite"
 
@@ -18,8 +18,8 @@ ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 CloseApplications=yes
 RestartApplications=no
-Compression=lzma2/max
-SolidCompression=yes
+Compression=lzma2/fast
+SolidCompression=no
 SetupIconFile=branding\thebarcode.ico
 UninstallDisplayIcon={app}\thebarcode.ico
 WizardStyle=modern
