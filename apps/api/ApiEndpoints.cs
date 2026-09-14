@@ -21,7 +21,7 @@ public static class ApiEndpoints
             var isRestock = r.Type.Equals("Restock", StringComparison.OrdinalIgnoreCase) && r.QuantityChange > 0;
             var financiallyMarked = isRestock && r.AffectsFinancials;
             var unitCost = r.UnitCost ?? p.CostPrice;
-            if (financiallyMarked && unitCost < 0) return Results.BadRequest(new { error = "Unit cost cannot be negative." });
+            if (financiallyMarked && unitCost <= 0) return Results.BadRequest(new { error = "A positive unit cost is required for a financially tracked restock." });
             await using var tx = await db.Database.BeginTransactionAsync();
             p.Stock = Math.Max(0, p.Stock + r.QuantityChange);
             Guid? expenseId = null;

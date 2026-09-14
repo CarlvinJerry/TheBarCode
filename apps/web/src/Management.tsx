@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -632,8 +632,8 @@ function Production({products,user,notify}:{products:Product[];user:{role:string
   return <Page><Intro title={industry.productionLabel} text={`${industry.productionHelp} Every transaction updates ${industry.inputLabel.toLowerCase()}, output stock, costing and audit history.`}/>
     <Kpis items={[["Active recipes",String(recipes.filter(x=>x.active).length),"Version controlled"],["Completed runs",String(runs.length),"Latest 250"],["Production cost",money(runs.reduce((n,x)=>n+Number(x.totalCost),0)),"Recorded material cost"],["Access mode",modules?.mode||"Loading",modules?.package||"All features"]]}/>
     <div className="button-row">{canManage&&<button onClick={()=>{setEditingRecipe(undefined);setForm({productId:"",name:"",yieldQuantity:1,notes:"",ingredients:[{productId:"",quantity:1,wastePercent:0}]});setAdding(true)}}>+ New recipe</button>}<small className="muted">All completed modules are visible during Open Preview testing. Destructive and approval permissions remain role-controlled.</small></div>
-    <Panel title={`Active ${industry.productionLabel.toLowerCase()} definitions`}><Table heads={["Output","Definition","Yield",industry.inputLabel,"Material cost","Version","Action"]} rows={recipes.filter(x=>x.active).map(x=>[x.productName,x.name,x.yieldQuantity,x.ingredients.map((i:any)=>`${i.quantity} ${i.unit||"unit"} ${i.productName}${i.wastePercent?` + ${i.wastePercent}%`:""}`).join(" · "),money(x.costPerYield),`v${x.version}`,canManage?<span className="button-row" key={`actions-${x.id}`}><button className="table-action" onClick={()=>editRecipe(x)}>Edit</button><button className="table-action" onClick={()=>setRunning(x)}>Record transaction</button><button className="table-action" onClick={()=>void deactivateRecipe(x)}>Archive</button></span>:"View only"])}/>{!recipes.some(x=>x.active)&&<p className="muted">No definition yet. Create the required {industry.inputLabel.toLowerCase()} and output item in Item Setup, then define their relationship here.</p>}</Panel>
-    <Panel title="Production history"><Table heads={["Completed","Output","Quantity","Material cost","Status","Notes"]} rows={runs.map(x=>[new Date(x.occurredAt).toLocaleString(),x.productName,String(x.quantityProduced),money(x.totalCost),x.status,x.notes||"—"])}/></Panel>
+    <Panel title={`Active ${industry.productionLabel.toLowerCase()} definitions`}><Table heads={["Output","Definition","Yield",industry.inputLabel,"Material cost","Version","Action"]} rows={recipes.filter(x=>x.active).map(x=>[x.productName,x.name,x.yieldQuantity,x.ingredients.map((i:any)=>`${i.quantity} ${i.unit||"unit"} ${i.productName}${i.wastePercent?` + ${i.wastePercent}%`:""}`).join(" · "),<span><b>{money(x.costPerYield)}</b><small className="muted"> · {money(x.costPerUnit??(Number(x.yieldQuantity)?Number(x.costPerYield)/Number(x.yieldQuantity):0))} / unit</small></span>,`v${x.version}`,canManage?<span className="button-row" key={`actions-${x.id}`}><button className="table-action" onClick={()=>editRecipe(x)}>Edit</button><button className="table-action attention-action" title="Record a production transaction to consume ingredients and add finished stock" onClick={()=>setRunning(x)}>Record transaction</button><button className="table-action" onClick={()=>void deactivateRecipe(x)}>Archive</button></span>:"View only"])}/>{!recipes.some(x=>x.active)&&<p className="muted">No definition yet. Create the required {industry.inputLabel.toLowerCase()} and output item in Item Setup, then define their relationship here.</p>}</Panel>
+    <Panel title="Production history"><Table heads={["Completed","Output","Quantity","Material cost","Status","Notes"]} rows={runs.map(x=>[new Date(x.occurredAt).toLocaleString(),x.productName,String(x.quantityProduced),money(x.totalCost),x.status,x.notes||"—"])} renderDetails={(_,index)=>{const run=runs[index];const ingredients=Array.isArray(run.ingredients)?run.ingredients:[];return <div className="production-breakdown"><b>Cost breakdown · {run.productName}</b>{ingredients.length?<div className="production-breakdown-grid">{ingredients.map((item:any)=><div key={`${run.id}-${item.ingredientProductId}`}><span>{item.ingredientName}</span><small>{Number(item.quantity).toFixed(3)} {item.unit} × {money(item.unitCost)}</small><strong>{money(item.totalCost)}</strong></div>)}</div>:<small className="muted">No ingredient snapshot is available for this older run.</small>}<small className="muted">Unit cost: {money(run.unitCost??(Number(run.quantityProduced)?Number(run.totalCost)/Number(run.quantityProduced):0))} · Batch cost: {money(run.totalCost)}</small></div>}}/></Panel>
     {adding&&<div className="modal record-editor"><section><button className="close" onClick={()=>{setAdding(false);setEditingRecipe(undefined)}}>×</button><h2>{editingRecipe?"Edit recipe revision":"New controlled definition"}</h2><form className="item-form" onSubmit={saveRecipe}><Field label="Output item"><select required value={form.productId} onChange={e=>setForm({...form,productId:e.target.value})}><option value="">Choose output item</option>{outputs.map(x=><option key={x.id} value={x.id}>{x.name} · {x.unit}</option>)}</select></Field><Field label="Definition name"><input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></Field><Field label="Output yield"><input required type="number" min=".001" step=".001" value={form.yieldQuantity} onChange={e=>setForm({...form,yieldQuantity:+e.target.value})}/></Field>{form.ingredients.map((row:any,index:number)=><div className="recipe-line" key={index}><Field label={`${industry.inputLabel} ${index+1}`}><select required value={row.productId} onChange={e=>updateIngredient(index,"productId",e.target.value)}><option value="">Choose {industry.inputLabel.toLowerCase()}</option>{ingredients.filter(x=>x.id!==form.productId).map(x=><option key={x.id} value={x.id}>{x.name} · {x.stock} {x.unit}</option>)}</select></Field><Field label="Quantity per yield"><input required type="number" min=".001" step=".001" value={row.quantity} onChange={e=>updateIngredient(index,"quantity",+e.target.value)}/></Field><Field label="Waste %"><input type="number" min="0" step=".01" value={row.wastePercent} onChange={e=>updateIngredient(index,"wastePercent",+e.target.value)}/></Field>{form.ingredients.length>1&&<button type="button" className="table-action" onClick={()=>setForm({...form,ingredients:form.ingredients.filter((_:any,i:number)=>i!==index)})}>Remove</button>}</div>)}<button type="button" className="outline-button" onClick={()=>setForm({...form,ingredients:[...form.ingredients,{productId:"",quantity:1,wastePercent:0}]})}>+ {industry.inputLabel}</button><Field label="Transaction notes"><input value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/></Field><button>Save controlled version</button></form></section></div>}
     {running&&<div className="modal record-editor"><section><button className="close" onClick={()=>setRunning(undefined)}>×</button><h2>Record {industry.productionLabel.toLowerCase()} · {running.productName}</h2><p>{industry.inputLabel} stock will be deducted and output stock added atomically. The operation cannot partially save.</p><form className="item-form" onSubmit={completeRun}><Field label="Output quantity"><input required type="number" min=".001" step=".001" value={run.quantity} onChange={e=>setRun({...run,quantity:+e.target.value})}/></Field><Field label="Batch / transaction notes"><input value={run.notes} onChange={e=>setRun({...run,notes:e.target.value})}/></Field><button>Complete stock transaction</button></form></section></div>}
   </Page>
@@ -981,6 +981,10 @@ function ItemSetup({ products,user,notify }: {products:Product[];user:{role:stri
   });
   async function save(e: FormEvent) {
     e.preventDefault();
+    if (Number(form.stock) > 0 && Number(form.costPrice) <= 0) {
+      notify("Initial cost price is required when opening stock is provided");
+      return;
+    }
     try {
       const p = await createProduct(form);
       await db.products.put(p);
@@ -1032,9 +1036,12 @@ function ItemSetup({ products,user,notify }: {products:Product[];user:{role:stri
             <Field label="Brand"><input value={form.brand} onChange={e=>setForm({...form,brand:e.target.value})}/></Field>
             <Field label="Supplier"><input value={form.supplier} onChange={e=>setForm({...form,supplier:e.target.value})}/></Field>
             <Field label="Tax rate %"><input type="number" min="0" max="100" step=".01" value={form.taxRate} onChange={e=>setForm({...form,taxRate:+e.target.value})}/></Field>
-            <Field label="Cost price">
+            <Field label={form.stock>0?"Cost price · required for opening stock":"Cost price"}>
               <input
                 type="number"
+                min="0"
+                step="0.01"
+                required={form.stock>0}
                 value={form.costPrice}
                 onChange={(e) =>
                   setForm({ ...form, costPrice: +e.target.value })
@@ -1053,6 +1060,8 @@ function ItemSetup({ products,user,notify }: {products:Product[];user:{role:stri
             <Field label="Opening stock">
               <input
                 type="number"
+                min="0"
+                step={form.trackingMode==="Discrete"?"1":"0.001"}
                 value={form.stock}
                 onChange={(e) => setForm({ ...form, stock: +e.target.value })}
               />
@@ -1490,7 +1499,7 @@ function csvCell(value:unknown){const text=String(value??"");return /[",\r\n]/.t
 function downloadProductTemplate(){const examples=[productTemplateHeaders,["Mineral Water","Soft drinks","Product","Aqua","WATER-500","bottle",500,"ml","Discrete",35,80,24,8,"Demo Supplier",0,"TRUE"],["Mineral Water","Soft drinks","Product","Aqua","WATER-1L","bottle",1,"L","Discrete",60,120,12,6,"Demo Supplier",0,"TRUE"],["Coffee beans","Coffee","Ingredient","","COFFEE-KG","kg",1,"kg","Measured",1200,1800,8.5,2,"Demo Supplier",16,"FALSE"],["Flour 5 kg","Kitchen consumable","Ingredient","","FLOUR-5KG","bag",5,"kg","Discrete",620,0,6,2,"Demo Supplier",0,"FALSE"]];const blob=new Blob(["\\ufeff"+examples.map(row=>row.map(csvCell).join(",")).join("\\r\\n")],{type:"text/csv;charset=utf-8"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="TheBarcode-item-import-template.csv";a.click();URL.revokeObjectURL(a.href)}
 function readCsv(text:string){const rows:string[][]=[];let row:string[]=[],cell="",quoted=false;for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){cell+='"';i++}else quoted=!quoted}else if(c===","&&!quoted){row.push(cell);cell=""}else if((c==="\n"||c==="\r")&&!quoted){if(c==="\r"&&text[i+1]==="\n")i++;row.push(cell);if(row.some(x=>x.trim()))rows.push(row);row=[];cell=""}else cell+=c}row.push(cell);if(row.some(x=>x.trim()))rows.push(row);return rows}
 function parseProductCsv(text:string){const matrix=readCsv(text.replace(/^\ufeff/,""));if(matrix.length<2)throw new Error("The template must contain a header and at least one item row");const headers=matrix[0].map(x=>x.trim().toLowerCase().replaceAll(" ","_"));const missing=productTemplateHeaders.filter(x=>!headers.includes(x));if(missing.length)throw new Error(`Missing columns: ${missing.join(", ")}`);const at=(row:string[],name:string)=>row[headers.indexOf(name)]?.trim()??"",num=(value:string)=>value===""?0:Number(value),bool=(value:string)=>["true","yes","1","y"].includes(value.toLowerCase());return matrix.slice(1).map((row,index)=>({rowNumber:index+2,name:at(row,"name"),category:at(row,"category"),itemType:at(row,"item_type")||"Product",brand:at(row,"brand")||null,barcode:at(row,"barcode_sku")||null,stockUnit:at(row,"stock_unit"),packageQuantity:num(at(row,"package_quantity")),packageUnit:at(row,"package_unit"),trackingMode:at(row,"tracking_mode"),costPrice:num(at(row,"cost_price")),sellingPrice:num(at(row,"selling_price")),openingStock:num(at(row,"opening_stock")),minimumStock:num(at(row,"minimum_stock")),supplier:at(row,"supplier")||null,taxRate:num(at(row,"tax_rate")),sellable:bool(at(row,"sellable"))}))}
-function validateProductRows(rows:any[]){const allowed=new Set(inventoryUnits.map(x=>x.toLowerCase())),seen=new Set<string>(),variants=new Set<string>();return rows.flatMap(row=>{const errors:string[]=[];if(!row.name)errors.push("Item name is required");if(!row.category)errors.push("Category is required");if(!allowed.has(String(row.stockUnit).toLowerCase()))errors.push("Unsupported stock unit");if(!allowed.has(String(row.packageUnit).toLowerCase()))errors.push("Unsupported package unit");for(const key of ["packageQuantity","costPrice","sellingPrice","openingStock","minimumStock","taxRate"])if(!Number.isFinite(row[key]))errors.push(`${key} must be numeric`);if(row.packageQuantity<=0)errors.push("Package quantity must be greater than zero");if(row.costPrice<0||row.sellingPrice<0||row.openingStock<0||row.minimumStock<0)errors.push("Prices and stock cannot be negative");if(row.taxRate<0||row.taxRate>100)errors.push("Tax rate must be between 0 and 100");if(!["discrete","measured"].includes(String(row.trackingMode).toLowerCase()))errors.push("Tracking mode must be Discrete or Measured");if(String(row.trackingMode).toLowerCase()==="discrete"&&(!Number.isInteger(row.openingStock)||!Number.isInteger(row.minimumStock)))errors.push("Discrete stock requires whole quantities");if([row.packageQuantity,row.openingStock,row.minimumStock].some((x:number)=>{const decimal=String(x).split(".")[1];return decimal&&decimal.length>3}))errors.push("Quantities support at most 3 decimals");if(row.barcode){const key=String(row.barcode).toLowerCase();if(seen.has(key))errors.push("Duplicate barcode/SKU in file");seen.add(key)}const variant=`${row.name}|${row.category}|${row.packageQuantity}|${row.packageUnit}`.toLowerCase();if(variants.has(variant))errors.push("Duplicate item/package-size variant in file");variants.add(variant);return errors.length?[{row:row.rowNumber,errors}]:[]})}
+function validateProductRows(rows:any[]){const allowed=new Set(inventoryUnits.map(x=>x.toLowerCase())),seen=new Set<string>(),variants=new Set<string>();return rows.flatMap(row=>{const errors:string[]=[];if(!row.name)errors.push("Item name is required");if(!row.category)errors.push("Category is required");if(!allowed.has(String(row.stockUnit).toLowerCase()))errors.push("Unsupported stock unit");if(!allowed.has(String(row.packageUnit).toLowerCase()))errors.push("Unsupported package unit");for(const key of ["packageQuantity","costPrice","sellingPrice","openingStock","minimumStock","taxRate"])if(!Number.isFinite(row[key]))errors.push(`${key} must be numeric`);if(row.packageQuantity<=0)errors.push("Package quantity must be greater than zero");if(row.costPrice<0||row.sellingPrice<0||row.openingStock<0||row.minimumStock<0)errors.push("Prices and stock cannot be negative");if(row.openingStock>0&&row.costPrice<=0)errors.push("Initial cost price is required when opening stock is provided");if(row.taxRate<0||row.taxRate>100)errors.push("Tax rate must be between 0 and 100");if(!["discrete","measured"].includes(String(row.trackingMode).toLowerCase()))errors.push("Tracking mode must be Discrete or Measured");if(String(row.trackingMode).toLowerCase()==="discrete"&&(!Number.isInteger(row.openingStock)||!Number.isInteger(row.minimumStock)))errors.push("Discrete stock requires whole quantities");if([row.packageQuantity,row.openingStock,row.minimumStock].some((x:number)=>{const decimal=String(x).split(".")[1];return decimal&&decimal.length>3}))errors.push("Quantities support at most 3 decimals");if(row.barcode){const key=String(row.barcode).toLowerCase();if(seen.has(key))errors.push("Duplicate barcode/SKU in file");seen.add(key)}const variant=`${row.name}|${row.category}|${row.packageQuantity}|${row.packageUnit}`.toLowerCase();if(variants.has(variant))errors.push("Duplicate item/package-size variant in file");variants.add(variant);return errors.length?[{row:row.rowNumber,errors}]:[]})}
 function Page({ children }: { children: ReactNode }) {
   return <div className="spec-page">{children}</div>;
 }
@@ -1619,9 +1628,10 @@ function gridSortValue(value:ReactNode):string|number {
   if(text&&Number.isFinite(numeric)&&/[\d]/.test(text))return numeric;
   return text.toLocaleLowerCase();
 }
-function Table({ heads, rows, rowClasses=[] }: { heads: string[]; rows: ReactNode[][];rowClasses?:string[] }) {
+function Table({ heads, rows, rowClasses=[], renderDetails }: { heads: string[]; rows: ReactNode[][];rowClasses?:string[];renderDetails?: (row:ReactNode[], index:number)=>ReactNode }) {
   const [query,setQuery]=useState("");
   const [sort,setSort]=useState<{index:number;direction:"asc"|"desc"}|null>(null);
+  const [expanded,setExpanded]=useState<number|null>(null);
   const statuses = [
     "Healthy",
     "Low",
@@ -1658,13 +1668,13 @@ function Table({ heads, rows, rowClasses=[] }: { heads: string[]; rows: ReactNod
           </tr>
         </thead>
         <tbody>
-          {visible.map(({cells:r,index,className}) => (
+          {visible.map(({cells:r,index,className}) => (<Fragment key={index}>
             <tr
               className={`${className} ${r.some(x=>x==="Debt") ? "row-debt" : ""} ${r.some(x=>x==="Watch") ? "row-watch" : ""}`}
-              key={index}
             >
               {r.map((x, j) => (
                 <td key={j}>
+                  {j===0&&renderDetails?<button type="button" className="table-expand" aria-expanded={expanded===index} aria-label={expanded===index?"Hide details":"Show details"} onClick={()=>setExpanded(current=>current===index?null:index)}>{expanded===index?"−":"+"}</button>:null}
                   {j === r.length - 1 && typeof x==="string" && statuses.includes(x) ? (
                     <span className={`badge ${x.toLowerCase()}`}>{x}</span>
                   ) : (
@@ -1673,7 +1683,8 @@ function Table({ heads, rows, rowClasses=[] }: { heads: string[]; rows: ReactNod
                 </td>
               ))}
             </tr>
-          ))}
+            {renderDetails&&expanded===index&&<tr className="grid-detail-row"><td colSpan={heads.length}>{renderDetails(r,index)}</td></tr>}
+          </Fragment>))}
           {!visible.length&&<tr><td className="grid-empty" colSpan={heads.length}>No rows match “{query}”.</td></tr>}
         </tbody>
       </table>

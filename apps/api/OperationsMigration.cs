@@ -45,6 +45,7 @@ public static class OperationsMigration
                 ,"ALTER TABLE expenses ADD COLUMN type TEXT NOT NULL DEFAULT 'Operating'"
                 ,"CREATE TABLE IF NOT EXISTS expense_payments (id TEXT NOT NULL PRIMARY KEY, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, expense_id TEXT NOT NULL, amount TEXT NOT NULL, method TEXT NOT NULL, reference TEXT NULL, notes TEXT NULL, staff_id TEXT NOT NULL, paid_at TEXT NOT NULL, FOREIGN KEY (expense_id) REFERENCES expenses(id) ON DELETE CASCADE)"
                 ,"CREATE INDEX IF NOT EXISTS ix_expense_payments_expense_id ON expense_payments(expense_id)"
+                ,"ALTER TABLE production_runs ADD COLUMN cost_breakdown_json TEXT NULL"
             }
             : new[]
             {
@@ -88,6 +89,7 @@ public static class OperationsMigration
                 ,"ALTER TABLE expenses ADD COLUMN IF NOT EXISTS type text NOT NULL DEFAULT 'Operating'"
                 ,"CREATE TABLE IF NOT EXISTS expense_payments (id uuid PRIMARY KEY, created_at timestamptz NOT NULL, updated_at timestamptz NOT NULL, expense_id uuid NOT NULL REFERENCES expenses(id) ON DELETE CASCADE, amount numeric(18,2) NOT NULL, method text NOT NULL, reference text NULL, notes text NULL, staff_id uuid NOT NULL, paid_at timestamptz NOT NULL)"
                 ,"CREATE INDEX IF NOT EXISTS ix_expense_payments_expense_id ON expense_payments(expense_id)"
+                ,"ALTER TABLE production_runs ADD COLUMN IF NOT EXISTS cost_breakdown_json text NULL"
             };
 
         foreach (var statement in statements)

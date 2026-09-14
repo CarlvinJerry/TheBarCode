@@ -156,6 +156,7 @@ public static class ProductImportRules
             if (row.PackageQuantity <= 0) messages.Add("Package quantity must be greater than zero");
             if (row.OpeningStock < 0 || row.MinimumStock < 0) messages.Add("Stock values cannot be negative");
             if (row.CostPrice < 0 || row.SellingPrice < 0) messages.Add("Prices cannot be negative");
+            if (row.OpeningStock > 0 && row.CostPrice <= 0) messages.Add("Initial cost price is required when opening stock is provided");
             if (row.TaxRate is < 0 or > 100) messages.Add("Tax rate must be between 0 and 100");
             if (!new[] { "Discrete", "Measured" }.Contains(row.TrackingMode?.Trim(), StringComparer.OrdinalIgnoreCase)) messages.Add("Tracking mode is invalid");
             if (Mode(row.TrackingMode) == "Discrete" && (row.OpeningStock != decimal.Truncate(row.OpeningStock) || row.MinimumStock != decimal.Truncate(row.MinimumStock))) messages.Add("Discrete stock must use whole quantities");
