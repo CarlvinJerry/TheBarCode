@@ -1,6 +1,7 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.24";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.25";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "TheBarcode assistant is now a compact animated floating icon positioned above bottom action rows so it stays available without blocking checkout controls",
   "Accounting journal history now marks superseded correction snapshots in red with strike-through while the active snapshot remains the only balance source",
   "Held bills now highlight products approaching their stock threshold, with urgency notifications and a direct review action",
   "Rule-based TheBarcode assistant answers workflow and FAQ questions locally, with page-aware navigation and no background model calls",

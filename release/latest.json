@@ -1,11 +1,12 @@
 {
-  "version": "1.12.24",
+  "version": "1.12.25",
   "channel": "local-windows",
-  "summary": "TheBarcode 1.12.24: auditable accounting history, stock-aware held bills, printer queue controls, searchable selectors and responsive guidance.",
-  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.24/TheBarcode-Setup-1.12.24-x64.exe",
-  "sha256": "F1EEF968F42E7871CD778DB5D94D2E721A0CFEC50209BBDDFB03BCF205521F58",
-  "publishedAt": "2026-10-14T19:32:00+03:00",
+  "summary": "TheBarcode 1.12.25: the assistant is now a compact animated floating control that stays clear of checkout actions.",
+  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.25/TheBarcode-Setup-1.12.25-x64.exe",
+  "sha256": "CCE54CFC63B4604B5FDE95790ABD31A48A4247062929B855DB61D17B92AA2B69",
+  "publishedAt": "2026-10-14T19:35:06+03:00",
   "notes": [
+    "TheBarcode assistant is now a compact animated floating icon positioned above bottom action rows so it stays available without blocking checkout controls.",
     "Accounting journal history marks superseded correction snapshots in red with strike-through; only the active snapshot feeds balances.",
     "Held bills highlight products approaching their stock threshold and surface an urgency review action.",
     "A deterministic, offline rule-based assistant answers workflow and FAQ questions with page-aware navigation.",
