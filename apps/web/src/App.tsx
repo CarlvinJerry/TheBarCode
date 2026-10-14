@@ -16,6 +16,29 @@ import { APP_VERSION } from "./version";
 import "./App.css";
 
 type CartLine = Product & { quantity: number };
+// Publishing reference only. A Drive folder page cannot be parsed as a signed
+// manifest; a direct shared latest.json file URL may be configured as a mirror.
+const DRIVE_RELEASE_FOLDER = "https://drive.google.com/drive/folders/1IzlVfcc9nDLh_mdpndCANs1ThsKDHLS9?authuser=0";
+const PRIMARY_UPDATE_MANIFEST = "https://thebarcode.beyondrawdata.com/releases/lite/latest.json";
+const FALLBACK_UPDATE_MANIFEST = "https://thebarcode.beyondrawdata.co.ke/releases/lite/latest.json";
+type UpdateManifest = { version: string; downloadUrl: string; sha256: string; summary?: string };
+function compareVersions(left:string,right:string){const a=left.replace(/^v/i,"").split(/[.-]/).map(x=>Number.parseInt(x,10)||0),b=right.replace(/^v/i,"").split(/[.-]/).map(x=>Number.parseInt(x,10)||0);for(let i=0;i<Math.max(a.length,b.length);i++){const difference=(a[i]||0)-(b[i]||0);if(difference)return difference}return 0}
+function validUpdateManifest(value:any): value is UpdateManifest {
+  if(!value||typeof value.version!=="string"||typeof value.downloadUrl!=="string"||typeof value.sha256!=="string"||!/^[a-f0-9]{64}$/i.test(value.sha256))return false;
+  try { return new URL(value.downloadUrl).protocol==="https:"; } catch { return false; }
+}
+const isDriveFolderUrl=(value:string)=>value.toLowerCase().startsWith(DRIVE_RELEASE_FOLDER.split("?")[0].toLowerCase());
+async function fetchLatestUpdate():Promise<UpdateManifest|undefined>{
+  if(!navigator.onLine)return undefined;
+  const configured=localStorage.getItem("update_manifest_url");
+  // A Drive folder is a human-facing container, not a JSON endpoint. If an old
+  // folder URL was saved, ignore it rather than showing a misleading failure;
+  // a direct latest.json mirror can still be configured and is checked last.
+  const candidates=[PRIMARY_UPDATE_MANIFEST,FALLBACK_UPDATE_MANIFEST,configured].filter((x,i,a):x is string=>typeof x==="string"&&!isDriveFolderUrl(x)&&a.indexOf(x)===i);
+  let latest:UpdateManifest|undefined;
+  for(const candidate of candidates){try{const parsed=new URL(candidate);if(parsed.protocol!=="https:")continue;const response=await fetch(parsed,{cache:"no-store"});if(!response.ok)continue;const manifest=await response.json();if(validUpdateManifest(manifest)&&(!latest||compareVersions(manifest.version,latest.version)>0))latest=manifest}catch{}}
+  return latest;
+}
 const money = (n: number) => `KES ${n.toLocaleString()}`;
 const iconPaths:Record<string,string>={Sell:"M3 5h18M5 5l1.5 15h11L19 5M9 9v7m6-7v7",Dashboard:"M4 13h6V4H4v9Zm10 7h6V11h-6v9ZM4 20h6v-3H4v3Zm10-13h6V4h-6v3Z",Bills:"M6 3h12v18l-3-2-3 2-3-2-3 2V3Zm3 5h6m-6 4h6m-6 4h4",Inventory:"M4 7l8-4 8 4-8 4-8-4Zm0 0v10l8 4 8-4V7M12 11v10",Customers:"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm8-1a3 3 0 0 0 0-6m5 17v-2a4 4 0 0 0-3-3.87",Expense:"M12 2v20m5-16H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",Production:"M14.7 6.3a4 4 0 0 0-5-5L12 3.6 3.6 12l-2.3-.7a4 4 0 0 0 5 5L14.7 8l2.3.7a4 4 0 0 0 5-5L19.6 6l-8.3 8.3",Reports:"M4 20V10m6 10V4m6 16v-7m4 7H2",SmartInsights:"M12 3l1.4 4.1L17.5 8.5l-4.1 1.4L12 14l-1.4-4.1-4.1-1.4 4.1-1.4L12 3Zm6 10 .8 2.2L21 16l-2.2.8L18 19l-.8-2.2L15 16l2.2-.8L18 13Z",AuditTrail:"M4 5h16M4 12h16M4 19h10",StaffRoles:"M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M8.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM19 8v6m3-3h-6",ItemSetup:"M12 5v14m-7-7h14",Settings:"M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm7.4-3.5a7 7 0 0 0-.1-1l2-1.6-2-3.4-2.4 1a8 8 0 0 0-1.7-1L15 3.5h-4L10.6 6a8 8 0 0 0-1.7 1L6.5 6 4.5 9.4l2 1.6a7 7 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8 8 0 0 0 1.7 1l.4 2.5h4l.4-2.5a8 8 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6c.1-.3.1-.7.1-1Z",Bell:"M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Zm-8 13h4",Chevron:"M9 18l6-6-6-6",Menu:"M4 7h16M4 12h16M4 17h16",Logout:"M10 17l5-5-5-5m5 5H3m12-9h5v18h-5",Fullscreen:"M8 3H3v5m13-5h5v5M8 21H3v-5m13 5h5v-5"};
 function Icon({name,size=18}:{name:string;size?:number}){const key=name.replaceAll(" ","").replace("Expenses","Expense");const path=key==="Accounting"?"M4 19h16M6 16V8m6 8V4m6 12v-6":iconPaths[key]||iconPaths.ItemSetup;return <svg className="ui-icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={path}/></svg>}
@@ -28,12 +51,15 @@ export default function App() {
   const [user, setUser] = useState(session.user),
     [view, setView] = useState("Sell"),
     [cart, setCart] = useState<CartLine[]>([]),
+    [amountPaidNow, setAmountPaidNow] = useState(""),
+    [expectedDeliveryAt, setExpectedDeliveryAt] = useState(""),
+    [assignedStaffId, setAssignedStaffId] = useState(""),
     [query, setQuery] = useState(""),
     [category, setCategory] = useState("All"),
     [message, setMessage] = useState(""),
     [online, setOnline] = useState(navigator.onLine),
     [receipt, setReceipt] = useState<string>(),
-    [receiptKind,setReceiptKind]=useState<"Unpaid"|"Paid"|"Credit">("Unpaid"),
+    [receiptKind,setReceiptKind]=useState<"Unpaid"|"Paid"|"Credit"|"Order">("Unpaid"),
     [selectedCustomer, setSelectedCustomer] = useState<Customer>(),
     [customerOpen, setCustomerOpen] = useState(false),
     [activeBill, setActiveBill] = useState<any>(),
@@ -43,13 +69,20 @@ export default function App() {
     [notifications, setNotifications] = useState<Record<string, any>>({Total:0,Details:{}}),
     [seenNotificationFingerprint,setSeenNotificationFingerprint]=useState(localStorage.getItem("notification_seen")||""),
     [alertsOpen,setAlertsOpen]=useState(false),
+    [urgency,setUrgency]=useState<any>(),
+    [assistantOpen,setAssistantOpen]=useState(false),
     [navigationLayout,setNavigationLayout]=useState(localStorage.getItem("navigation_layout")||"Vertical"),
     [organizationProfile,setOrganizationProfile]=useState(cachedOrganizationSettings()),
     [expandedGroups,setExpandedGroups]=useState<Record<string,boolean>>({Operations:false,"Data & Setup":false}),
     [locked,setLocked]=useState(false),
+    [lockDurationMinutes,setLockDurationMinutes]=useState(()=>{
+      const value=Number(localStorage.getItem("lock_timeout_minutes"));
+      return Number.isFinite(value)&&value>=1&&value<=240?value:5;
+    }),
     [lockStaffId,setLockStaffId]=useState(session.user?.id||""),
     [lockPin,setLockPin]=useState(""),
     [lockError,setLockError]=useState(""),
+    [loginUpdate,setLoginUpdate]=useState<UpdateManifest>(),
     [collapsed, setCollapsed] = useState(
       localStorage.getItem("sidebar_collapsed") === "true",
     );
@@ -66,13 +99,14 @@ export default function App() {
     const change = () => setOnline(navigator.onLine);
     addEventListener("online", change);
     addEventListener("offline", change);
-    const navigationChanged=(event:Event)=>setNavigationLayout((event as CustomEvent<string>).detail);const industryChanged=(event:Event)=>{const next=(event as CustomEvent<any>).detail;setOrganizationProfile(next);const modules=enabledModules(next.enabledModules);setView(current=>(current==="Production"&&!modules.has("production"))||(current==="Reports"&&!modules.has("reports"))||(current==="Accounting"&&!modules.has("accounting"))||(current==="Smart Insights"&&!modules.has("ai"))?"Dashboard":current)};addEventListener("dukora:navigation-layout",navigationChanged);addEventListener("dukora:industry-profile",industryChanged);
+    const navigationChanged=(event:Event)=>setNavigationLayout((event as CustomEvent<string>).detail);const lockDurationChanged=(event:Event)=>setLockDurationMinutes(Number((event as CustomEvent<number>).detail)||5);const industryChanged=(event:Event)=>{const next=(event as CustomEvent<any>).detail;setOrganizationProfile(next);const modules=enabledModules(next.enabledModules);setView(current=>(current==="Production"&&!modules.has("production"))||(current==="Reports"&&!modules.has("reports"))||(current==="Accounting"&&!modules.has("accounting"))||(current==="Smart Insights"&&!modules.has("ai"))?"Dashboard":current)};addEventListener("dukora:navigation-layout",navigationChanged);addEventListener("thebarcode:lock-duration",lockDurationChanged);addEventListener("dukora:industry-profile",industryChanged);
     let refreshTimer=0;const dataChanged=()=>{clearTimeout(refreshTimer);refreshTimer=window.setTimeout(()=>bootstrap().catch(()=>0),80)};addEventListener("thebarcode:data-changed",dataChanged);
     const timer = setInterval(() => syncOutbox().catch(() => 0), 15000);
     return () => {
       removeEventListener("online", change);
       removeEventListener("offline", change);
       removeEventListener("dukora:navigation-layout",navigationChanged);
+      removeEventListener("thebarcode:lock-duration",lockDurationChanged);
       removeEventListener("dukora:industry-profile",industryChanged);
       removeEventListener("thebarcode:data-changed",dataChanged);clearTimeout(refreshTimer);
       clearInterval(timer);
@@ -83,15 +117,17 @@ export default function App() {
     const markActivity=()=>{activityRef.current=Date.now()};
     const events=["pointerdown","keydown","touchstart","mousemove"];
     events.forEach(x=>addEventListener(x,markActivity,{passive:true}));
-    const timer=window.setInterval(()=>{if(!locked&&Date.now()-activityRef.current>=5*60*1000){setLocked(true);setLockStaffId(session.user?.id||user.id);setLockPin("");setLockError("");setAlertsOpen(false)}},15000);
+    const timer=window.setInterval(()=>{if(!locked&&Date.now()-activityRef.current>=lockDurationMinutes*60*1000){setLocked(true);setLockStaffId(session.user?.id||user.id);setLockPin("");setLockError("");setAlertsOpen(false)}},15000);
     return()=>{events.forEach(x=>removeEventListener(x,markActivity));clearInterval(timer)};
-  },[user?.id,locked]);
+  },[user?.id,locked,lockDurationMinutes]);
   useEffect(()=>{if(!user)return;void getSettings().then(settings=>{if(!settings?.organization)return;setOrganizationProfile(settings.organization);localStorage.setItem("organization_profile",JSON.stringify(settings.organization))}).catch(()=>0)},[user?.id]);
   useEffect(()=>{if(!user)return;const refreshProfile=()=>{void getSettings().then(settings=>{if(settings?.organization){setOrganizationProfile(settings.organization);localStorage.setItem("organization_profile",JSON.stringify(settings.organization))}}).catch(()=>0)};addEventListener("thebarcode:data-changed",refreshProfile);return()=>removeEventListener("thebarcode:data-changed",refreshProfile)},[user?.id]);
   useEffect(()=>{if(!user)return;const refresh=async()=>{const request=++notificationRequest.current;try{const current=await getNotifications();if(request===notificationRequest.current)setNotifications(current)}catch{}};const attention=()=>void refresh();const visible=()=>{if(document.visibilityState==="visible")void refresh()};addEventListener("dukora:attention",attention);addEventListener("focus",attention);document.addEventListener("visibilitychange",visible);void refresh();const timer=setInterval(refresh,10000);return()=>{removeEventListener("dukora:attention",attention);removeEventListener("focus",attention);document.removeEventListener("visibilitychange",visible);clearInterval(timer)}},[user?.id]);
   useEffect(()=>{if(!user)return;let active=true;const refreshAccess=async()=>{try{const updated=await refreshSession();if(active)setUser((current:any)=>current?{...current,...updated}:current)}catch{}};const timer=setInterval(refreshAccess,15000);addEventListener("focus",refreshAccess);return()=>{active=false;removeEventListener("focus",refreshAccess);clearInterval(timer)}},[user?.id]);
+  useEffect(()=>{if(!user)return;let active=true;let timer:number|undefined;const check=()=>{if(!navigator.onLine)return;timer=window.setTimeout(()=>{void fetchLatestUpdate().then(latest=>{if(active&&latest&&compareVersions(latest.version,APP_VERSION)>0)setLoginUpdate(latest)}).catch(()=>0)},900)};check();addEventListener("online",check);return()=>{active=false;if(timer)clearTimeout(timer);removeEventListener("online",check)}},[user?.id]);
   useEffect(()=>{if(!message)return;const timer=setTimeout(()=>setMessage(""),5000);return()=>clearTimeout(timer)},[message]);
   useEffect(()=>{if(seenNotificationFingerprint)localStorage.setItem("notification_seen",seenNotificationFingerprint)},[seenNotificationFingerprint]);
+  useEffect(()=>{const total=Number(notifications.Total||0);if(!total){setUrgency(undefined);return}const key=notificationFingerprint;const dismissed=localStorage.getItem("urgency_dismissed");if(dismissed===key)return;const details=notifications.Details||{};const item=details.approvals?.[0]||details.bills?.find((x:any)=>x.lowStock)||details.expenses?.[0]||details.customers?.[0]||details.inventory?.[0]||details.bills?.[0];if(item)setUrgency({key,title:item.lowStock?"Held bill needs stock attention":details.approvals?.includes(item)?"Approval required":details.expenses?.includes(item)?"Expense follow-up":"Action needed",text:item.lowStock?`${item.label} includes ${item.lowStockItems?.join(", ")} that is nearly out of stock.`:item.label||"There is unresolved work to review.",view:item.lowStock||details.bills?.includes(item)?"Bills":details.expenses?.includes(item)?"Expense":details.inventory?.includes(item)?"Inventory":details.customers?.includes(item)?"Customers":"Bills"})},[notificationFingerprint,notifications]);
   const messageIsError=/unable|failed|failure|could not|cannot|invalid|error|required|permission|expired|unavailable|refused|correction/i.test(message);
   const visibleProducts = products.filter((p) =>
     user?.isDemo ? p.isDemo : !p.isDemo,
@@ -117,21 +153,21 @@ export default function App() {
         .map((x) => (x.id === id ? { ...x, quantity: Math.max(0,Math.min(x.stock,x.quantity + d)) } : x))
         .filter((x) => x.quantity > 0),
     );
-  const billPayload=()=>({deviceTransactionId:activeBill?.deviceTransactionId||draftTransactionId,customerId:selectedCustomer?.id,staffId:user.id,discount:0,notes:"POS order",deviceId:localStorage.getItem("device_id")??"windows-pos-01",items:cart.map(x=>({productId:x.id,quantity:x.quantity,unitPrice:x.sellingPrice,discount:0}))});
+  const billPayload=()=>({deviceTransactionId:activeBill?.deviceTransactionId||draftTransactionId,customerId:selectedCustomer?.id,staffId:user.id,discount:0,notes:"POS order",expectedDeliveryAt:expectedDeliveryAt?new Date(`${expectedDeliveryAt}T12:00:00`).toISOString():undefined,assignedStaffId:assignedStaffId||undefined,deviceId:localStorage.getItem("device_id")??"windows-pos-01",items:cart.map(x=>({productId:x.id,quantity:x.quantity,unitPrice:x.sellingPrice,discount:0}))});
   async function ensureHeld(openPrint=false){
     if(!cart.length)return;
     try{
       const saved=activeBill?await updateBill(activeBill.id,{...billPayload(),reason:"Updated from active POS order",expectedRevision:activeBill.revision}):await holdBill(billPayload());setActiveBill(saved);setOrderFailure("");dispatchEvent(new Event("dukora:attention"));
-      const unpaid=buildSaleReceipt({id:String(saved.receiptNumber||saved.deviceTransactionId),dailyOrderNumber:saved.dailyOrderNumber,walkInNumber:saved.walkInNumber,customerName:selectedCustomer?.name||"Walk-in customer",cashierName:user.name,method:"Unpaid",status:"UNPAID",credit:true,items:cart.map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
+      const unpaid=buildSaleReceipt({id:String(saved.receiptNumber||saved.deviceTransactionId),dailyOrderNumber:saved.dailyOrderNumber,walkInNumber:saved.walkInNumber,customerName:selectedCustomer?.name||"Walk-in customer",cashierName:user.name,method:"Unpaid",status:"UNPAID",credit:true,items:cart.filter(x=>x.itemType!=="AddOn").map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
       if(openPrint){setReceiptKind("Unpaid");setReceipt(`${unpaid}\nREVISION: ${saved.revision||1}`)}
       setMessage(`Bill #${saved.receiptNumber} is held and awaiting payment or credit${openPrint?" · confirm Print Unpaid Bill":""}`);return saved;
     }catch(error){const reason=error instanceof Error?`Could not hold bill: ${error.message}`:"Could not hold bill on the shared server";setOrderFailure(reason);setMessage(reason);}
   }
-  function clearForNextOrder(saved?:any){if(saved)setLastHeldBill(saved);setCart([]);setSelectedCustomer(undefined);setActiveBill(undefined);setDraftTransactionId(crypto.randomUUID());setOrderFailure("");setQuery("");setCategory("All")}
+  function clearForNextOrder(saved?:any){if(saved)setLastHeldBill(saved);setCart([]);setSelectedCustomer(undefined);setActiveBill(undefined);setAmountPaidNow("");setExpectedDeliveryAt("");setAssignedStaffId("");setDraftTransactionId(crypto.randomUUID());setOrderFailure("");setQuery("");setCategory("All")}
   function startNextOrder(saved:any){clearForNextOrder(saved);setMessage(`Unpaid bill #${saved.receiptNumber} was printed and held. New entries now create a separate bill.`);dispatchEvent(new Event("dukora:attention"));bootstrap().catch(()=>0)}
   async function openRecoverableBill(){try{const match=activeBill||(await getBills("All")).find((x:any)=>x.deviceTransactionId===draftTransactionId);if(!match){setMessage("No saved held bill was found for this order. Retry it or start a new order.");return}setActiveBill(match);localStorage.setItem("bill_focus",match.id);setView("Bills");setOrderFailure("")}catch(error){setMessage(error instanceof Error?error.message:"Could not verify the held bill")}}
   async function forceNewOrder(){let saved=activeBill;try{saved=saved||(await getBills("All")).find((x:any)=>x.deviceTransactionId===draftTransactionId)}catch{}clearForNextOrder(saved);setMessage(saved?`Bill #${saved.receiptNumber} remains held under Bills. A clean new order is ready.`:"The failed draft was detached. A clean new order is ready; verify Bills when the server reconnects.");dispatchEvent(new Event("dukora:attention"))}
-  async function reloadHeldOrder(){if(!activeBill)return;try{const match=(await getBills("All")).find((x:any)=>x.id===activeBill.id);if(!match||match.status!=="Held"){setMessage("This bill is no longer held. Open Bills to review its current status.");return}const restored=match.items.map((line:any)=>{const product=visibleProducts.find(x=>x.id===line.productId);return product?{...product,quantity:Number(line.quantity),sellingPrice:Number(line.unitPrice)}:null}).filter(Boolean) as CartLine[];if(restored.length!==match.items.length){setMessage("This held bill contains an unavailable item and cannot be restarted on Sell.");return}setActiveBill(match);setDraftTransactionId(match.deviceTransactionId);setCart(restored);setSelectedCustomer(customers.find(x=>x.id===match.customerId));setOrderFailure("");setMessage(`Bill #${match.receiptNumber} reloaded at revision ${match.revision}`)}catch(error){const reason=error instanceof Error?error.message:"Could not reload the held bill";setOrderFailure(reason);setMessage(reason)}}
+  async function reloadHeldOrder(){if(!activeBill)return;try{const match=(await getBills("All")).find((x:any)=>x.id===activeBill.id);if(!match||match.status!=="Held"){setMessage("This bill is no longer held. Open Bills to review its current status.");return}const restored=match.items.map((line:any)=>{const product=visibleProducts.find(x=>x.id===line.productId);return product?{...product,quantity:Number(line.quantity),sellingPrice:Number(line.unitPrice)}:null}).filter(Boolean) as CartLine[];if(restored.length!==match.items.length){setMessage("This held bill contains an unavailable item and cannot be restarted on Sell.");return}setActiveBill(match);setDraftTransactionId(match.deviceTransactionId);setCart(restored);setSelectedCustomer(customers.find(x=>x.id===match.customerId));setExpectedDeliveryAt(match.expectedDeliveryAt?String(match.expectedDeliveryAt).slice(0,10):"");setAssignedStaffId(match.assignedStaffId||"");setOrderFailure("");setMessage(`Bill #${match.receiptNumber} reloaded at revision ${match.revision}`)}catch(error){const reason=error instanceof Error?error.message:"Could not reload the held bill";setOrderFailure(reason);setMessage(reason)}}
   async function checkout(method: string) {
     if (!cart.length) return;
     if (!activeBill) {
@@ -143,21 +179,23 @@ export default function App() {
       setMessage("Choose or register a customer before recording credit");
       return;
     }
-    const id = draftTransactionId, credit = method === "Credit",
+    const id = draftTransactionId, credit = method === "Credit", paidNow = credit ? 0 : Math.min(total, Math.max(0, amountPaidNow.trim()===""?total:Number(amountPaidNow))), partial = !credit && paidNow < total,
       customerName = selectedCustomer?.name || "Walk-in customer";
+    if(!Number.isFinite(paidNow)||paidNow<0){setMessage("Enter a valid payment amount");return}
+    if((credit||partial)&&!selectedCustomer){setCustomerOpen(true);setMessage("Register or choose a customer for credit or partial payment");return}
     try{
       const held=await updateBill(activeBill.id,{...billPayload(),reason:"Final POS revision before posting",expectedRevision:activeBill.revision});
-      const dueAt=credit?new Date(Date.now()+7*86400000).toISOString():undefined;
-      const posted=await postBill(held.id,{status:credit?"Credit":"Paid",method,amountPaid:credit?0:total,dueAt,notes:credit?"Credit approved at POS":"Paid at POS",deviceId:localStorage.getItem("device_id")??"windows-pos-01"});
-      const receiptText=buildSaleReceipt({id:String(posted.receiptNumber||id),dailyOrderNumber:posted.dailyOrderNumber,walkInNumber:posted.walkInNumber,customerName,cashierName:user.name,method,status:credit?"CREDIT":"PAID",credit,items:cart.map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
-      const receiptConfig=cachedReceiptSettings();setReceiptKind(credit?"Credit":"Paid");setReceipt(receiptText);if((!credit&&receiptConfig.autoPrintPaidSale)||(credit&&receiptConfig.creditSalePrintMode==="Automatic"))for(let copy=0;copy<receiptConfig.copies;copy++)await printReceiptText(receiptText);
-      clearForNextOrder();setMessage(credit?"Credit invoice posted and added to follow-up":"Sale, payment and stock posted together");dispatchEvent(new Event("dukora:attention"));bootstrap().catch(()=>0);return;
+      const dueAt=(credit||partial)?new Date(Date.now()+7*86400000).toISOString():undefined;
+      const posted=await postBill(held.id,{status:credit?"Credit":partial?"PartiallyPaid":"Paid",method,amountPaid:paidNow,dueAt,notes:credit?"Credit order at POS":partial?"Deposit order at POS":"Paid at POS",deviceId:localStorage.getItem("device_id")??"windows-pos-01"});
+      const receiptText=buildSaleReceipt({id:String(posted.receiptNumber||id),dailyOrderNumber:posted.dailyOrderNumber,walkInNumber:posted.walkInNumber,customerName,cashierName:user.name,method,status:credit?"CREDIT":partial?"PARTIAL":"PAID",credit:credit||partial,paid:paidNow,items:cart.filter(x=>x.itemType!=="AddOn").map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
+      const receiptConfig=cachedReceiptSettings();setReceiptKind(credit?"Credit":partial?"Order":"Paid");setReceipt(receiptText);if((!credit&&receiptConfig.autoPrintPaidSale)||(credit&&receiptConfig.creditSalePrintMode==="Automatic"))for(let copy=0;copy<receiptConfig.copies;copy++)await printReceiptText(receiptText);
+      clearForNextOrder();setMessage(credit?"Credit order posted and added to Orders":partial?"Deposit recorded and order added to Orders":"Sale, payment and stock posted together");dispatchEvent(new Event("dukora:attention"));bootstrap().catch(()=>0);return;
     }catch(error){const reason=error instanceof Error?error.message:"Sale could not be posted";setOrderFailure(reason);setMessage(reason);if(navigator.onLine||activeBill)return;}
     await queueSale({
       deviceTransactionId: id,
       customerId: selectedCustomer?.id,
       staffId: user.id,
-      status: credit ? "Credit" : "Paid",
+      status: credit ? "Credit" : partial ? "PartiallyPaid" : "Paid",
       discount: 0,
       occurredAt: new Date().toISOString(),
       deviceId: localStorage.getItem("device_id") ?? "windows-pos-01",
@@ -170,19 +208,19 @@ export default function App() {
         unitCost: x.costPrice,
         discount: 0,
       })),
-      payments: credit ? [] : [{ method, amount: total }],
+      payments: credit ? [] : [{ method, amount: paidNow }],
       total,
       synced: false,
     });
-    const receiptText=buildSaleReceipt({id,customerName,cashierName:user.name,method,status:credit?"CREDIT":"PAID",credit,items:cart.map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
+    const receiptText=buildSaleReceipt({id,customerName,cashierName:user.name,method,status:credit?"CREDIT":partial?"PARTIAL":"PAID",credit:credit||partial,paid:paidNow,items:cart.filter(x=>x.itemType!=="AddOn").map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
     const receiptConfig=cachedReceiptSettings();
-    setReceiptKind(credit?"Credit":"Paid");setReceipt(receiptText);
+    setReceiptKind(credit?"Credit":partial?"Order":"Paid");setReceipt(receiptText);
     if((!credit&&receiptConfig.autoPrintPaidSale)||(credit&&receiptConfig.creditSalePrintMode==="Automatic"))for(let copy=0;copy<receiptConfig.copies;copy++)await printReceiptText(receiptText);
     clearForNextOrder();
-    setMessage("Sale saved safely on this device");
+    setMessage(credit||partial?"Order saved safely on this device":"Sale saved safely on this device");
     syncOutbox().catch(() => 0);
   }
-  const primaryViews=["Sell","Dashboard","Bills","Inventory"];
+  const primaryViews=["Sell","Dashboard","Bills","Orders","Inventory"];
   const institutionModules=enabledModules(organizationProfile.enabledModules||(organizationProfile as any).EnabledModules),industry=profileFor(organizationProfile.industryProfile||(organizationProfile as any).IndustryProfile);
   const menuGroups={Operations:["Expense",...(institutionModules.has("accounting")?["Accounting"]:[]),...(institutionModules.has("production")?["Production"]:[]),...(institutionModules.has("inventory")?["Purchasing","Stocktake"]:[]),...(institutionModules.has("reports")?["Reports"]:[]),"Audit trail"],"Data & Setup":["Customers","Staff & Roles","Item Setup"]};
   const alertKeys:Record<string,string>={Bills:"Bills",Inventory:"Inventory",Customers:"Customers",Expenses:"Expenses",Expense:"Expenses","Audit trail":"AuditTrail",Settings:"Settings"};
@@ -393,6 +431,12 @@ export default function App() {
                 <span>Discount</span>
                 <button>＋ Add</button>
               </div>
+              <div className="order-payment-fields">
+                <label>Paid now <input type="number" min="0" max={total} step="0.01" placeholder={String(total)} value={amountPaidNow} onChange={e=>setAmountPaidNow(e.target.value)} /></label>
+                <label>Expected delivery <input type="date" value={expectedDeliveryAt} onChange={e=>setExpectedDeliveryAt(e.target.value)} /></label>
+                <label>Fulfillment owner <select value={assignedStaffId} onChange={e=>setAssignedStaffId(e.target.value)}><option value="">Unassigned</option>{staff.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+              </div>
+              <small className="order-payment-help">Leave Paid now empty for a fully paid sale. A lower amount creates an order and requires a registered customer.</small>
               <div className="total">
                 <span>Total</span>
                 <b>{money(total)}</b>
@@ -415,7 +459,7 @@ export default function App() {
             </section>
           </div>
         ) : (
-          <Management
+            <Management
             view={view}
             products={visibleProducts}
             user={user}
@@ -429,6 +473,8 @@ export default function App() {
           {message}
         </div>
       )}
+      {urgency&&<div className="urgency-popover" role="status"><strong>{urgency.title}</strong><p>{urgency.text}</p><div className="button-row"><button onClick={()=>{localStorage.setItem("urgency_dismissed",urgency.key);setUrgency(undefined)}}>Dismiss</button><button onClick={()=>{setView(urgency.view);setUrgency(undefined)}}>Review now</button></div></div>}
+      <RuleAssistant open={assistantOpen} onToggle={()=>setAssistantOpen(x=>!x)} view={view} notifications={notifications} products={visibleProducts} onNavigate={setView}/>
       {customerOpen && (
         <CustomerPicker
           customers={customers}
@@ -452,7 +498,8 @@ export default function App() {
           </section>
         </div>
       )}
-      {locked && <div className="modal lock-modal" role="dialog" aria-modal="true" aria-label="Unlock TheBarcode"><section><img className="lock-mark" src="/thebarcode-logo-dark-text.png" alt="TheBarcode"/><h2>Session locked</h2><p>Your session is still active. Re-enter a staff PIN to continue; held bills and offline work are preserved.</p><form onSubmit={unlock}><label>Staff<select value={lockStaffId} onChange={e=>setLockStaffId(e.target.value)}>{staff.map(x=><option key={x.id} value={x.id}>{x.name} · {x.role}</option>)}</select></label><label>PIN<input autoFocus type="password" inputMode="numeric" minLength={6} value={lockPin} onChange={e=>setLockPin(e.target.value)} required /></label><button className="print">Unlock</button>{lockError&&<small className="lock-error">{lockError}</small>}</form><small className="lock-hint">Locked after 5 minutes of inactivity.</small></section></div>}
+      {locked && <div className="modal lock-modal" role="dialog" aria-modal="true" aria-label="Unlock TheBarcode"><section><img className="lock-mark" src="/thebarcode-logo-dark-text.png" alt="TheBarcode"/><h2>Session locked</h2><p>Your session is still active. Re-enter a staff PIN to continue; held bills and offline work are preserved.</p><form onSubmit={unlock}><label>Staff<select value={lockStaffId} onChange={e=>setLockStaffId(e.target.value)}>{staff.map(x=><option key={x.id} value={x.id}>{x.name} · {x.role}</option>)}</select></label><label>PIN<input autoFocus type="password" inputMode="numeric" minLength={6} value={lockPin} onChange={e=>setLockPin(e.target.value)} required /></label><button className="print">Unlock</button>{lockError&&<small className="lock-error">{lockError}</small>}</form><small className="lock-hint">Locked after {lockDurationMinutes} minute{lockDurationMinutes===1?"":"s"} of inactivity.</small></section></div>}
+      {loginUpdate && <div className="modal update-modal" role="dialog" aria-modal="true" aria-label="TheBarcode update available"><section><button className="close" onClick={()=>setLoginUpdate(undefined)}>×</button><small>Update available</small><h2>TheBarcode {loginUpdate.version}</h2><p>{loginUpdate.summary||"A new release is ready with improvements and fixes."}</p><p className="muted">Your local database is backed up before installation.</p><div className="button-row"><button className="secondary-button" onClick={()=>setLoginUpdate(undefined)}>Later</button><button className="primary-button" onClick={()=>{const desktop=(window as any).chrome?.webview;if(user.role!=="Owner"){setMessage("Only the Owner can approve application updates");return}if(desktop){desktop.postMessage({command:"installUpdate",version:loginUpdate.version,downloadUrl:loginUpdate.downloadUrl,sha256:loginUpdate.sha256});setLoginUpdate(undefined)}else{window.open(loginUpdate.downloadUrl,"_blank","noopener");setMessage("Installer download opened; run it after the download completes");setLoginUpdate(undefined)}}}>Install now</button></div></section></div>}
     </div>
   );
 }
@@ -615,4 +662,26 @@ function CustomerPicker({
       </section>
     </div>
   );
+}
+
+function RuleAssistant({ open, onToggle, view, notifications, products, onNavigate }: { open: boolean; onToggle: () => void; view: string; notifications: any; products: Product[]; onNavigate: (view: string) => void }) {
+  const [question, setQuestion] = useState("");
+  const [messages, setMessages] = useState<{from:"assistant"|"user";text:string}[]>([{from:"assistant",text:"I can explain TheBarcode workflows, point you to a screen, and summarize unresolved actions. Ask in plain language."}]);
+  const prompts = ["Why is this journal entry duplicated?", "What needs attention?", "How do I record a partial payment?"];
+  const answer = (input: string) => {
+    const text=input.trim().toLocaleLowerCase();
+    if (!text) return;
+    let reply="I can help with sales, orders, inventory, expenses, accounting, production, printers, settings and approvals. Try asking what to do next or name a screen.";
+    let destination: string | undefined;
+    if (/journal|ledger|accounting|double.?entry|debit|credit/.test(text)) { reply="Double-entry is expected: a sale posts cash or receivables against revenue, and stock issued posts cost of goods sold against inventory. Superseded snapshots are audit history; only the latest snapshot feeds the trial balance.";destination="Accounting"; }
+    else if (/stock|inventory|restock|out of stock|held bill/.test(text)) { reply=`Inventory currently has ${products.filter(x=>x.stock<=x.minStock).length} item${products.filter(x=>x.stock<=x.minStock).length===1?"":"s"} at or below minimum. Use Inventory → Stock movement for a restock, and keep “Affect financials” enabled when it is a purchase.`;destination="Inventory"; }
+    else if (/partial|deposit|balance|credit|payment/.test(text)) { reply="For a partial payment, enter Paid now before posting. The sale becomes an order with a registered customer, a deposit, a red outstanding balance and a delivery date in Orders.";destination="Orders"; }
+    else if (/expense|payable|supplier/.test(text)) { reply="Approved expenses remain in Expenses until settled. Record each payment there; the payable and accounting journal update from the same source record.";destination="Expense"; }
+    else if (/printer|queue|print/.test(text)) { reply="Configure the receipt printer in Settings → Devices & receipts. The queue control cancels only TheBarcode receipt jobs, never unrelated Windows print jobs.";destination="Settings"; }
+    else if (/order|delivery|calendar|remind/.test(text)) { reply="Orders contains deposits, balances, expected delivery dates, fulfillment status and reminders. Completed or cancelled calendar entries are crossed out.";destination="Orders"; }
+    else if (/approval|pending|notification|attention/.test(text)) { reply=`There ${Number(notifications.Total||0)===1?"is":"are"} ${Number(notifications.Total||0)} active notification${Number(notifications.Total||0)===1?"":"s"}. Open the bell for the exact records; counts remain until the underlying work is resolved.`; }
+    else if (/where|open|screen|navigate/.test(text)) { reply=`You are on ${view}. Use the left navigation for operational modules, or ask “how do I…” for a guided workflow.`; }
+    setMessages(current=>[...current,{from:"user",text:input},{from:"assistant",text:reply}]);setQuestion("");if(destination)onNavigate(destination);
+  };
+  return <>{<button className="assistant-launcher" onClick={onToggle} aria-expanded={open}>Ask TheBarcode</button>}{open&&<section className="assistant-panel" role="dialog" aria-label="TheBarcode assistant"><header><h3>TheBarcode assistant</h3><button onClick={onToggle} aria-label="Close assistant">×</button></header><div className="assistant-messages">{messages.slice(-8).map((message,index)=><div key={index} className={`assistant-message ${message.from}`}>{message.text}</div>)}</div><div className="assistant-prompts">{prompts.map(prompt=><button key={prompt} onClick={()=>answer(prompt)}>{prompt}</button>)}</div><form className="assistant-form" onSubmit={event=>{event.preventDefault();answer(question)}}><input value={question} onChange={event=>setQuestion(event.target.value)} placeholder="Ask a question…" aria-label="Ask TheBarcode"/><button type="submit">Ask</button></form></section>}</>;
 }

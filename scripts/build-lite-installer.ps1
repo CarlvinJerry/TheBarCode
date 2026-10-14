@@ -27,9 +27,14 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Web production build failed.' }
 } finally { Remove-Item Env:VITE_APP_VERSION -ErrorAction SilentlyContinue; Pop-Location }
 dotnet publish (Join-Path $root 'apps\api\TheBarcode.Api.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\server"
+if ($LASTEXITCODE -ne 0) { throw 'API publish failed; refusing to package an incomplete installer.' }
 dotnet publish (Join-Path $root 'apps\print-bridge\TheBarcode.PrintBridge.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\print-bridge"
+if ($LASTEXITCODE -ne 0) { throw 'Print bridge publish failed; refusing to package an incomplete installer.' }
 dotnet publish (Join-Path $root 'apps\desktop\Dukora.Desktop.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\desktop"
+if ($LASTEXITCODE -ne 0) { throw 'Desktop publish failed; refusing to package an incomplete installer.' }
 dotnet publish (Join-Path $root 'apps\driver-launcher\Dukora.DriverInstaller.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$Version -o "$stage\driver-launcher"
+if ($LASTEXITCODE -ne 0) { throw 'Driver launcher publish failed; refusing to package an incomplete installer.' }
+if (-not (Test-Path -LiteralPath (Join-Path $stage 'server\TheBarcode.Api.exe'))) { throw 'API executable is missing from the staging directory.' }
 Copy-Item -Path "$web\dist\*" -Destination "$stage\server\wwwroot" -Recurse -Force
 # Debug symbols and XML reference documentation are not needed at runtime. Excluding
 # them keeps the installer smaller and reduces the amount Defender must scan before

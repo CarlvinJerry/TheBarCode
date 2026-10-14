@@ -12,6 +12,25 @@ export async function listSilentPrinters(): Promise<string[]> {
   return response.json();
 }
 
+export async function getPrinterQueue(printerName: string): Promise<string[]> {
+  const response = await fetch(`${bridgeUrl}/queue?printerName=${encodeURIComponent(printerName)}`, { signal: AbortSignal.timeout(2500) });
+  if (!response.ok) throw new Error("Print bridge unavailable");
+  const value = await response.json();
+  return Array.isArray(value.jobs) ? value.jobs : [];
+}
+
+export async function clearPrinterQueue(printerName: string): Promise<number> {
+  const response = await fetch(`${bridgeUrl}/queue/clear`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ printerName, scope: "TheBarcode", confirm: true }),
+    signal: AbortSignal.timeout(6000),
+  });
+  const value = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(value?.detail || "Unable to clear TheBarcode print jobs");
+  return Number(value?.removed || 0);
+}
+
 export async function silentPrint(text: string): Promise<boolean> {
   const printerName = localStorage.getItem("receipt_printer");
   if (!printerName || localStorage.getItem("silent_print") !== "true") return false;
@@ -57,7 +76,13 @@ function printReceiptPreview(text: string) {
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
-    .split("\n").map(line=>line.trim().startsWith("STATUS: ")?`<strong>${line}</strong>`:line.trim()==="Powered by TheBarcode | Beyond Raw Data"?`<small>${line}</small>`:line).join("\n");
+    .split("\n").map(line=>{
+      const trimmed=line.trim();
+      if(trimmed.startsWith("STATUS: ")) return `<strong>${line}</strong>`;
+      if(trimmed.startsWith("BALANCE: ")) return `<span class="receipt-balance">${line}</span>`;
+      if(trimmed.startsWith("DEPOSIT: ")||trimmed.startsWith("PAID: ")) return `<span class="receipt-deposit">${line}</span>`;
+      return trimmed==="Powered by TheBarcode | Beyond Raw Data"?`<small>${line}</small>`:line;
+    }).join("\n");
   doc.open();
   doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Receipt</title><style>
     @page { size: ${width}mm auto; margin: 0; }
@@ -65,6 +90,8 @@ function printReceiptPreview(text: string) {
     body { box-sizing:border-box; padding:3mm 5mm 5mm; color:#000; }
     pre { margin:0; width:${width-10}mm; overflow:hidden; white-space:pre-wrap; overflow-wrap:anywhere; font:9pt/1.35 "Courier New",monospace; }
     strong { display:block; font-size:13pt; line-height:1.5; text-align:center; font-weight:900; }
+    .receipt-balance { display:block; color:#b42318; font-weight:900; }
+    .receipt-deposit { display:block; color:#176b4d; font-weight:800; }
     small { display:block; font-size:6.5pt; line-height:1.2; text-align:center; }
   </style></head><body><pre>${escaped}</pre></body></html>`);
   doc.close();
@@ -83,12 +110,12 @@ export function testReceiptText() {
 }
 
 function localNumbers(id:string,walkIn:boolean){const date=new Date().toISOString().slice(0,10),key=`receipt_numbers_${date}`;try{const data=JSON.parse(localStorage.getItem(key)||'{"order":0,"walkIn":0,"ids":{}}');if(!data.ids[id]){data.order++;if(walkIn)data.walkIn++;data.ids[id]={order:data.order,walkIn:walkIn?data.walkIn:null};localStorage.setItem(key,JSON.stringify(data))}return data.ids[id]}catch{return{order:1,walkIn:walkIn?1:null}}}
-export function buildSaleReceipt(input:{id:string;dailyOrderNumber?:number;walkInNumber?:number|null;customerName:string;cashierName:string;method:string;status?:"UNPAID"|"PAID"|"CREDIT";credit:boolean;items:{name:string;quantity:number;unitPrice:number}[];total:number}){
+export function buildSaleReceipt(input:{id:string;dailyOrderNumber?:number;walkInNumber?:number|null;customerName:string;cashierName:string;method:string;status?:"UNPAID"|"PAID"|"CREDIT"|"PARTIAL";credit:boolean;paid?:number;items:{name:string;quantity:number;unitPrice:number}[];total:number}){
  const org=cachedOrganizationSettings(),cfg=cachedReceiptSettings(),branch=localStorage.getItem("branch_name")||"Main branch",terminal=localStorage.getItem("device_id")||"POS-01",cols=cfg.paperWidthMm===58?32:48,line="-".repeat(cols),money=(n:number)=>`${org.currency} ${n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`,rows:string[]=[];
  rows.push(org.name.toUpperCase());if(org.legalName&&org.legalName!==org.name)rows.push(org.legalName);if(org.tagline)rows.push(org.tagline);
  if(cfg.showBusinessDetails){if(org.address)rows.push(org.address);if(org.phone)rows.push(`Tel: ${org.phone}`);if(org.taxPin)rows.push(`PIN: ${org.taxPin}`);rows.push(`Branch: ${branch}`)}
- const status=input.status??(input.credit?"CREDIT":"PAID"),walkIn=input.customerName.toLowerCase().startsWith("walk-in"),numbers=input.dailyOrderNumber?{order:input.dailyOrderNumber,walkIn:input.walkInNumber}:localNumbers(input.id,walkIn);rows.push(line,status==="UNPAID"?"UNPAID BILL":status==="CREDIT"?"CREDIT SALE":"SALES RECEIPT",`${cfg.receiptPrefix}-${input.id.slice(0,8).toUpperCase()}`,`Order today: ${numbers.order}`,new Date().toLocaleString(),`Till: ${terminal}`);
+ const status=input.status??(input.credit?"CREDIT":"PAID"),paid=Math.max(0,Math.min(input.total,input.paid??(status==="PAID"?input.total:0))),walkIn=input.customerName.toLowerCase().startsWith("walk-in"),numbers=input.dailyOrderNumber?{order:input.dailyOrderNumber,walkIn:input.walkInNumber}:localNumbers(input.id,walkIn);rows.push(line,status==="UNPAID"?"UNPAID BILL":status==="CREDIT"?"CREDIT SALE":status==="PARTIAL"?"ORDER DEPOSIT":"SALES RECEIPT",`${cfg.receiptPrefix}-${input.id.slice(0,8).toUpperCase()}`,`Order today: ${numbers.order}`,new Date().toLocaleString(),`Till: ${terminal}`);
  if(cfg.showCashier)rows.push(`Cashier: ${input.cashierName}`);if(cfg.showCustomer)rows.push(`Customer: ${walkIn&&numbers.walkIn?`Walk-in #${numbers.walkIn}`:input.customerName}`);rows.push(line);
  for(const item of input.items){rows.push(item.name);rows.push(`${item.quantity} x ${money(item.unitPrice)}  ${money(item.quantity*item.unitPrice)}`)}
- rows.push(line,`TOTAL: ${money(input.total)}`,status==="UNPAID"?`STATUS: UNPAID\nHELD - NOT A PAYMENT RECEIPT`:status==="CREDIT"?`PAID: ${money(0)}\nBALANCE: ${money(input.total)}\nSTATUS: CREDIT`:`PAYMENT: ${input.method.toUpperCase()}\nSTATUS: PAID`,line,cfg.footer);if(cfg.showPoweredBy)rows.push("Powered by TheBarcode | Beyond Raw Data");return rows.join("\n");
+ rows.push(line,`TOTAL: ${money(input.total)}`,status==="UNPAID"?`STATUS: UNPAID\nHELD - NOT A PAYMENT RECEIPT`:status==="CREDIT"?`PAID: ${money(paid)}\nBALANCE: ${money(input.total-paid)}\nSTATUS: CREDIT`:status==="PARTIAL"?`DEPOSIT: ${money(paid)}\nBALANCE: ${money(input.total-paid)}\nSTATUS: ORDER`:`PAYMENT: ${input.method.toUpperCase()}\nSTATUS: PAID`,line,cfg.footer);if(cfg.showPoweredBy)rows.push("Powered by TheBarcode | Beyond Raw Data");return rows.join("\n");
 }

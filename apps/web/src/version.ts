@@ -1,6 +1,20 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.19";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.24";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Accounting journal history now marks superseded correction snapshots in red with strike-through while the active snapshot remains the only balance source",
+  "Held bills now highlight products approaching their stock threshold, with urgency notifications and a direct review action",
+  "Rule-based TheBarcode assistant answers workflow and FAQ questions locally, with page-aware navigation and no background model calls",
+  "Printer settings can inspect and cancel only TheBarcode receipt jobs in the selected Windows printer queue",
+  "Dynamic item and supplier selectors now support type-ahead search, with clearer empty and pending states",
+  "Order calendar entries are crossed out when paid, completed or cancelled, while unresolved balances remain active",
+  "Responsive compact layouts now collapse grids, forms, dialogs and calendars safely on small screens",
+  "Orders now include a responsive delivery calendar with month navigation, scheduled-order counts and direct order drill-down",
+  "Deposit and partial-payment receipts clearly separate paid deposits from outstanding balances, with balances highlighted in red",
+  "Order workflow with deposits, partial payments, balances, expected fulfillment dates and customer follow-up",
+  "Add-on item classification with internal inventory and accounting retained while customer receipts group add-ons",
+  "Lite installer now always installs or repairs WebView2, logs exact initialization diagnostics, and automatically opens the browser if embedded view startup fails",
+  "Automatic update checks run after login; both Beyond Raw Data release channels are checked before any configured direct mirror",
+  "Settings now provides the manual release folder when automatic update installation is unavailable",
   "Production hardening adds live and database readiness checks, bounded API request timeouts, and backoff for offline synchronization retries",
   "Explicit owner or manager-assigned permissions now authorize reports, audit, accounting, approvals, expenses and inventory independently of the base staff role",
   "Permissions refresh automatically while signed in so access changes take effect without a forced logout",

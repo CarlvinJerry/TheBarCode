@@ -33,6 +33,35 @@ public static class BillEndpoints
             return rows.Select(x => BillView(x, customers.GetValueOrDefault(x.CustomerId ?? Guid.Empty), staff.GetValueOrDefault(x.StaffId))).ToList();
         });
 
+        api.MapPost("/bills/{id:guid}/remind", async (Guid id, AppDbContext db, ClaimsPrincipal principal) =>
+        {
+            var sale = await db.Sales.SingleOrDefaultAsync(x => x.Id == id && x.IsDemo == Security.IsDemo(principal));
+            if (sale is null) return Results.NotFound();
+            if (sale.AssignedStaffId is null && sale.ExpectedDeliveryAt is null) return Results.BadRequest(new { error = "Set an expected fulfillment date or assignee before sending a reminder" });
+            sale.ReminderSentAt = DateTimeOffset.UtcNow;
+            sale.UpdatedAt = DateTimeOffset.UtcNow;
+            db.AuditEvents.Add(Audit(principal, "Reminder sent", sale, $"Order #{sale.ReceiptNumber} · assigned staff {sale.AssignedStaffId?.ToString() ?? "unassigned"}" , null));
+            await db.SaveChangesAsync();
+            return Results.Ok(BillView(sale, null, principal.Identity?.Name));
+        });
+
+        api.MapPut("/bills/{id:guid}/fulfillment", async (Guid id, FulfillmentUpdateRequest r, AppDbContext db, ClaimsPrincipal principal) =>
+        {
+            var allowed = new[] { "Immediate", "Scheduled", "Preparing", "Ready", "Completed", "Cancelled" };
+            if (!allowed.Contains(r.Status, StringComparer.OrdinalIgnoreCase)) return Results.BadRequest(new { error = "Choose a valid fulfillment status" });
+            var sale = await db.Sales.SingleOrDefaultAsync(x => x.Id == id && x.IsDemo == Security.IsDemo(principal));
+            if (sale is null) return Results.NotFound();
+            var actor = StaffId(principal);
+            if (!IsManager(principal) && sale.AssignedStaffId != actor) return Denied("Only the assigned staff member or an Owner/Manager can update fulfillment status.");
+            var previous = sale.FulfillmentStatus;
+            sale.FulfillmentStatus = allowed.First(x => x.Equals(r.Status, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(r.Notes)) sale.Notes = r.Notes.Trim();
+            sale.UpdatedAt = DateTimeOffset.UtcNow;
+            db.AuditEvents.Add(Audit(principal, "Fulfillment updated", sale, $"Order {sale.ReceiptNumber}: {previous} → {sale.FulfillmentStatus}", r.DeviceId));
+            await db.SaveChangesAsync();
+            return Results.Ok(BillView(sale, null, principal.Identity?.Name));
+        });
+
         api.MapPost("/bills/hold", async (HoldBillRequest r, AppDbContext db, ClaimsPrincipal principal) =>
         {
             if (r.Items.Count == 0 || r.Items.Any(x => x.Quantity <= 0 || x.Quantity != decimal.Truncate(x.Quantity) || x.UnitPrice < 0)) return Results.BadRequest(new { error = "Bill quantities must be positive whole units" });
@@ -41,7 +70,7 @@ public static class BillEndpoints
             var products = await Products(r.Items, db,Security.IsDemo(principal));
             if (products is null) return Results.BadRequest(new { error = "One or more items are unavailable in the requested quantity" });
             await using var tx=await db.Database.BeginTransactionAsync();var numbering=await NextDailyNumbers(db,r.CustomerId is null,Security.IsDemo(principal));
-            var sale = new Sale { DeviceTransactionId = r.DeviceTransactionId, ReceiptNumber = await NextNumber(db), DailyOrderNumber=numbering.Order,WalkInNumber=numbering.WalkIn,CustomerId = r.CustomerId, StaffId = r.StaffId, Status = "Held", Discount = Math.Max(0, r.Discount), Notes = r.Notes?.Trim(), OccurredAt = DateTimeOffset.Now,IsDemo=Security.IsDemo(principal) };
+            var sale = new Sale { DeviceTransactionId = r.DeviceTransactionId, ReceiptNumber = await NextNumber(db), DailyOrderNumber=numbering.Order,WalkInNumber=numbering.WalkIn,CustomerId = r.CustomerId, StaffId = r.StaffId, Status = "Held", Discount = Math.Max(0, r.Discount), Notes = r.Notes?.Trim(), ExpectedDeliveryAt = r.ExpectedDeliveryAt, AssignedStaffId = r.AssignedStaffId, FulfillmentStatus = r.ExpectedDeliveryAt is null ? "Immediate" : "Scheduled", OccurredAt = DateTimeOffset.Now,IsDemo=Security.IsDemo(principal) };
             ReplaceLines(sale, r.Items, products);
             sale.Total = Total(sale);
             sale.Revisions.Add(Revision(sale, r.StaffId, "Held", "Initial unpaid bill"));
@@ -77,6 +106,9 @@ public static class BillEndpoints
             sale.CustomerId = r.CustomerId;
             sale.Discount = Math.Max(0, r.Discount);
             sale.Notes = r.Notes?.Trim();
+            sale.ExpectedDeliveryAt = r.ExpectedDeliveryAt;
+            sale.AssignedStaffId = r.AssignedStaffId;
+            sale.FulfillmentStatus = r.ExpectedDeliveryAt is null ? "Immediate" : "Scheduled";
             sale.Total = Total(sale);
             sale.Revision++;
             sale.UpdatedAt = DateTimeOffset.UtcNow;
@@ -118,7 +150,7 @@ public static class BillEndpoints
             var change=JsonSerializer.Deserialize<UpdateBillRequest>(request.SnapshotJson);if(change is null)return Results.BadRequest(new{error="The requested change is invalid"});
             if(sale.Status!="PendingApproval"||sale.Revision!=change.ExpectedRevision)return Results.Conflict(new{error="The bill changed after this request. Reject it and review the current bill."});
             var products=await Products(change.Items,db,Security.IsDemo(principal));if(products is null)return Results.BadRequest(new{error="One or more items are unavailable in the requested quantity"});
-            await using var tx=await db.Database.BeginTransactionAsync();var oldTotal=sale.Total;var oldItems=sale.Items.ToList();await db.SaleItems.Where(x=>x.SaleId==sale.Id).ExecuteDeleteAsync();foreach(var oldItem in oldItems)db.Entry(oldItem).State=EntityState.Detached;sale.Items.Clear();ReplaceLines(sale,change.Items,products);db.SaleItems.AddRange(sale.Items);sale.CustomerId=change.CustomerId;sale.Discount=Math.Max(0,change.Discount);sale.Notes=change.Notes?.Trim();sale.Total=Total(sale);sale.Status="Held";sale.Revision++;sale.UpdatedAt=DateTimeOffset.UtcNow;request.Action="Approved";request.UpdatedAt=DateTimeOffset.UtcNow;db.BillRevisions.Add(Revision(sale,StaffId(principal),"Approved",$"Request {request.Id} · {r.Reason}"));db.AuditEvents.Add(Audit(principal,"Approved",sale,$"Bill {sale.ReceiptNumber} · {oldTotal} to {sale.Total} · {r.Reason}",r.DeviceId));await db.SaveChangesAsync();await tx.CommitAsync();return Results.Ok(BillView(sale,null,principal.Identity?.Name));
+            await using var tx=await db.Database.BeginTransactionAsync();var oldTotal=sale.Total;var oldItems=sale.Items.ToList();await db.SaleItems.Where(x=>x.SaleId==sale.Id).ExecuteDeleteAsync();foreach(var oldItem in oldItems)db.Entry(oldItem).State=EntityState.Detached;sale.Items.Clear();ReplaceLines(sale,change.Items,products);db.SaleItems.AddRange(sale.Items);sale.CustomerId=change.CustomerId;sale.Discount=Math.Max(0,change.Discount);sale.Notes=change.Notes?.Trim();sale.ExpectedDeliveryAt=change.ExpectedDeliveryAt;sale.AssignedStaffId=change.AssignedStaffId;sale.FulfillmentStatus=change.ExpectedDeliveryAt is null?"Immediate":"Scheduled";sale.Total=Total(sale);sale.Status="Held";sale.Revision++;sale.UpdatedAt=DateTimeOffset.UtcNow;request.Action="Approved";request.UpdatedAt=DateTimeOffset.UtcNow;db.BillRevisions.Add(Revision(sale,StaffId(principal),"Approved",$"Request {request.Id} · {r.Reason}"));db.AuditEvents.Add(Audit(principal,"Approved",sale,$"Bill {sale.ReceiptNumber} · {oldTotal} to {sale.Total} · {r.Reason}",r.DeviceId));await db.SaveChangesAsync();await tx.CommitAsync();return Results.Ok(BillView(sale,null,principal.Identity?.Name));
         }).RequireAuthorization(p=>p.RequirePermission("approvals"));
 
         api.MapPost("/bills/{id:guid}/post", async (Guid id, PostBillRequest r, AppDbContext db, ClaimsPrincipal principal) =>
@@ -158,6 +190,7 @@ public static class BillEndpoints
             }
             if (amount > 0) { var payment=new Payment { SaleId=sale.Id,Method = r.Method, Amount = amount, PaidAt = DateTimeOffset.UtcNow };db.Payments.Add(payment);sale.Payments.Add(payment); }
             sale.Status = amount >= sale.Total ? "Paid" : amount > 0 ? "PartiallyPaid" : "Credit";
+            if (sale.ExpectedDeliveryAt is null) sale.FulfillmentStatus = "Completed";
             sale.DueAt = sale.Status == "Paid" ? null : r.DueAt;
             sale.PostedAt = DateTimeOffset.UtcNow;
             sale.Notes = r.Notes?.Trim() ?? sale.Notes;
@@ -232,6 +265,8 @@ public static class BillEndpoints
                 ? (await db.BillRevisions.AsNoTracking().Where(x=>x.Action=="ApprovalRequested"&&billIds.Contains(x.SaleId)).Select(x=>new{x.Id,x.SaleId,x.Reason,x.CreatedAt}).ToListAsync()).OrderBy(x=>x.CreatedAt).ToList()
                 : [];
             var lowStock=(await db.Products.AsNoTracking().Where(x=>x.IsDemo==demo&&x.Active&&x.Stock<=x.MinStock*1.5m).Select(x=>new{x.Id,x.Name,x.Stock,x.MinStock}).ToListAsync()).OrderBy(x=>x.Stock).ToList();
+            var lowStockIds=lowStock.Select(x=>x.Id).ToHashSet();
+            var heldBillLowStock=(await db.SaleItems.AsNoTracking().Where(x=>billIds.Contains(x.SaleId)&&lowStockIds.Contains(x.ProductId)).Select(x=>new{x.SaleId,x.ProductName,x.Quantity}).ToListAsync()).GroupBy(x=>x.SaleId).ToDictionary(x=>x.Key,x=>x.Select(y=>y.ProductName).Distinct().ToList());
             var unpaidExpenses=(await db.Expenses.AsNoTracking().Where(x=>x.IsDemo==demo&&x.Active&&(x.Status=="PendingApproval"||(x.Status=="Approved"&&x.PaidAmount<x.Amount))).Select(x=>new{x.Id,x.Description,x.Amount,x.PaidAmount,x.Status}).ToListAsync()).OrderBy(x=>x.Status=="PendingApproval"?0:1).ThenByDescending(x=>x.Amount-x.PaidAmount).ToList();
              var creditSales=await db.Sales.AsNoTracking().Include(x=>x.Payments).Where(x=>x.IsDemo==demo&&x.CustomerId!=null&&(x.Status=="Credit"||x.Status=="PartiallyPaid")).ToListAsync();
              var customerIds=bills.Where(x=>x.CustomerId!=null).Select(x=>x.CustomerId!.Value).Concat(creditSales.Where(x=>x.CustomerId!=null).Select(x=>x.CustomerId!.Value)).Distinct().ToList();var customers=await db.Customers.AsNoTracking().Where(x=>customerIds.Contains(x.Id)).ToDictionaryAsync(x=>x.Id,x=>x);
@@ -242,7 +277,7 @@ public static class BillEndpoints
             {
                  Total=billCount+inventoryCount+expenseCount+creditBreaches.Count+approvalRows.Count,Sell=bills.Count(x=>x.Status=="Held"),Bills=billCount,Customers=customerAlerts.Count,Inventory=inventoryCount,Approvals=approvalRows.Count,Expenses=expenseCount,AuditTrail=0,Settings=0,
                 Details=new{
-                    bills=bills.Take(8).Select(x=>new{x.Id,label=$"Bill #{x.ReceiptNumber}",x.Status,x.Total,customer=x.CustomerId is Guid id?(customers.ContainsKey(id)?customers[id].Name:"Customer"):"Walk-in"}),
+                    bills=bills.Take(8).Select(x=>new{x.Id,label=$"Bill #{x.ReceiptNumber}",x.Status,x.Total,customer=x.CustomerId is Guid id?(customers.ContainsKey(id)?customers[id].Name:"Customer"):"Walk-in",lowStock=heldBillLowStock.TryGetValue(x.Id,out var items),lowStockItems=heldBillLowStock.GetValueOrDefault(x.Id)??[]}),
                     approvals=approvalRows.Take(8).Select(x=>new{x.Id,label=bills.FirstOrDefault(b=>b.Id==x.SaleId) is {} bill?$"Bill #{bill.ReceiptNumber}":"Held bill",x.Reason,x.CreatedAt}),
                     inventory=lowStock.Take(8).Select(x=>new{x.Id,label=x.Name,x.Stock,x.MinStock}),
                      customers=customerAlerts.Take(8),
@@ -265,7 +300,7 @@ public static class BillEndpoints
             var x = await db.Products.SingleOrDefaultAsync(x=>x.Id==id&&x.IsDemo==Security.IsDemo(principal)); if (x is null) return Results.NotFound();
             if (string.IsNullOrWhiteSpace(r.Reason)) return Results.BadRequest(new { error = "A reason is required" });
             var before = JsonSerializer.Serialize(new { x.Name, x.SellingPrice, x.CostPrice, x.Active });
-            var messages=new List<string>();if(string.IsNullOrWhiteSpace(r.Name))messages.Add("Item name is required");if(string.IsNullOrWhiteSpace(r.Category))messages.Add("Category is required");if(string.IsNullOrWhiteSpace(r.Unit))messages.Add("Stock unit is required");if(r.PackageQuantity<=0)messages.Add("Package quantity must be greater than zero");if(r.CostPrice<0||r.SellingPrice<0||r.MinStock<0)messages.Add("Prices and minimum stock cannot be negative");if(x.Stock>0&&r.CostPrice<=0)messages.Add("A positive cost price is required while this item has stock");if(r.TaxRate is <0 or >100)messages.Add("Tax rate must be between 0 and 100");if(!new[]{"Product","Ingredient"}.Contains(r.ItemType,StringComparer.OrdinalIgnoreCase))messages.Add("Item type must be Product or Ingredient");if(ProductImportRules.Mode(r.TrackingMode)=="Discrete"&&r.MinStock!=decimal.Truncate(r.MinStock))messages.Add("Discrete minimum stock must be a whole quantity");if(messages.Count>0)return Results.BadRequest(new{error=string.Join("; ",messages)});if(!string.IsNullOrWhiteSpace(r.Barcode)&&await db.Products.AnyAsync(p=>p.Id!=id&&p.Barcode==r.Barcode.Trim()))return Results.Conflict(new{error="That barcode or SKU is already assigned to another item"});
+            var messages=new List<string>();if(string.IsNullOrWhiteSpace(r.Name))messages.Add("Item name is required");if(string.IsNullOrWhiteSpace(r.Category))messages.Add("Category is required");if(string.IsNullOrWhiteSpace(r.Unit))messages.Add("Stock unit is required");if(r.PackageQuantity<=0)messages.Add("Package quantity must be greater than zero");if(r.CostPrice<0||r.SellingPrice<0||r.MinStock<0)messages.Add("Prices and minimum stock cannot be negative");if(x.Stock>0&&r.CostPrice<=0)messages.Add("A positive cost price is required while this item has stock");if(r.TaxRate is <0 or >100)messages.Add("Tax rate must be between 0 and 100");if(!new[]{"Product","Ingredient","AddOn","Add-on"}.Contains(r.ItemType,StringComparer.OrdinalIgnoreCase))messages.Add("Item type must be Product, Ingredient or AddOn");if(ProductImportRules.Mode(r.TrackingMode)=="Discrete"&&r.MinStock!=decimal.Truncate(r.MinStock))messages.Add("Discrete minimum stock must be a whole quantity");if(messages.Count>0)return Results.BadRequest(new{error=string.Join("; ",messages)});if(!string.IsNullOrWhiteSpace(r.Barcode)&&await db.Products.AnyAsync(p=>p.Id!=id&&p.Barcode==r.Barcode.Trim()))return Results.Conflict(new{error="That barcode or SKU is already assigned to another item"});
             x.Name=r.Name.Trim();x.Category=r.Category.Trim();x.Brand=r.Brand?.Trim();x.Barcode=string.IsNullOrWhiteSpace(r.Barcode)?null:r.Barcode.Trim();x.Unit=ProductImportRules.Unit(r.Unit);x.PackageQuantity=r.PackageQuantity;x.PackageUnit=ProductImportRules.Unit(r.PackageUnit??r.Unit);x.TrackingMode=ProductImportRules.Mode(r.TrackingMode);x.ItemType=ProductImportRules.ItemType(r.ItemType);x.Supplier=r.Supplier?.Trim();x.TaxRate=r.TaxRate;x.CostPrice=r.CostPrice;x.SellingPrice=r.SellingPrice;x.MinStock=r.MinStock;x.Sellable=x.ItemType=="Ingredient"?false:r.Sellable;x.Active=r.Active;x.UpdatedAt=DateTimeOffset.UtcNow;
             db.AuditEvents.Add(Audit(principal,"Updated",x.Id,"Product",$"{r.Reason} · before {before}")); await db.SaveChangesAsync(); return Results.Ok(x);
         });
@@ -295,7 +330,7 @@ public static class BillEndpoints
 
     static async Task<Dictionary<Guid, Product>?> Products(IEnumerable<BillLineRequest> lines, AppDbContext db,bool demo)
     { var requested=lines.GroupBy(x=>x.ProductId).ToDictionary(g=>g.Key,g=>g.Sum(x=>x.Quantity));var ids=requested.Keys.ToList();var rows=await db.Products.Where(x=>ids.Contains(x.Id)&&x.Active&&x.IsDemo==demo).ToDictionaryAsync(x=>x.Id);return rows.Count==ids.Count&&requested.All(x=>rows[x.Key].Stock>=x.Value)?rows:null; }
-    static void ReplaceLines(Sale sale,IEnumerable<BillLineRequest> lines,IReadOnlyDictionary<Guid,Product> products){foreach(var line in lines){var p=products[line.ProductId];sale.Items.Add(new SaleItem{SaleId=sale.Id,ProductId=p.Id,ProductName=p.Name,Quantity=line.Quantity,UnitPrice=line.UnitPrice,UnitCost=p.CostPrice,Discount=Math.Max(0,line.Discount)});}}
+    static void ReplaceLines(Sale sale,IEnumerable<BillLineRequest> lines,IReadOnlyDictionary<Guid,Product> products){foreach(var line in lines){var p=products[line.ProductId];sale.Items.Add(new SaleItem{SaleId=sale.Id,ProductId=p.Id,ProductName=p.Name,Quantity=line.Quantity,UnitPrice=line.UnitPrice,UnitCost=p.CostPrice,Discount=Math.Max(0,line.Discount),IsAddon=p.ItemType.Equals("AddOn",StringComparison.OrdinalIgnoreCase)});}}
     static decimal Total(Sale sale)=>Math.Max(0,sale.Items.Sum(x=>x.Quantity*x.UnitPrice-x.Discount)-sale.Discount);
     static async Task<long> NextNumber(AppDbContext db)=>(await db.Sales.MaxAsync(x=>(long?)x.ReceiptNumber)??1000)+1;
     static async Task<(int Order,int? WalkIn)> NextDailyNumbers(AppDbContext db,bool walkIn,bool demo){var today=DateOnly.FromDateTime(DateTime.Today);var rows=await db.Sales.AsNoTracking().Where(x=>x.IsDemo==demo).Select(x=>new{x.OccurredAt,x.DailyOrderNumber,x.WalkInNumber}).ToListAsync();var current=rows.Where(x=>DateOnly.FromDateTime(x.OccurredAt.LocalDateTime)==today).ToList();return(current.Select(x=>x.DailyOrderNumber).DefaultIfEmpty(0).Max()+1,walkIn?current.Where(x=>x.WalkInNumber!=null).Select(x=>x.WalkInNumber!.Value).DefaultIfEmpty(0).Max()+1:null);}
@@ -307,5 +342,5 @@ public static class BillEndpoints
     static BillRevision Revision(Sale sale,Guid staffId,string action,string reason)=>new(){SaleId=sale.Id,Revision=sale.Revision,StaffId=staffId,Action=action,Reason=reason,SnapshotJson=JsonSerializer.Serialize(new{sale.CustomerId,sale.Status,sale.Discount,sale.Total,Items=sale.Items.Select(x=>new{x.ProductId,x.ProductName,x.Quantity,x.UnitPrice,x.Discount})})};
     static AuditEvent Audit(ClaimsPrincipal p,string action,Sale sale,string details,string? device)=>Audit(p,action,sale.Id,"Sale",details,device);
     static AuditEvent Audit(ClaimsPrincipal p,string action,Guid id,string type,string details,string? device=null)=>new(){StaffId=StaffId(p),Actor=p.Identity?.Name??"System",Action=action,EntityType=type,EntityId=id.ToString(),Details=details,DeviceId=device};
-    static object BillView(Sale x,string? customer,string? cashier)=>new{x.Id,x.DeviceTransactionId,x.ReceiptNumber,x.DailyOrderNumber,x.WalkInNumber,x.CustomerId,customerName=customer,x.StaffId,cashierName=cashier,x.Status,x.Discount,x.Total,x.OccurredAt,x.DueAt,x.PostedAt,x.Revision,x.Notes,paid=x.Payments.Sum(p=>p.Amount),balance=Math.Max(0,x.Total-x.Payments.Sum(p=>p.Amount)),items=x.Items.OrderBy(i=>i.CreatedAt),payments=x.Payments.OrderBy(p=>p.PaidAt),revisions=x.Revisions.OrderByDescending(r=>r.Revision)};
+    static object BillView(Sale x,string? customer,string? cashier)=>new{x.Id,x.DeviceTransactionId,x.ReceiptNumber,x.DailyOrderNumber,x.WalkInNumber,x.CustomerId,customerName=customer,x.StaffId,cashierName=cashier,x.Status,x.Discount,x.Total,x.OccurredAt,x.DueAt,x.ExpectedDeliveryAt,x.AssignedStaffId,x.FulfillmentStatus,x.ReminderSentAt,x.PostedAt,x.Revision,x.Notes,paid=x.Payments.Sum(p=>p.Amount),balance=Math.Max(0,x.Total-x.Payments.Sum(p=>p.Amount)),items=x.Items.OrderBy(i=>i.CreatedAt),payments=x.Payments.OrderBy(p=>p.PaidAt),revisions=x.Revisions.OrderByDescending(r=>r.Revision)};
 }

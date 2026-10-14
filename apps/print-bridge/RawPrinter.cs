@@ -60,8 +60,51 @@ internal static class RawPrinter {
     } finally { ClosePrinter(printer); }
   }
 
+  public static IReadOnlyList<string> GetQueue(string printerName) => EnumerateJobs(printerName).Where(x => IsTheBarcodeJob(x.Document)).Select(x => x.Document ?? "TheBarcode receipt").ToList();
+
+  public static int ClearQueue(string printerName) {
+    if (!OpenPrinter(printerName, out var printer, IntPtr.Zero)) throw new Win32Exception(Marshal.GetLastWin32Error());
+    try {
+      EnumJobs(printer, 0, 256, 1, IntPtr.Zero, 0, out var needed, out _);
+      if (needed == 0) return 0;
+      var buffer = Marshal.AllocHGlobal((int)needed);
+      try {
+        if (!EnumJobs(printer, 0, 256, 1, buffer, needed, out _, out var returned))
+          throw new Win32Exception(Marshal.GetLastWin32Error());
+        var size = Marshal.SizeOf<JobInfo1>();
+        var removed = 0;
+        for (var i = 0; i < returned; i++) {
+          var job = Marshal.PtrToStructure<JobInfo1>(buffer + i * size);
+          var document = job.Document == IntPtr.Zero ? "" : Marshal.PtrToStringUni(job.Document) ?? "";
+          // Never touch unrelated Windows print jobs. TheBarcode only clears its own
+          // receipts, which are submitted with this document prefix.
+          if (job.JobId != 0 && IsTheBarcodeJob(document) && SetJob(printer, job.JobId, 0, IntPtr.Zero, 0x00000005)) removed++;
+        }
+        return removed;
+      } finally { Marshal.FreeHGlobal(buffer); }
+    } finally { ClosePrinter(printer); }
+  }
+
+  static IReadOnlyList<(uint JobId, string? Document)> EnumerateJobs(string printerName) {
+    if (!OpenPrinter(printerName, out var printer, IntPtr.Zero)) throw new Win32Exception(Marshal.GetLastWin32Error());
+    try {
+      EnumJobs(printer, 0, 256, 1, IntPtr.Zero, 0, out var needed, out _);
+      if (needed == 0) return [];
+      var buffer = Marshal.AllocHGlobal((int)needed);
+      try {
+        if (!EnumJobs(printer, 0, 256, 1, buffer, needed, out _, out var returned)) throw new Win32Exception(Marshal.GetLastWin32Error());
+        var size = Marshal.SizeOf<JobInfo1>();
+        return Enumerable.Range(0, (int)returned).Select(i => { var job = Marshal.PtrToStructure<JobInfo1>(buffer + i * size); return (job.JobId, job.Document == IntPtr.Zero ? null : Marshal.PtrToStringUni(job.Document)); }).ToList();
+      } finally { Marshal.FreeHGlobal(buffer); }
+    } finally { ClosePrinter(printer); }
+  }
+  static bool IsTheBarcodeJob(string? document) => !string.IsNullOrWhiteSpace(document) && (document.Contains("TheBarcode", StringComparison.OrdinalIgnoreCase) || document.Contains("Dukora receipt", StringComparison.OrdinalIgnoreCase));
+
   [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
   struct PrinterInfo4 { [MarshalAs(UnmanagedType.LPWStr)] public string? PrinterName; [MarshalAs(UnmanagedType.LPWStr)] public string? ServerName; public uint Attributes; }
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  struct JobInfo1 { public uint JobId; public IntPtr PrinterName; public IntPtr MachineName; public IntPtr UserName; public IntPtr Document; public IntPtr DataType; public IntPtr PrintProcessor; public IntPtr Parameters; public IntPtr DriverName; public IntPtr DevMode; public IntPtr Status; public uint StatusCode; public uint Priority; public uint Position; public uint TotalPages; public uint Size; public SystemTime Submitted; }
+  [StructLayout(LayoutKind.Sequential)] struct SystemTime { public ushort Year, Month, DayOfWeek, Day, Hour, Minute, Second, Milliseconds; }
   [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
   struct DocInfo { [MarshalAs(UnmanagedType.LPWStr)] public string DocName; [MarshalAs(UnmanagedType.LPWStr)] public string? OutputFile; [MarshalAs(UnmanagedType.LPWStr)] public string DataType; }
 
@@ -69,6 +112,8 @@ internal static class RawPrinter {
   [DllImport("winspool.drv", SetLastError = true, CharSet = CharSet.Unicode)] static extern bool OpenPrinter(string name, out IntPtr printer, IntPtr defaults);
   [DllImport("winspool.drv", SetLastError = true)] static extern bool ClosePrinter(IntPtr printer);
   [DllImport("winspool.drv", SetLastError = true, CharSet = CharSet.Unicode)] static extern int StartDocPrinter(IntPtr printer, int level, ref DocInfo info);
+  [DllImport("winspool.drv", SetLastError = true)] static extern bool EnumJobs(IntPtr printer, uint firstJob, uint noJobs, uint level, IntPtr buffer, uint bufferSize, out uint bytesNeeded, out uint jobsReturned);
+  [DllImport("winspool.drv", SetLastError = true)] static extern bool SetJob(IntPtr printer, uint jobId, uint level, IntPtr job, uint command);
   [DllImport("winspool.drv", SetLastError = true)] static extern bool EndDocPrinter(IntPtr printer);
   [DllImport("winspool.drv", SetLastError = true)] static extern bool StartPagePrinter(IntPtr printer);
   [DllImport("winspool.drv", SetLastError = true)] static extern bool EndPagePrinter(IntPtr printer);
