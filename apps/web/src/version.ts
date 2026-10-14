@@ -1,6 +1,8 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.25";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.26";
 export const APP_CHANNEL = "local-windows";
 export const RELEASE_NOTES = [
+  "Deposit and credit orders now default a blank expected delivery date to the posting date and time so they are always stored in Orders and the delivery calendar",
+  "The rule-based assistant can summarize inventory, stock inflows and outflows for day, week, month or quarter periods and compare them with the previous equivalent period",
   "TheBarcode assistant is now a compact animated floating icon positioned above bottom action rows so it stays available without blocking checkout controls",
   "Accounting journal history now marks superseded correction snapshots in red with strike-through while the active snapshot remains the only balance source",
   "Held bills now highlight products approaching their stock threshold, with urgency notifications and a direct review action",

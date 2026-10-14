@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { bootstrap, getBills, getLoginStaff, getNotifications, getSettings, holdBill, login, refreshSession, postBill, session, syncOutbox, updateBill, verifyLocalPin } from "./api";
+import { bootstrap, getBills, getLoginStaff, getNotifications, getOperationalOverview, getSettings, holdBill, login, refreshSession, postBill, session, syncOutbox, updateBill, verifyLocalPin } from "./api";
 import {
   db,
   queueCustomer,
@@ -474,7 +474,7 @@ export default function App() {
         </div>
       )}
       {urgency&&<div className="urgency-popover" role="status"><strong>{urgency.title}</strong><p>{urgency.text}</p><div className="button-row"><button onClick={()=>{localStorage.setItem("urgency_dismissed",urgency.key);setUrgency(undefined)}}>Dismiss</button><button onClick={()=>{setView(urgency.view);setUrgency(undefined)}}>Review now</button></div></div>}
-      <RuleAssistant open={assistantOpen} onToggle={()=>setAssistantOpen(x=>!x)} view={view} notifications={notifications} products={visibleProducts} onNavigate={setView}/>
+      <RuleAssistant open={assistantOpen} onToggle={()=>setAssistantOpen(x=>!x)} view={view} notifications={notifications} products={visibleProducts} onNavigate={setView} loadOverview={getOperationalOverview}/>
       {customerOpen && (
         <CustomerPicker
           customers={customers}
@@ -664,16 +664,41 @@ function CustomerPicker({
   );
 }
 
-function RuleAssistant({ open, onToggle, view, notifications, products, onNavigate }: { open: boolean; onToggle: () => void; view: string; notifications: any; products: Product[]; onNavigate: (view: string) => void }) {
+function RuleAssistant({ open, onToggle, view, notifications, products, onNavigate, loadOverview }: { open: boolean; onToggle: () => void; view: string; notifications: any; products: Product[]; onNavigate: (view: string) => void; loadOverview: (from: string, to: string) => Promise<any> }) {
   const [question, setQuestion] = useState("");
+  const [working, setWorking] = useState(false);
   const [messages, setMessages] = useState<{from:"assistant"|"user";text:string}[]>([{from:"assistant",text:"I can explain TheBarcode workflows, point you to a screen, and summarize unresolved actions. Ask in plain language."}]);
   const prompts = ["Why is this journal entry duplicated?", "What needs attention?", "How do I record a partial payment?"];
-  const answer = (input: string) => {
+  const answer = async (input: string) => {
     const text=input.trim().toLocaleLowerCase();
     if (!text) return;
     let reply="I can help with sales, orders, inventory, expenses, accounting, production, printers, settings and approvals. Try asking what to do next or name a screen.";
     let destination: string | undefined;
-    if (/journal|ledger|accounting|double.?entry|debit|credit/.test(text)) { reply="Double-entry is expected: a sale posts cash or receivables against revenue, and stock issued posts cost of goods sold against inventory. Superseded snapshots are audit history; only the latest snapshot feeds the trial balance.";destination="Accounting"; }
+    const asksForFlows = /inventory|stock|inflow|outflow|movement|flow/.test(text) && /summary|summarize|inflow|outflow|movement|flow|today|day|week|month|quarter|compare|versus|previous|last/.test(text);
+    if (asksForFlows) {
+      const days=/quarter/.test(text)?90:/month/.test(text)?30:/week/.test(text)?7:1;
+      const period=days===90?"quarter":days===30?"month":days===7?"week":"day";
+      const endDate=new Date();const startDate=new Date(endDate);startDate.setDate(startDate.getDate()-days+1);
+      const previousEnd=new Date(startDate);previousEnd.setDate(previousEnd.getDate()-1);const previousStart=new Date(previousEnd);previousStart.setDate(previousStart.getDate()-days+1);
+      const dateValue=(value:Date)=>{const y=value.getFullYear(),m=String(value.getMonth()+1).padStart(2,"0"),d=String(value.getDate()).padStart(2,"0");return `${y}-${m}-${d}`};
+      const number=(value:any)=>Number(value??0)||0;const currency=(value:any)=>`KES ${number(value).toLocaleString(undefined,{maximumFractionDigits:2})}`;
+      const change=(now:number,old:number)=>old===0?(now===0?"unchanged":"new"):`${((now-old)/Math.abs(old)*100).toFixed(1)}% ${now>=old?"higher":"lower"}`;
+      setWorking(true);
+      try {
+        const current=await loadOverview(dateValue(startDate),dateValue(endDate));
+        const currentIn=number(current.stockInflow??current.StockInflow),currentOut=number(current.stockOutflow??current.StockOutflow),currentInValue=number(current.stockInflowValue??current.StockInflowValue),currentOutValue=number(current.stockOutflowValue??current.StockOutflowValue);
+        let comparison="";
+        if (/compare|versus|\bvs\b|previous|last/.test(text)) {
+          const previous=await loadOverview(dateValue(previousStart),dateValue(previousEnd));
+          comparison=` Compared with the previous ${period}, inflow is ${change(currentIn,number(previous.stockInflow??previous.StockInflow))}, outflow is ${change(currentOut,number(previous.stockOutflow??previous.StockOutflow))}, and sales are ${change(number(current.revenue??current.Revenue),number(previous.revenue??previous.Revenue))}.`;
+        }
+        const stockValue=number(current.stockValue??current.StockValue),lowStock=number(current.lowStockCount??current.LowStockCount),outOfStock=number(current.outOfStockCount??current.OutOfStockCount);
+        reply=`For the current ${period} (${dateValue(startDate)} to ${dateValue(endDate)}), inventory is ${currency(stockValue)} at today’s counted value, with ${lowStock} low-stock and ${outOfStock} out-of-stock item${outOfStock===1?"":"s"}. Stock inflow was ${currentIn.toLocaleString()} units (${currency(currentInValue)}); outflow was ${currentOut.toLocaleString()} units (${currency(currentOutValue)}).${comparison}`;
+        destination="Inventory";
+      } catch { reply="I couldn’t load the selected period right now. Check the connection and ask again; I won’t invent historical values."; }
+      finally { setWorking(false); }
+    }
+    else if (/journal|ledger|accounting|double.?entry|debit|credit/.test(text)) { reply="Double-entry is expected: a sale posts cash or receivables against revenue, and stock issued posts cost of goods sold against inventory. Superseded snapshots are audit history; only the latest snapshot feeds the trial balance.";destination="Accounting"; }
     else if (/stock|inventory|restock|out of stock|held bill/.test(text)) { reply=`Inventory currently has ${products.filter(x=>x.stock<=x.minStock).length} item${products.filter(x=>x.stock<=x.minStock).length===1?"":"s"} at or below minimum. Use Inventory → Stock movement for a restock, and keep “Affect financials” enabled when it is a purchase.`;destination="Inventory"; }
     else if (/partial|deposit|balance|credit|payment/.test(text)) { reply="For a partial payment, enter Paid now before posting. The sale becomes an order with a registered customer, a deposit, a red outstanding balance and a delivery date in Orders.";destination="Orders"; }
     else if (/expense|payable|supplier/.test(text)) { reply="Approved expenses remain in Expenses until settled. Record each payment there; the payable and accounting journal update from the same source record.";destination="Expense"; }
@@ -683,5 +708,5 @@ function RuleAssistant({ open, onToggle, view, notifications, products, onNaviga
     else if (/where|open|screen|navigate/.test(text)) { reply=`You are on ${view}. Use the left navigation for operational modules, or ask “how do I…” for a guided workflow.`; }
     setMessages(current=>[...current,{from:"user",text:input},{from:"assistant",text:reply}]);setQuestion("");if(destination)onNavigate(destination);
   };
-  return <>{<button className="assistant-launcher" onClick={onToggle} aria-expanded={open} aria-label={open ? "Close TheBarcode assistant" : "Open TheBarcode assistant"} title="Ask TheBarcode"><span className="assistant-launcher-icon" aria-hidden="true">✦</span><span className="assistant-launcher-label">Ask</span></button>}{open&&<section className="assistant-panel" role="dialog" aria-label="TheBarcode assistant"><header><h3>TheBarcode assistant</h3><button onClick={onToggle} aria-label="Close assistant">×</button></header><div className="assistant-messages">{messages.slice(-8).map((message,index)=><div key={index} className={`assistant-message ${message.from}`}>{message.text}</div>)}</div><div className="assistant-prompts">{prompts.map(prompt=><button key={prompt} onClick={()=>answer(prompt)}>{prompt}</button>)}</div><form className="assistant-form" onSubmit={event=>{event.preventDefault();answer(question)}}><input value={question} onChange={event=>setQuestion(event.target.value)} placeholder="Ask a question…" aria-label="Ask TheBarcode"/><button type="submit">Ask</button></form></section>}</>;
+  return <>{<button className="assistant-launcher" onClick={onToggle} aria-expanded={open} aria-label={open ? "Close TheBarcode assistant" : "Open TheBarcode assistant"} title="Ask TheBarcode"><span className="assistant-launcher-icon" aria-hidden="true">✦</span><span className="assistant-launcher-label">Ask</span></button>}{open&&<section className="assistant-panel" role="dialog" aria-label="TheBarcode assistant"><header><h3>TheBarcode assistant</h3><button onClick={onToggle} aria-label="Close assistant">×</button></header><div className="assistant-messages">{messages.slice(-8).map((message,index)=><div key={index} className={`assistant-message ${message.from}`}>{message.text}</div>)}{working&&<div className="assistant-message">Checking the selected period…</div>}</div><div className="assistant-prompts">{prompts.map(prompt=><button key={prompt} onClick={()=>void answer(prompt)}>{prompt}</button>)}</div><form className="assistant-form" onSubmit={event=>{event.preventDefault();void answer(question)}}><input value={question} onChange={event=>setQuestion(event.target.value)} placeholder="Ask about stock flows…" aria-label="Ask TheBarcode"/><button type="submit" disabled={working}>Ask</button></form></section>}</>;
 }

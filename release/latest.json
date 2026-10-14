@@ -1,11 +1,13 @@
 {
-  "version": "1.12.25",
+  "version": "1.12.26",
   "channel": "local-windows",
-  "summary": "TheBarcode 1.12.25: the assistant is now a compact animated floating control that stays clear of checkout actions.",
-  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.25/TheBarcode-Setup-1.12.25-x64.exe",
-  "sha256": "CCE54CFC63B4604B5FDE95790ABD31A48A4247062929B855DB61D17B92AA2B69",
-  "publishedAt": "2026-10-14T19:35:06+03:00",
+  "summary": "TheBarcode 1.12.26: deposit orders default delivery timing and the assistant now compares inventory flows across periods.",
+  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.26/TheBarcode-Setup-1.12.26-x64.exe",
+  "sha256": "68C337ABAF9373FA157611DE6213B592B42F5889BB4A015ACC26372D8630B83C",
+  "publishedAt": "2026-10-14T19:47:38+03:00",
   "notes": [
+    "Deposit and credit orders now default a blank expected delivery date to the posting date and time so they are always stored in Orders and the delivery calendar.",
+    "The rule-based assistant can summarize inventory, stock inflows and outflows for day, week, month or quarter periods and compare them with the previous equivalent period.",
     "TheBarcode assistant is now a compact animated floating icon positioned above bottom action rows so it stays available without blocking checkout controls.",
     "Accounting journal history marks superseded correction snapshots in red with strike-through; only the active snapshot feeds balances.",
     "Held bills highlight products approaching their stock threshold and surface an urgency review action.",

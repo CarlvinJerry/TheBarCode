@@ -190,7 +190,12 @@ public static class BillEndpoints
             }
             if (amount > 0) { var payment=new Payment { SaleId=sale.Id,Method = r.Method, Amount = amount, PaidAt = DateTimeOffset.UtcNow };db.Payments.Add(payment);sale.Payments.Add(payment); }
             sale.Status = amount >= sale.Total ? "Paid" : amount > 0 ? "PartiallyPaid" : "Credit";
-            if (sale.ExpectedDeliveryAt is null) sale.FulfillmentStatus = "Completed";
+            // Deposit and credit sales are orders even when the cashier leaves the
+            // optional date blank. Keep them visible in Orders and the calendar by
+            // anchoring fulfillment to the posting moment.
+            if (sale.Status is "Credit" or "PartiallyPaid" && sale.ExpectedDeliveryAt is null)
+                sale.ExpectedDeliveryAt = DateTimeOffset.Now;
+            sale.FulfillmentStatus = sale.ExpectedDeliveryAt is null ? "Completed" : "Scheduled";
             sale.DueAt = sale.Status == "Paid" ? null : r.DueAt;
             sale.PostedAt = DateTimeOffset.UtcNow;
             sale.Notes = r.Notes?.Trim() ?? sale.Notes;

@@ -46,6 +46,7 @@ public static class InsightsEndpoints
         var sales=allSales.Where(x=>x.OccurredAt>=start&&x.OccurredAt<end).ToList();
         var expenses = await db.Expenses.AsNoTracking().Where(x =>x.IsDemo==demo&&x.Active&&x.Status=="Approved"&&x.Date >= from && x.Date <= to).ToListAsync();
         var products = await db.Products.AsNoTracking().Where(x => x.Active&&x.IsDemo==demo).ToListAsync();
+        var productCosts = products.ToDictionary(x => x.Id, x => x.CostPrice);
         var velocityStart=DateTimeOffset.UtcNow.AddDays(-30);var recentSales=allSales.Where(x=>(x.PostedAt??x.OccurredAt)>=velocityStart).ToList();var recentLines=recentSales.SelectMany(x=>x.Items).GroupBy(x=>x.ProductId).ToDictionary(x=>x.Key,x=>x.Sum(line=>line.Quantity)/30m);
         var customerSales=allSales.Where(x=>x.CustomerId!=null).ToList();
         var rangePayments=financialSales.SelectMany(x=>x.Payments).Where(x=>x.PaidAt>=start&&x.PaidAt<end).ToList();
@@ -53,6 +54,17 @@ public static class InsightsEndpoints
         // through the staff identities that belong to the current data set so demo actions
         // can never leak into a live institution's dashboard (or vice versa).
         var activityStaffIds=await db.Staff.AsNoTracking().Where(x=>x.IsDemo==demo).Select(x=>x.Id).ToListAsync();
+        // SQLite providers cannot translate DateTimeOffset range predicates
+        // consistently; this is a bounded, institution-scoped table and is
+        // filtered after materialization for parity with PostgreSQL.
+        var periodMovements = (await db.StockMovements.AsNoTracking().ToListAsync())
+            .Where(x => activityStaffIds.Contains(x.StaffId) && x.OccurredAt >= start && x.OccurredAt < end && productCosts.ContainsKey(x.ProductId))
+            .ToList();
+        var stockInflow = periodMovements.Where(x => x.QuantityChange > 0).Sum(x => x.QuantityChange);
+        var stockOutflow = periodMovements.Where(x => x.QuantityChange < 0).Sum(x => -x.QuantityChange);
+        var stockInflowValue = periodMovements.Where(x => x.QuantityChange > 0).Sum(x => x.QuantityChange * (x.UnitCost ?? productCosts.GetValueOrDefault(x.ProductId)));
+        var stockOutflowValue = periodMovements.Where(x => x.QuantityChange < 0).Sum(x => -x.QuantityChange * (x.UnitCost ?? productCosts.GetValueOrDefault(x.ProductId)));
+        var stockFlowByType = periodMovements.GroupBy(x => x.Type).Select(g => new StockFlowType(g.Key, g.Sum(x => x.QuantityChange > 0 ? x.QuantityChange : 0), g.Sum(x => x.QuantityChange < 0 ? -x.QuantityChange : 0))).OrderByDescending(x => x.Inflow + x.Outflow).ToList();
         // SQLite cannot translate DateTimeOffset ordering; materialize the bounded
         // institution-scoped set first, then order in memory for both providers.
         var activity=(await db.AuditEvents.AsNoTracking().Where(x=>x.StaffId.HasValue&&activityStaffIds.Contains(x.StaffId.Value)).Take(500).ToListAsync()).OrderByDescending(x=>x.OccurredAt).Take(12).ToList();
@@ -73,7 +85,10 @@ public static class InsightsEndpoints
         var paymentMix = rangePayments.GroupBy(x => x.Method).Select(g => new NamedAmount(g.Key, g.Sum(x => x.Amount))).OrderByDescending(x => x.Amount).ToList();
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var stockRisks=products.Select(x=>{var dailyUse=recentLines.GetValueOrDefault(x.Id);var days=dailyUse>0?x.Stock/dailyUse:(decimal?)null;var projected=x.Stock<=x.MinStock*1.5m||(days is not null&&days<=7);return new StockRisk(x.Id,x.Name,x.Category,x.Stock,x.MinStock,x.CostPrice,x.SellingPrice,dailyUse,days,projected,x.Stock<=x.MinStock);}).Where(x=>x.ProjectedLow).OrderBy(x=>x.DaysRemaining??decimal.MaxValue).ThenBy(x=>x.Stock).ToList();
-        return new OperationalSnapshot(from, to, revenue, cost, revenue - cost, expenses.Sum(x => x.Amount), sales.Count, Math.Max(0, customerRevenue - paid), stockRisks.Count, products.Count(x => x.Stock <= 0), products.Sum(x => x.Stock * x.CostPrice), sales.Where(x => DateOnly.FromDateTime(x.OccurredAt.UtcDateTime) == today).Sum(x => x.Total), daily, top, categories, expenseCategories, paymentMix, stockRisks, activity.Select(x => new ActivityItem(x.Actor, x.Action, x.EntityType, x.Details, x.DeviceId, x.OccurredAt)).ToList(), expenses.OrderByDescending(x => x.Date).Take(100).Select(x => new ExpenseItem(x.Id, x.Date, x.Description, x.Category, x.Amount, x.PaidAmount, x.Method)).ToList()){SalesCollected=salesCollected,CashCollected=cashCollected,CollectionRate=collectionRate,CreditRisks=creditRisks};
+        return new OperationalSnapshot(from, to, revenue, cost, revenue - cost, expenses.Sum(x => x.Amount), sales.Count, Math.Max(0, customerRevenue - paid), stockRisks.Count, products.Count(x => x.Stock <= 0), products.Sum(x => x.Stock * x.CostPrice), sales.Where(x => DateOnly.FromDateTime(x.OccurredAt.UtcDateTime) == today).Sum(x => x.Total), daily, top, categories, expenseCategories, paymentMix, stockRisks, activity.Select(x => new ActivityItem(x.Actor, x.Action, x.EntityType, x.Details, x.DeviceId, x.OccurredAt)).ToList(), expenses.OrderByDescending(x => x.Date).Take(100).Select(x => new ExpenseItem(x.Id, x.Date, x.Description, x.Category, x.Amount, x.PaidAmount, x.Method)).ToList()){
+            SalesCollected=salesCollected,CashCollected=cashCollected,CollectionRate=collectionRate,CreditRisks=creditRisks,
+            StockInflow=stockInflow,StockOutflow=stockOutflow,StockInflowValue=stockInflowValue,StockOutflowValue=stockOutflowValue,StockFlowByType=stockFlowByType
+        };
     }
 }
 
@@ -131,7 +146,12 @@ public record OperationalSnapshot(DateOnly From, DateOnly To, decimal Revenue, d
     public decimal CashCollected { get; init; }
     public decimal CollectionRate { get; init; }
     public List<CustomerCreditRisk> CreditRisks { get; init; } = [];
-    public object ForAi(bool includeUserNames=false) => new { From, To, Revenue, Cost, GrossProfit, Expenses, SalesCount, SalesCollected, CashCollected, CollectionRate, CustomerDebt, CreditLimitBreaches=CreditRisks.Select(x=>new{x.Debt,x.Limit,x.UtilizationPercent}), LowStockCount, OutOfStockCount, StockValue, Daily, TopSellers, StockByCategory, ExpenseByCategory, PaymentMix,StaffActivity=includeUserNames?Activity.Select(x=>new{x.Actor,x.Action,x.EntityType,x.OccurredAt}):null };
+    public decimal StockInflow { get; init; }
+    public decimal StockOutflow { get; init; }
+    public decimal StockInflowValue { get; init; }
+    public decimal StockOutflowValue { get; init; }
+    public List<StockFlowType> StockFlowByType { get; init; } = [];
+    public object ForAi(bool includeUserNames=false) => new { From, To, Revenue, Cost, GrossProfit, Expenses, SalesCount, SalesCollected, CashCollected, CollectionRate, CustomerDebt, CreditLimitBreaches=CreditRisks.Select(x=>new{x.Debt,x.Limit,x.UtilizationPercent}), LowStockCount, OutOfStockCount, StockValue, StockInflow, StockOutflow, StockInflowValue, StockOutflowValue, StockFlowByType, Daily, TopSellers, StockByCategory, ExpenseByCategory, PaymentMix,StaffActivity=includeUserNames?Activity.Select(x=>new{x.Actor,x.Action,x.EntityType,x.OccurredAt}):null };
 }
 public record DailyMetric(DateOnly Date, decimal Revenue, decimal Profit);
 public record TopSeller(Guid ProductId, string Name, decimal Quantity, decimal Revenue, decimal Profit);
@@ -141,4 +161,5 @@ public record StockRisk(Guid Id,string Name,string Category,decimal Stock,decima
 public record ActivityItem(string Actor, string Action, string EntityType, string Details, string? DeviceId, DateTimeOffset OccurredAt);
 public record ExpenseItem(Guid Id, DateOnly Date, string Description, string Category, decimal Amount, decimal PaidAmount, string Method);
 public record CustomerCreditRisk(Guid CustomerId,string Name,decimal Debt,decimal Limit,decimal UtilizationPercent);
+public record StockFlowType(string Type, decimal Inflow, decimal Outflow);
 public record SmartInsight(string Id, string Title, string Description, string Category, string Severity, string Metric, string Recommendation);
