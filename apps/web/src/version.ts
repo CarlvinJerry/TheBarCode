@@ -1,6 +1,25 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.26";
-export const APP_CHANNEL = "local-windows";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.34";
+export const APP_CHANNEL = "lite-windows";
 export const RELEASE_NOTES = [
+  "The app now checks the public GitHub release channel when the Owner signs in or internet returns, then shows the version summary; the installer is checksum-verified before setup.",
+  "Fixed quantity validation: discrete stock accepts whole units, measured stock accepts decimals, and monetary inputs accept cents.",
+  "On slower devices, desktop startup now allows more time for the local service and opens the browser automatically when the service is ready but the desktop view cannot start.",
+  "Fixed Lite startup: background jobs resume in date order without SQLite trying to sort unsupported DateTimeOffset values.",
+  "SQLite upgrades now check columns before adding them, removing false migration errors while preserving existing data.",
+  "Performance: visible grid rows are paged, and the Bills register loads 50 records at a time with server-wide search.",
+  "Short-lived read caching combines duplicate requests and clears immediately after local changes; hidden pages pause routine refreshes.",
+  "SQLite Lite now enables WAL and adds non-destructive search and transaction indexes for smoother local operation.",
+  "Historical sales imports and owner backups run as tracked background jobs with progress, retry and clear errors.",
+  "Owner and manager System logs now show local database, sync queue, cache and slow-request health.",
+  "Accounting trial balance uses database-side totals and source-journal reconciliation avoids redundant concurrent scans.",
+  "Historical imports now assign distinct receipt numbers to every imported row.",
+  "This is TheBarcode Lite: it runs on a private local SQLite database and does not install or require PostgreSQL.",
+  "Lite upgrades retain the existing TheBarcode or Dukora Lite database and keep it in the user's local app-data folder.",
+  "The installer checks for a previous PostgreSQL edition and stops rather than opening an older SQLite file as if it were current data.",
+  "Item setup now saves creates and edits locally and synchronizes them when the connection returns",
+  "Inventory refreshes preserve pending offline sales and stock movements without losing or double-applying stock changes",
+  "Owner and manager-only System logs show server outcomes, failures, duration, record counts and local sync errors",
+  "Unused setup items can be permanently deleted with a recorded reason; items with operational history remain archive-only",
   "Deposit and credit orders now default a blank expected delivery date to the posting date and time so they are always stored in Orders and the delivery calendar",
   "The rule-based assistant can summarize inventory, stock inflows and outflows for day, week, month or quarter periods and compare them with the previous equivalent period",
   "TheBarcode assistant is now a compact animated floating icon positioned above bottom action rows so it stays available without blocking checkout controls",

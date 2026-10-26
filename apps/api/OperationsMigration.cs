@@ -11,6 +11,10 @@ public static class OperationsMigration
             {
                 "ALTER TABLE customers ADD COLUMN active INTEGER NOT NULL DEFAULT 1",
                 "ALTER TABLE sales ADD COLUMN due_at TEXT NULL",
+                "ALTER TABLE sales ADD COLUMN expected_delivery_at TEXT NULL",
+                "ALTER TABLE sales ADD COLUMN assigned_staff_id TEXT NULL",
+                "ALTER TABLE sales ADD COLUMN fulfillment_status TEXT NOT NULL DEFAULT 'Immediate'",
+                "ALTER TABLE sales ADD COLUMN reminder_sent_at TEXT NULL",
                 "ALTER TABLE sales ADD COLUMN posted_at TEXT NULL",
                 "ALTER TABLE sales ADD COLUMN revision INTEGER NOT NULL DEFAULT 1",
                 "ALTER TABLE sales ADD COLUMN notes TEXT NULL",
@@ -46,11 +50,16 @@ public static class OperationsMigration
                 ,"CREATE TABLE IF NOT EXISTS expense_payments (id TEXT NOT NULL PRIMARY KEY, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, expense_id TEXT NOT NULL, amount TEXT NOT NULL, method TEXT NOT NULL, reference TEXT NULL, notes TEXT NULL, staff_id TEXT NOT NULL, paid_at TEXT NOT NULL, FOREIGN KEY (expense_id) REFERENCES expenses(id) ON DELETE CASCADE)"
                 ,"CREATE INDEX IF NOT EXISTS ix_expense_payments_expense_id ON expense_payments(expense_id)"
                 ,"ALTER TABLE production_runs ADD COLUMN cost_breakdown_json TEXT NULL"
+                ,"ALTER TABLE sale_items ADD COLUMN is_addon INTEGER NOT NULL DEFAULT 0"
             }
             : new[]
             {
                 "ALTER TABLE customers ADD COLUMN IF NOT EXISTS active boolean NOT NULL DEFAULT true",
                 "ALTER TABLE sales ADD COLUMN IF NOT EXISTS due_at timestamptz NULL",
+                "ALTER TABLE sales ADD COLUMN IF NOT EXISTS expected_delivery_at timestamptz NULL",
+                "ALTER TABLE sales ADD COLUMN IF NOT EXISTS assigned_staff_id uuid NULL",
+                "ALTER TABLE sales ADD COLUMN IF NOT EXISTS fulfillment_status text NOT NULL DEFAULT 'Immediate'",
+                "ALTER TABLE sales ADD COLUMN IF NOT EXISTS reminder_sent_at timestamptz NULL",
                 "ALTER TABLE sales ADD COLUMN IF NOT EXISTS posted_at timestamptz NULL",
                 "ALTER TABLE sales ADD COLUMN IF NOT EXISTS revision integer NOT NULL DEFAULT 1",
                 "ALTER TABLE sales ADD COLUMN IF NOT EXISTS notes text NULL",
@@ -90,12 +99,14 @@ public static class OperationsMigration
                 ,"CREATE TABLE IF NOT EXISTS expense_payments (id uuid PRIMARY KEY, created_at timestamptz NOT NULL, updated_at timestamptz NOT NULL, expense_id uuid NOT NULL REFERENCES expenses(id) ON DELETE CASCADE, amount numeric(18,2) NOT NULL, method text NOT NULL, reference text NULL, notes text NULL, staff_id uuid NOT NULL, paid_at timestamptz NOT NULL)"
                 ,"CREATE INDEX IF NOT EXISTS ix_expense_payments_expense_id ON expense_payments(expense_id)"
                 ,"ALTER TABLE production_runs ADD COLUMN IF NOT EXISTS cost_breakdown_json text NULL"
+                ,"ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS is_addon boolean NOT NULL DEFAULT false"
             };
 
         foreach (var statement in statements)
         {
-            try { await db.Database.ExecuteSqlRawAsync(statement); }
-            catch when (db.Database.IsSqlite() && statement.StartsWith("ALTER TABLE", StringComparison.Ordinal)) { }
+            if (db.Database.IsSqlite() && statement.StartsWith("ALTER TABLE", StringComparison.Ordinal))
+                await SqliteSchema.AddColumnIfMissing(db, statement);
+            else await db.Database.ExecuteSqlRawAsync(statement);
         }
         if(!await db.InsightsConfigurations.AnyAsync()){db.InsightsConfigurations.Add(new InsightsConfiguration());await db.SaveChangesAsync();}
     }

@@ -1,0 +1,6 @@
+{
+  "version": "1.12.21",
+  "downloadUrl": "https://thebarcode.beyondrawdata.com/releases/lite/TheBarcode-Setup-1.12.21-x64.exe",
+  "sha256": "REPLACE_WITH_THE_64_CHARACTER_SHA256_OF_THE_INSTALLER",
+  "summary": "Manual release-folder access alongside safer automatic update checks"
+}

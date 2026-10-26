@@ -78,9 +78,9 @@ The client already supports a configurable API base URL and durable device-side 
 1. Publish a tenant-aware HTTPS API backed by managed PostgreSQL.
 2. Put its address into **Shared local or hosted API URL**.
 3. Register the institution, outlet and device against the hosted service.
-4. Publish the Lite manifest at `https://thebarcode.beyondrawdata.com/releases/lite/latest.json` and the matching installer under the same `/releases/lite/` directory. TheBarcode falls back to `https://thebarcode.beyondrawdata.co.ke/releases/lite/latest.json` when the primary endpoint is unavailable. Custom HTTPS manifest endpoints can still be saved in Settings.
+4. Publish the Lite manifest at `https://thebarcode.beyondrawdata.com/releases/lite/latest.json` and the matching installer under the same `/releases/lite/` directory. TheBarcode falls back to `https://thebarcode.beyondrawdata.co.ke/releases/lite/latest.json` when the primary endpoint is unavailable, then checks an optional configured direct HTTPS manifest mirror. A Google Drive **folder** URL is retained only as an internal publishing reference and is not queried as JSON; Drive requires a direct shared `latest.json` file URL (with its file ID) for a machine-readable fallback.
 
-The release manifest contains the latest version, summary, download URL, SHA-256 and release notes. TheBarcode compares semantic versions, accepts installer downloads only from Beyond Raw Data HTTPS domains, verifies SHA-256, creates a pre-update database backup and requests Owner and Windows approval before installing and restarting. Sign production installers with the Beyond Raw Data Authenticode certificate when available.
+The release manifest contains the latest version, summary, download URL, SHA-256 and release notes. TheBarcode compares semantic versions, accepts installer downloads only from Beyond Raw Data HTTPS domains or Google Drive's direct file hosts, verifies SHA-256, creates a pre-update database backup and requests Owner and Windows approval before installing and restarting. Sign production installers with the Beyond Raw Data Authenticode certificate when available.
 
 ## Deployment profiles
 

@@ -15,10 +15,13 @@ public static class ModularOperationsMigration
  "CREATE TABLE IF NOT EXISTS production_runs (id uuid PRIMARY KEY, created_at timestamptz NOT NULL, updated_at timestamptz NOT NULL, recipe_id uuid NOT NULL, product_id uuid NOT NULL, staff_id uuid NOT NULL, quantity_produced numeric(18,3) NOT NULL, total_cost numeric(18,2) NOT NULL, status text NOT NULL, notes text NULL, occurred_at timestamptz NOT NULL, is_demo boolean NOT NULL)"};foreach(var statement in sql)await db.Database.ExecuteSqlRawAsync(statement);
  // Ensure databases created by earlier previews gain columns used by the current read models.
  var compatibility=db.Database.IsSqlite()?new[]{"ALTER TABLE production_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'Completed'","ALTER TABLE production_runs ADD COLUMN is_demo INTEGER NOT NULL DEFAULT 0","ALTER TABLE recipes ADD COLUMN is_demo INTEGER NOT NULL DEFAULT 0","ALTER TABLE recipe_ingredients ADD COLUMN waste_percent TEXT NOT NULL DEFAULT '0'"}:new[]{"ALTER TABLE production_runs ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'Completed'","ALTER TABLE production_runs ADD COLUMN IF NOT EXISTS is_demo boolean NOT NULL DEFAULT false","ALTER TABLE recipes ADD COLUMN IF NOT EXISTS is_demo boolean NOT NULL DEFAULT false","ALTER TABLE recipe_ingredients ADD COLUMN IF NOT EXISTS waste_percent numeric(18,2) NOT NULL DEFAULT 0"};
- foreach(var statement in compatibility){try{await db.Database.ExecuteSqlRawAsync(statement);}catch{ /* Existing column: safe and expected on subsequent starts. */ }}
+ foreach(var statement in compatibility){if(db.Database.IsSqlite())await SqliteSchema.AddColumnIfMissing(db,statement);else await db.Database.ExecuteSqlRawAsync(statement);}
+ if(db.Database.IsSqlite())await SqliteSchema.AddColumnIfMissing(db,"ALTER TABLE production_runs ADD COLUMN cost_breakdown_json TEXT NULL");
  var staffPermissions=db.Database.IsSqlite()?"ALTER TABLE staff ADD COLUMN permissions TEXT NOT NULL DEFAULT ''":"ALTER TABLE staff ADD COLUMN IF NOT EXISTS permissions text NOT NULL DEFAULT ''";
- try{await db.Database.ExecuteSqlRawAsync(staffPermissions);}catch{ /* Existing column: safe and expected on subsequent starts. */ }
+ if(db.Database.IsSqlite())await SqliteSchema.AddColumnIfMissing(db,staffPermissions);else await db.Database.ExecuteSqlRawAsync(staffPermissions);
  await AccountingMigration.Apply(db);
  await AdvancedInventoryMigration.Apply(db);
+ await SystemLogs.Apply(db);
+ await BackgroundJobMigration.Apply(db);
  }
 }

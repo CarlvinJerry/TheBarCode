@@ -1,7 +1,20 @@
-import { db, saveBootstrap, saveLoginStaff, type LocalSale } from './db';
+import { db, saveBootstrap, saveLoginStaff, recordLocalSystemLog, type LocalSale } from './db';
 const configuredBase=()=>localStorage.getItem('api_url')?.replace(/\/$/,'')||import.meta.env.VITE_API_URL||'/api';
-export const session={get token(){return localStorage.getItem('barcode_token')??''},get user(){try{return JSON.parse(localStorage.getItem('barcode_user')??'null')}catch{return null}},set(token:string,user:any){localStorage.setItem('barcode_token',token);localStorage.setItem('barcode_user',JSON.stringify(user));localStorage.setItem('dukora_demo_context',String(Boolean(user?.isDemo)))},clear(){localStorage.removeItem('barcode_token');localStorage.removeItem('barcode_user');localStorage.removeItem('dukora_demo_context')}};
-async function request(path:string,init?:RequestInit){const controller=new AbortController();const timeout=window.setTimeout(()=>controller.abort(),15000);try{const response=await fetch(configuredBase()+path,{...init,signal:init?.signal??controller.signal,headers:{'Content-Type':'application/json',...(session.token?{Authorization:`Bearer ${session.token}`}:{}) ,...init?.headers}});if(!response.ok){const raw=await response.text();let reason="";try{const body=JSON.parse(raw);reason=body.error||body.detail||body.title||""}catch{reason=raw}if(!reason)reason=response.status===403?"You do not have permission to perform this action with the current account.":response.status===401?(path.startsWith('/auth/')?"Invalid staff or PIN.":"Your session expired. Sign in again."):response.status===502?"The server or database is temporarily unavailable. Please retry.":`Request failed (${response.status}).`;throw new Error(reason)}const result=response.status===204?null:await response.json();const method=(init?.method||'GET').toUpperCase();if(method!=='GET'&&!path.startsWith('/auth/'))dispatchEvent(new CustomEvent('thebarcode:data-changed',{detail:{path,method,at:Date.now()}}));return result;}catch(error){if(error instanceof DOMException&&error.name==='AbortError')throw new Error('The request timed out. Check the connection and retry.');throw error;}finally{window.clearTimeout(timeout)}}
+type ReadEntry={value:any;expiresAt:number};
+const readCache=new Map<string,ReadEntry>();
+const inFlightReads=new Map<string,Promise<any>>();
+let readGeneration=0;
+const readStats={requests:0,hits:0,coalesced:0,failures:0,lastSuccessAt:''};
+const cacheable=(path:string)=>/^\/(?:notifications|operations\/overview|accounting\/(?:overview|trial-balance|journals|accounts|periods)|reports\/(?:accurate|daily)|settings|modules|recipes|production-runs|purchasing\/(?:suppliers|orders)|stock\/(?:lots|expiring|stocktakes)|expenses(?:\?|\/production)|customers\/summary)/.test(path);
+const readTtl=(path:string)=>path.startsWith('/notifications')?5000:path.startsWith('/settings')||path.startsWith('/modules')?60000:20000;
+export function clearReadCache(){readGeneration++;readCache.clear();inFlightReads.clear();}
+const cacheChannel=typeof BroadcastChannel!=="undefined"?new BroadcastChannel("thebarcode-read-cache"):null;
+cacheChannel?.addEventListener("message",()=>{clearReadCache();dispatchEvent(new CustomEvent('thebarcode:data-changed',{detail:{path:'*',method:'EXTERNAL',at:Date.now()}}))});
+function invalidateReadCache(){clearReadCache();cacheChannel?.postMessage({at:Date.now()})}
+export function getReadPerformance(){return {...readStats,cachedEntries:readCache.size,pendingRequests:inFlightReads.size};}
+export const session={get token(){return localStorage.getItem('barcode_token')??''},get user(){try{return JSON.parse(localStorage.getItem('barcode_user')??'null')}catch{return null}},set(token:string,user:any){const previous=localStorage.getItem('barcode_user');localStorage.setItem('barcode_token',token);localStorage.setItem('barcode_user',JSON.stringify(user));localStorage.setItem('dukora_demo_context',String(Boolean(user?.isDemo)));if(previous!==JSON.stringify(user))clearReadCache()},clear(){clearReadCache();localStorage.removeItem('barcode_token');localStorage.removeItem('barcode_user');localStorage.removeItem('dukora_demo_context')}};
+class ApiRequestError extends Error { readonly status:number; constructor(message:string,status:number){super(message);this.name='ApiRequestError';this.status=status} }
+async function request(path:string,init?:RequestInit){const method=(init?.method||'GET').toUpperCase();const key=`${configuredBase()}|${session.user?.id||''}|${session.user?.isDemo?'demo':'live'}|${session.user?.role||''}|${path}`;const useCache=method==='GET'&&cacheable(path)&&!init?.signal;const cached=useCache?readCache.get(key):undefined;if(cached&&cached.expiresAt>Date.now()){readStats.hits++;return cached.value}if(useCache&&inFlightReads.has(key)){readStats.coalesced++;return inFlightReads.get(key)!}const generation=readGeneration;const execute=async()=>{const controller=new AbortController();const timeout=window.setTimeout(()=>controller.abort(),15000);try{readStats.requests++;const response=await fetch(configuredBase()+path,{...init,signal:init?.signal??controller.signal,headers:{'Content-Type':'application/json',...(session.token?{Authorization:`Bearer ${session.token}`}:{}) ,...init?.headers}});if(!response.ok){const raw=await response.text();let reason="";try{const body=JSON.parse(raw);reason=body.error||body.detail||body.title||""}catch{reason=raw}if(!reason)reason=response.status===403?"You do not have permission to perform this action with the current account.":response.status===401?(path.startsWith('/auth/')?"Invalid staff or PIN.":"Your session expired. Sign in again."):response.status===502?"The server or database is temporarily unavailable. Please retry.":`Request failed (${response.status}).`;throw new ApiRequestError(reason,response.status)}const result=response.status===204?null:await response.json();readStats.lastSuccessAt=new Date().toISOString();if(useCache&&generation===readGeneration)readCache.set(key,{value:result,expiresAt:Date.now()+readTtl(path)});if(method!=='GET'&&!path.startsWith('/auth/')){invalidateReadCache();dispatchEvent(new CustomEvent('thebarcode:data-changed',{detail:{path,method,at:Date.now()}}))}return result;}catch(error){readStats.failures++;if(error instanceof DOMException&&error.name==='AbortError')throw new Error('The request timed out. Check the connection and retry.');throw error;}finally{window.clearTimeout(timeout)}};if(!useCache)return execute();const pending=execute().finally(()=>{if(inFlightReads.get(key)===pending)inFlightReads.delete(key)});inFlightReads.set(key,pending);return pending;}
 const localPinKey=(staffId:string)=>`barcode_pin_verifier:${staffId}`;
 async function pinDigest(pin:string,salt:string){const bytes=new TextEncoder().encode(`${salt}:${pin}`);const digest=await crypto.subtle.digest('SHA-256',bytes);return Array.from(new Uint8Array(digest)).map(x=>x.toString(16).padStart(2,'0')).join('');}
 export async function rememberLocalPin(staffId:string,pin:string){if(!staffId||!pin||!crypto?.subtle)return;const salt=crypto.randomUUID();localStorage.setItem(localPinKey(staffId),JSON.stringify({salt,hash:await pinDigest(pin,salt)}));}
@@ -10,15 +23,76 @@ export async function bootstrap(){const data=await request('/bootstrap');await s
 export async function getLoginStaff(){const staff=await request('/auth/staff');await saveLoginStaff(staff);return staff;}
 export async function login(staffId:string,pin:string){const result=await request('/auth/login',{method:'POST',body:JSON.stringify({staffId,pin})});session.set(result.token,result.user);try{const access=await request('/auth/permissions');result.user={...result.user,permissions:access.permissions};session.set(result.token,result.user);}catch{}try{await rememberLocalPin(staffId,pin);}catch{}return result.user;}
 export async function refreshSession(){const result=await request('/auth/refresh',{method:'POST'});session.set(result.token,result.user);return result.user;}
-export async function syncOutbox(){if(!navigator.onLine||!session.token)return 0;const demo=Boolean(session.user?.isDemo),now=Date.now(),rows=(await db.outbox.toArray()).filter(x=>{if(Boolean(x.payload?.isDemo)!==demo)return false;const delay=Math.min(300000,15000*Math.pow(2,Math.min(x.attempts,5)));return !x.lastAttemptAt||now-new Date(x.lastAttemptAt).getTime()>=delay});let synced=0;for(const row of rows){try{if(row.type==='sale')await request('/sales/sync',{method:'POST',body:JSON.stringify({...row.payload,items:row.payload.items.map((x:any)=>({productId:x.productId,quantity:x.quantity,unitPrice:x.unitPrice,discount:x.discount}))})});if(row.type==='customer')await request('/customers',{method:'POST',body:JSON.stringify(row.payload)});if(row.type==='stock')await request('/stock-movements',{method:'POST',body:JSON.stringify(row.payload)});await db.outbox.delete(row.id!);if(row.type==='sale')await db.sales.update(row.payload.deviceTransactionId,{synced:true});synced++;}catch(error){await db.outbox.update(row.id!,{attempts:row.attempts+1,lastAttemptAt:new Date().toISOString(),lastError:String(error)})}}return synced;}
+const rejectedStockMovements=new Map<string,string>();
+let activeSync:Promise<number>|undefined;
+export function takeStockSyncError(movementId:string){const message=rejectedStockMovements.get(movementId);rejectedStockMovements.delete(movementId);return message;}
+export function syncOutbox(){
+  // The Lite API is on this computer. Internet connectivity must never gate
+  // delivery to its local SQLite database; remote deployments can retry too.
+  if(!session.token)return Promise.resolve(0);
+  if(activeSync)return activeSync;
+  activeSync=runOutbox().finally(()=>{activeSync=undefined});
+  return activeSync;
+}
+async function runOutbox(){
+  const demo=Boolean(session.user?.isDemo),now=Date.now();
+  const rows=(await db.outbox.toArray()).filter(x=>{
+    if(Boolean(x.payload?.isDemo)!==demo)return false;
+    const delay=Math.min(300000,15000*Math.pow(2,Math.min(x.attempts,5)));
+    return !x.lastAttemptAt||now-new Date(x.lastAttemptAt).getTime()>=delay;
+  });
+  let synced=0;
+  for(const row of rows){
+    try{
+      if(row.type==='sale')await request('/sales/sync',{method:'POST',body:JSON.stringify({...row.payload,items:row.payload.items.map((x:any)=>({productId:x.productId,quantity:x.quantity,unitPrice:x.unitPrice,discount:x.discount}))})});
+      if(row.type==='customer')await request('/customers',{method:'POST',body:JSON.stringify(row.payload)});
+      if(row.type==='stock')await request('/stock-movements',{method:'POST',body:JSON.stringify(row.payload)});
+      if(row.type==='product-create')await request('/products/single',{method:'POST',body:JSON.stringify(row.payload)});
+      if(row.type==='product-update')await request(`/products/${row.payload.id}`,{method:'PUT',body:JSON.stringify(row.payload)});
+      await db.outbox.delete(row.id!);
+      if(row.type==='sale')await db.sales.update(row.payload.deviceTransactionId,{synced:true});
+      synced++;
+      recordLocalSystemLog('Info',`Sync ${row.type}`,`Synced queued ${row.type} operation (${row.id})`,1);
+    }catch(error){
+      const message=error instanceof Error?error.message:String(error);
+      // A stock request rejected by the local API cannot succeed on retry with
+      // the same payload. Remove its optimistic delta so it cannot appear as
+      // sellable stock while the database has refused the movement.
+      if(row.type==='stock'&&error instanceof ApiRequestError&&[400,403,404,409,422].includes(error.status)){
+        await db.transaction('rw',db.products,db.outbox,async()=>{
+          const product=await db.products.get(row.payload.productId);
+          if(product)await db.products.update(product.id,{stock:Math.max(0,product.stock-Number(row.payload.quantityChange||0))});
+          await db.outbox.delete(row.id!);
+        });
+        rejectedStockMovements.set(row.payload.movementId,message);
+        dispatchEvent(new CustomEvent('thebarcode:sync-failed',{detail:{type:'stock',message,productId:row.payload.productId}}));
+        dispatchEvent(new CustomEvent('thebarcode:data-changed',{detail:{path:'/stock-movements',method:'REJECTED',at:Date.now()}}));
+      }else{
+        await db.outbox.update(row.id!,{attempts:row.attempts+1,lastAttemptAt:new Date().toISOString(),lastError:message});
+      }
+      const details=row.type==='stock'
+        ?`Stock movement ${row.payload.movementId} for item ${row.payload.productId}, quantity ${row.payload.quantityChange}, rejected: ${message}`
+        :`Queued ${row.type} operation (${row.id}) failed: ${message}`;
+      recordLocalSystemLog('Error',`Sync ${row.type}`,details);
+    }
+  }
+  if(synced)dispatchEvent(new CustomEvent('thebarcode:outbox-synced',{detail:{count:synced}}));
+  return synced;
+}
 export async function createProduct(product:Record<string,unknown>){return request('/products/single',{method:'POST',body:JSON.stringify(product)});}
 export async function bulkImportProducts(value:Record<string,unknown>){return request('/products/bulk-import',{method:'POST',body:JSON.stringify(value)});}
-export async function importHistoricalSales(value:Record<string,unknown>){return request('/historical-sales/import',{method:'POST',body:JSON.stringify(value)});}
+export async function importHistoricalSales(value:Record<string,unknown>){return request('/background-jobs/historical-sales',{method:'POST',body:JSON.stringify(value)});}
+export async function getBackgroundJob(id:string){return request(`/background-jobs/${id}`);}
+export async function retryBackgroundJob(id:string){return request(`/background-jobs/${id}/retry`,{method:'POST'});}
+export async function cancelBackgroundJob(id:string){return request(`/background-jobs/${id}/cancel`,{method:'POST'});}
+export async function createBackgroundBackup(){return request('/background-jobs/backup',{method:'POST'});}
 export async function getProductImportBatches(){return request('/products/import-batches');}
 export async function reverseProductImport(id:string){return request(`/products/import-batches/${id}/reverse`,{method:'POST'});}
 export async function getSummary(from:string,to:string){return request(`/reports/accurate?from=${from}&to=${to}`);}
 export async function createExpense(expense:Record<string,unknown>){return request('/expenses',{method:'POST',body:JSON.stringify(expense)});}
 export async function getAudit(){return request('/audit/live?take=500');}
+export async function getSystemLogs(){return request('/system-logs?take=500');}
+export async function getSystemHealth(){return request('/system-health');}
 export async function getStaff(){return request('/staff/access');}
 export async function createStaff(staff:Record<string,unknown>){return request('/staff',{method:'POST',body:JSON.stringify(staff)});}
 export async function resetDemo(){return request('/demo/reset',{method:'POST'});}
@@ -44,6 +118,9 @@ export async function saveReceiptConfiguration(value:Record<string,unknown>){ret
 export async function saveBranch(value:Record<string,unknown>){return request('/settings/branches',{method:'PUT',body:JSON.stringify(value)});}
 export async function saveTerminalConfiguration(value:Record<string,unknown>){return request('/settings/terminals',{method:'PUT',body:JSON.stringify(value)});}
 export async function getBills(status='All'){return request(`/bills?status=${encodeURIComponent(status)}`);}
+export async function getBillsPage(status='All',offset=0,limit=50,search=''){return request(`/bills/page?status=${encodeURIComponent(status)}&offset=${offset}&limit=${limit}&search=${encodeURIComponent(search)}`);}
+export async function remindBill(id:string){return request(`/bills/${id}/remind`,{method:'POST'});}
+export async function updateBillFulfillment(id:string,status:string,notes?:string){return request(`/bills/${id}/fulfillment`,{method:'PUT',body:JSON.stringify({status,notes,deviceId:localStorage.getItem('device_id')||'orders-ui'})});}
 export async function holdBill(value:Record<string,unknown>){return request('/bills/hold',{method:'POST',body:JSON.stringify(value)});}
 export async function updateBill(id:string,value:Record<string,unknown>){return request(`/bills/${id}`,{method:'PUT',body:JSON.stringify(value)});}
 export async function requestBillApproval(id:string,value:Record<string,unknown>){return request(`/bills/${id}/approval-requests`,{method:'POST',body:JSON.stringify(value)});}
@@ -56,6 +133,7 @@ export async function cancelBill(id:string,reason:string,deviceId?:string){retur
 export async function refundBill(id:string,reason:string,deviceId?:string){return request(`/bills/${id}/refund?reason=${encodeURIComponent(reason)}&deviceId=${encodeURIComponent(deviceId||'')}`,{method:'POST'});}
 export async function getNotifications(){const x=await request('/notifications');return {Total:x.total??x.Total??0,Sell:x.sell??x.Sell??0,Bills:x.bills??x.Bills??0,Customers:x.customers??x.Customers??0,Inventory:x.inventory??x.Inventory??0,Approvals:x.approvals??x.Approvals??0,Expenses:x.expenses??x.Expenses??0,AuditTrail:x.auditTrail??x.AuditTrail??0,Settings:x.settings??x.Settings??0,Details:x.details??x.Details??{}};}
 export async function updateProduct(id:string,value:Record<string,unknown>){return request(`/products/${id}`,{method:'PUT',body:JSON.stringify(value)});}
+export async function deleteProduct(id:string,reason:string){return request(`/products/${id}`,{method:'DELETE',body:JSON.stringify({reason})});}
 export async function updateCustomer(id:string,value:Record<string,unknown>){return request(`/customers/${id}`,{method:'PUT',body:JSON.stringify(value)});}
 export async function updateStaff(id:string,value:Record<string,unknown>){return request(`/staff/${id}`,{method:'PUT',body:JSON.stringify(value)});}
 export async function updateStaffPermissions(id:string,permissions:string[],reason:string){return request(`/staff/${id}/permissions`,{method:'PUT',body:JSON.stringify({permissions:permissions.join(','),reason})});}

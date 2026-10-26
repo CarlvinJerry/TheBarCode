@@ -21,6 +21,9 @@ public static class BulkProductEndpoints
 
     static async Task<IResult> CreateSingle(ProductRequest request, AppDbContext db, ClaimsPrincipal principal)
     {
+        var demo = Security.IsDemo(principal);
+        if (request.Id is Guid clientId && await db.Products.SingleOrDefaultAsync(x => x.Id == clientId && x.IsDemo == demo) is Product alreadyCreated)
+            return Results.Ok(alreadyCreated);
         var row = new BulkProductRow(1, request.Name, request.Category, request.Brand, request.Barcode, request.Unit,
             request.PackageQuantity, request.PackageUnit ?? request.Unit, request.TrackingMode, request.CostPrice,
             request.SellingPrice, request.Stock, request.MinStock, request.Supplier, request.TaxRate, request.Sellable, request.ItemType);
@@ -29,7 +32,7 @@ public static class BulkProductEndpoints
         var barcode = Clean(request.Barcode);
         if (barcode is not null && await db.Products.AnyAsync(x => x.Barcode == barcode))
             return Results.Conflict(new { error = "Barcode/SKU already exists" });
-        var product = new Product { Name = request.Name.Trim(), Category = request.Category.Trim(), Stock = request.Stock };
+        var product = new Product { Id = request.Id ?? Guid.NewGuid(), Name = request.Name.Trim(), Category = request.Category.Trim(), Stock = request.Stock, IsDemo = demo };
         ApplyDetails(product, row, barcode); db.Products.Add(product);
         var staffId = Guid.TryParse(principal.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var sid) ? sid : Guid.Empty;
         if (request.Stock != 0) AddMovement(db, product, staffId, request.Stock, Guid.NewGuid());
@@ -37,7 +40,7 @@ public static class BulkProductEndpoints
         await db.SaveChangesAsync(); return Results.Created($"/api/products/{product.Id}", product);
     }
 
-    static async Task<IResult> Import(BulkProductImportRequest request, AppDbContext db, ClaimsPrincipal principal)
+    static async Task<IResult> Import(BulkProductImportRequest request, AppDbContext db, ClaimsPrincipal principal, HttpContext context)
     {
         if (request.Rows.Count is < 1 or > 5000)
             return Results.BadRequest(new { error = "Import between 1 and 5,000 rows at a time" });
@@ -98,6 +101,7 @@ public static class BulkProductEndpoints
         });
         await db.SaveChangesAsync();
         await tx.CommitAsync();
+        context.Response.Headers["X-Records-Affected"] = (created + updated).ToString();
         return Results.Ok(new { batchId, created, updated, stockAdded, skipped, total = request.Rows.Count });
     }
 
@@ -141,7 +145,7 @@ public static class ProductImportRules
     };
     public static string Unit(string? value) => value is not null && Units.TryGetValue(value.Trim(), out var unit) ? unit : value?.Trim() ?? "item";
     public static string Mode(string? value) => value?.Trim().Equals("Measured", StringComparison.OrdinalIgnoreCase) == true ? "Measured" : "Discrete";
-    public static string ItemType(string? value) => value?.Trim().Equals("Ingredient", StringComparison.OrdinalIgnoreCase) == true ? "Ingredient" : "Product";
+    public static string ItemType(string? value) => value?.Trim() switch { var x when x?.Equals("Ingredient", StringComparison.OrdinalIgnoreCase) == true => "Ingredient", var x when x?.Equals("AddOn", StringComparison.OrdinalIgnoreCase) == true || x?.Equals("Add-on", StringComparison.OrdinalIgnoreCase) == true => "AddOn", _ => "Product" };
     public static List<ProductImportError> Validate(IReadOnlyList<BulkProductRow> rows)
     {
         var errors = new List<ProductImportError>(); var barcodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);var variants=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -150,7 +154,7 @@ public static class ProductImportRules
             var row = rows[i]; var rowNo = row.RowNumber > 0 ? row.RowNumber : i + 2; var messages = new List<string>();
             if (string.IsNullOrWhiteSpace(row.Name)) messages.Add("Item name is required");
             if (string.IsNullOrWhiteSpace(row.Category)) messages.Add("Category is required");
-            if (!string.IsNullOrWhiteSpace(row.ItemType) && !new[] { "Product", "Ingredient" }.Contains(row.ItemType.Trim(), StringComparer.OrdinalIgnoreCase)) messages.Add("Item type must be Product or Ingredient");
+            if (!string.IsNullOrWhiteSpace(row.ItemType) && !new[] { "Product", "Ingredient", "AddOn", "Add-on" }.Contains(row.ItemType.Trim(), StringComparer.OrdinalIgnoreCase)) messages.Add("Item type must be Product, Ingredient or AddOn");
             if (!Units.ContainsKey(row.StockUnit?.Trim() ?? "")) messages.Add("Stock unit is not supported");
             if (!Units.ContainsKey(row.PackageUnit?.Trim() ?? "")) messages.Add("Package unit is not supported");
             if (row.PackageQuantity <= 0) messages.Add("Package quantity must be greater than zero");

@@ -2,7 +2,7 @@
 
 **Smarter Business Operations**
 
-Current version: **1.11.5** (see `VERSION`). Native installers must be rebuilt after every releasable change so the installer always contains the current UI, API, database initialization and print bridge. Version 1.11.5 is intentionally awaiting local acceptance testing before its installer is generated.
+Current version: **1.12.32** (Lite / SQLite; see `VERSION`). Build the Lite installer for single-device local use; it does not install PostgreSQL.
 
 Windows deployment profiles:
 
@@ -15,9 +15,9 @@ Windows-first, offline-capable point of sale and inventory system for a bar, caf
 ## Architecture
 
 - `apps/web`: installable React/TypeScript touchscreen PWA with IndexedDB and an offline synchronization outbox.
-- `apps/api`: ASP.NET Core API with JWT role authorization, audit events, idempotent sale synchronization, and PostgreSQL.
+- `apps/api`: ASP.NET Core API with JWT role authorization, audit events and idempotent sale synchronization; Lite uses SQLite, while the future shared-server profile can use PostgreSQL.
 - `tests`: automated API and domain tests.
-- PostgreSQL is the central source of truth. Each POS device continues operating from its local browser database when disconnected.
+- In TheBarcode Lite, the local SQLite database is the source of truth and is retained across upgrades. The future multi-terminal/server edition is a separate PostgreSQL deployment profile.
 
 ## Windows prerequisites
 

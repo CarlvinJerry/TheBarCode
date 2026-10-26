@@ -1,0 +1,101 @@
+name: Build and publish TheBarcode Lite
+
+on:
+  push:
+    branches: [release]
+    paths-ignore:
+      - release/latest.json
+      - docs/**
+      - README.md
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: thebarcode-lite-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Check out release branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read and validate release version
+        id: version
+        shell: pwsh
+        run: |
+          $version = (Get-Content -Raw VERSION).Trim()
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'VERSION must be MAJOR.MINOR.PATCH.' }
+          $current = [version]::Parse($version)
+          $latestTag = gh release list --limit 1 --json tagName | ConvertFrom-Json | Select-Object -First 1 -ExpandProperty tagName -ErrorAction SilentlyContinue
+          if ($latestTag -match '^v(\d+\.\d+\.\d+)$') {
+            $latest = [version]::Parse($Matches[1])
+            if ($current -le $latest) { throw "VERSION $version must be greater than the latest published release $latestTag. Bump VERSION before pushing release code." }
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=v$version" >> $env:GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+          if (-not $iscc) { choco install innosetup --yes --no-progress }
+
+      - name: Build Lite installer
+        shell: pwsh
+        run: ./scripts/build-lite-installer.ps1 -Version '${{ steps.version.outputs.version }}'
+
+      - name: Publish GitHub release and installer
+        id: publish
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          $tag = '${{ steps.version.outputs.tag }}'
+          $installer = "installer/output/TheBarcode-Lite-Setup-$version-x64.exe"
+          if (-not (Test-Path -LiteralPath $installer)) { throw "Installer artifact missing: $installer" }
+          $sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
+          if (Test-Path -LiteralPath 'release/summary.txt') { $summary = (Get-Content -Raw 'release/summary.txt').Trim() }
+          else { $summary = (git log -1 --format=%s $env:GITHUB_SHA).Trim() }
+          if (-not $summary) { $summary = "TheBarcode Lite $version release." }
+          $notesPath = Join-Path $env:RUNNER_TEMP 'thebarcode-release-notes.md'
+          Set-Content -LiteralPath $notesPath -Value $summary -Encoding utf8
+          gh release create $tag $installer --title "TheBarcode Lite $version" --notes-file $notesPath
+          if ($LASTEXITCODE -ne 0) { throw "GitHub release $tag could not be published." }
+          $manifest = [ordered]@{
+            version = $version
+            channel = 'lite-windows'
+            edition = 'Lite'
+            summary = $summary
+            downloadUrl = "https://github.com/CarlvinJerry/TheBarCode/releases/download/$tag/TheBarcode-Lite-Setup-$version-x64.exe"
+            sha256 = $sha256
+            notes = @($summary)
+          }
+          $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath 'release/latest.json' -Encoding utf8
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add release/latest.json
+          git commit -m "Publish Lite update manifest $version"
+          git push origin HEAD:release
+          if ($LASTEXITCODE -ne 0) { throw 'Could not publish latest.json to the release branch.' }
+          "sha256=$sha256" >> $env:GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ github.token }}

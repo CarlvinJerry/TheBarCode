@@ -30,6 +30,8 @@ public static class MaintenanceEndpoints
         group.MapPost("/purge", async (PurgeRequest request, AppDbContext db, IConfiguration configuration, ClaimsPrincipal principal) =>
         {
             if (request.Confirmation != "PURGE LIVE DATA") return Results.BadRequest(new { error = "Type PURGE LIVE DATA exactly to confirm." });
+            if (await db.BackgroundJobs.AnyAsync(x => !x.IsDemo && (x.Status == "Queued" || x.Status == "Running")))
+                return Results.Conflict(new { error = "Wait for active imports or backups to finish before purging live records." });
             var backup = await CreateBackup(db, configuration, "before-purge");
             await using var transaction = await db.Database.BeginTransactionAsync();
             var liveProductIds = await db.Products.Where(x => !x.IsDemo).Select(x => x.Id).ToListAsync();
@@ -79,14 +81,16 @@ public static class MaintenanceEndpoints
             await db.StocktakeLines.Where(x => liveStocktakeIds.Contains(x.StocktakeSessionId)).ExecuteDeleteAsync();
             await db.StocktakeSessions.Where(x => !x.IsDemo).ExecuteDeleteAsync();
             await db.Suppliers.Where(x => !x.IsDemo).ExecuteDeleteAsync();
+            await db.BackgroundJobs.Where(x => !x.IsDemo).ExecuteDeleteAsync();
             db.AuditEvents.Add(new AuditEvent { StaffId = Guid.TryParse(principal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var id) ? id : null, Actor = principal.Identity?.Name ?? "Owner", Action = "Purged", EntityType = "LiveData", Details = $"Owner purge after backup {backup.FileName}. Reason: {request.Reason?.Trim() ?? "Not supplied"}", DeviceId = "desktop" });
             await db.SaveChangesAsync();
             await transaction.CommitAsync();
+            AccountingJournalBuilder.MarkSourceChanged();
             return Results.Ok(new { message = "Live records purged safely", backup, counts });
         });
     }
 
-    static async Task<BackupResult> CreateBackup(AppDbContext db, IConfiguration configuration, string purpose)
+    internal static async Task<BackupResult> CreateBackup(AppDbContext db, IConfiguration configuration, string purpose)
     {
         if (db.Database.GetDbConnection() is not SqliteConnection source) throw new InvalidOperationException("Local backup and purge is available in TheBarcode Lite only.");
         var directory = BackupDirectory(configuration);
@@ -108,5 +112,5 @@ public static class MaintenanceEndpoints
     }
 
     sealed record PurgeRequest(string Confirmation, string? Reason);
-    sealed record BackupResult(string FileName, string Path, DateTimeOffset CreatedAt, long SizeBytes);
+    internal sealed record BackupResult(string FileName, string Path, DateTimeOffset CreatedAt, long SizeBytes);
 }

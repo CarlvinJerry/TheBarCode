@@ -1,0 +1,1 @@
+TheBarcode Lite 1.12.34 adds a public GitHub update fallback. The app checks when the Owner signs in and when internet connectivity returns, shows a short release summary, and verifies the installer checksum before installation.

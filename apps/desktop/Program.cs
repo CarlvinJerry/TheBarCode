@@ -15,7 +15,7 @@ internal static class Program
     static Process? bridge;
 
     [STAThread]
-    static async Task Main()
+    static void Main()
     {
         using var single = new Mutex(true, "BeyondRawData.TheBarcode", out var first);
         if (!first) { MessageBox.Show("TheBarcode is already open.", "TheBarcode", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
@@ -26,19 +26,62 @@ internal static class Program
             var configuration = LiteConfiguration.Load(paths.ConfigFile) ?? FirstRun(paths.ConfigFile);
             if (configuration is null) return;
             BackupDatabase(paths);
-            await EnsureApi(paths, configuration);
+            // Keep the WinForms/WebView2 message loop on this original STA thread.
+            // Awaiting in Main can resume on an MTA worker before Application.Run.
+            Task.Run(() => EnsureApi(paths, configuration)).GetAwaiter().GetResult();
             StartPrintBridge(paths);
             Application.Run(new DukoraWindow(AppUrl, paths));
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"TheBarcode could not start.\n\n{ex.Message}\n\nSee the TheBarcode Logs folder for details.", "TheBarcode startup", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            var paths = AppPaths.Create();
+            LogStartupFailure(paths, ex).GetAwaiter().GetResult();
+            // A slow machine can still bring the local service online after a
+            // desktop startup step times out. Keep it alive while the browser
+            // fallback is in use; closing the fallback window stops it cleanly.
+            if (WaitForApi(TimeSpan.FromSeconds(30)).GetAwaiter().GetResult())
+            {
+                try
+                {
+                    OpenBrowser(AppUrl);
+                    Application.Run(new BrowserFallbackWindow(AppUrl));
+                }
+                catch (Exception fallbackError)
+                {
+                    LogStartupFailure(paths, fallbackError).GetAwaiter().GetResult();
+                    MessageBox.Show($"TheBarcode is running, but neither its desktop window nor browser could be opened.\n\n{fallbackError.Message}\n\nSee the TheBarcode Logs folder for details.", "TheBarcode startup", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            else
+            {
+                MessageBox.Show($"TheBarcode could not start.\n\n{ex.Message}\n\nSee the TheBarcode Logs folder for details.", "TheBarcode startup", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
         finally
         {
             Stop(api);
             Stop(bridge);
         }
+    }
+
+    static async Task<bool> WaitForApi(TimeSpan timeout)
+    {
+        var elapsed = Stopwatch.StartNew();
+        while (elapsed.Elapsed < timeout)
+        {
+            if (await IsHealthy()) return true;
+            if (api is { HasExited: true }) return false;
+            await Task.Delay(500);
+        }
+        return await IsHealthy();
+    }
+
+    internal static void OpenBrowser(string url) => Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+
+    static async Task LogStartupFailure(AppPaths paths, Exception ex)
+    {
+        var details = $"{DateTimeOffset.Now:O} Desktop startup failed | type={ex.GetType().FullName} | hresult=0x{ex.HResult:X8} | message={ex.Message}{Environment.NewLine}{ex}{Environment.NewLine}";
+        try { await File.AppendAllTextAsync(paths.DesktopLog, details); } catch { }
     }
 
     static LiteConfiguration? FirstRun(string file)
@@ -65,7 +108,9 @@ internal static class Program
         };
         info.Environment["ASPNETCORE_ENVIRONMENT"] = "Production";
         info.Environment["Database__Provider"] = "Sqlite";
-        info.Environment["ConnectionStrings__Sqlite"] = $"Data Source={paths.DatabaseFile};Cache=Shared";
+        // WAL gives the local POS concurrent readers during short writes. Shared
+        // cache works against WAL's isolation and may surface stale reads.
+        info.Environment["ConnectionStrings__Sqlite"] = $"Data Source={paths.DatabaseFile};Cache=Private;Default Timeout=10";
         info.Environment["Jwt__Key"] = config.JwtKey;
         info.Environment["Bootstrap__AdminPin"] = config.OwnerPin();
         info.Environment["AllowedOrigins__0"] = AppUrl;
@@ -74,7 +119,9 @@ internal static class Program
         api = Process.Start(info) ?? throw new InvalidOperationException("The local API process could not be started.");
         _ = Pump(api.StandardOutput, paths.ApiLog);
         _ = Pump(api.StandardError, paths.ApiLog);
-        for (var attempt = 0; attempt < 40; attempt++)
+        // Give slower office laptops enough time for SQLite migrations and
+        // first-run indexing before treating API readiness as a hard failure.
+        for (var attempt = 0; attempt < 120; attempt++)
         {
             await Task.Delay(250);
             if (api.HasExited) throw new InvalidOperationException($"The local API stopped with exit code {api.ExitCode}.");
@@ -140,9 +187,24 @@ internal sealed class DukoraWindow : Form
     {
         try
         {
-            _ = CoreWebView2Environment.GetAvailableBrowserVersionString();
+            // Probe and log the runtime separately so missing/corrupt WebView2
+            // installations produce an actionable diagnostic. The browser
+            // fallback below remains the last-resort path.
+            string? runtimeVersion = null;
+            try
+            {
+                runtimeVersion = CoreWebView2Environment.GetAvailableBrowserVersionString();
+                await LogWebViewEvent($"WebView2 runtime detected: {runtimeVersion}; user-data: {paths.WebViewData}");
+            }
+            catch (Exception probe)
+            {
+                await LogWebViewFailure(paths, "runtime probe", probe);
+                throw;
+            }
             var environment = await CoreWebView2Environment.CreateAsync(null, paths.WebViewData);
+            await LogWebViewEvent($"WebView2 environment created; runtime: {runtimeVersion}; user-data: {paths.WebViewData}");
             await browser.EnsureCoreWebView2Async(environment);
+            await LogWebViewEvent("WebView2 controller initialized successfully");
             browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
             browser.CoreWebView2.Settings.IsStatusBarEnabled = false;
             browser.CoreWebView2.WebMessageReceived += HandleWebMessage;
@@ -150,7 +212,7 @@ internal sealed class DukoraWindow : Form
         }
         catch (Exception ex)
         {
-            await File.AppendAllTextAsync(paths.DesktopLog, $"{DateTimeOffset.Now:O} WebView2 initialization failed: {ex}{Environment.NewLine}");
+            await LogWebViewFailure(paths, "initialization", ex);
             browser.Visible = false;
             var message = new Label { Text = "TheBarcode is running, but its embedded desktop view could not start.\nThe same interface has been opened in your default browser.\n\nClose this window when you finish using TheBarcode.", AutoSize = true, Font = new Font(Font.FontFamily, 13), TextAlign = ContentAlignment.MiddleCenter };
             var open = new Button { Text = "Open TheBarcode in browser", AutoSize = true, Padding = new Padding(16,8,16,8) };
@@ -159,6 +221,17 @@ internal sealed class DukoraWindow : Form
             fallback.Controls.AddRange([message, open]); Controls.Add(fallback); fallback.BringToFront();
             open.PerformClick();
         }
+    }
+    async Task LogWebViewEvent(string message)
+    {
+        try { await File.AppendAllTextAsync(paths.DesktopLog, $"{DateTimeOffset.Now:O} {message}{Environment.NewLine}"); } catch { }
+    }
+
+    static async Task LogWebViewFailure(AppPaths paths, string phase, Exception ex)
+    {
+        var hresult = $"0x{ex.HResult:X8}";
+        var details = $"{DateTimeOffset.Now:O} WebView2 {phase} failed | type={ex.GetType().FullName} | hresult={hresult} | message={ex.Message}{Environment.NewLine}{ex}{Environment.NewLine}";
+        try { await File.AppendAllTextAsync(paths.DesktopLog, details); } catch { }
     }
     async void HandleWebMessage(object? sender,CoreWebView2WebMessageReceivedEventArgs e)
     {
@@ -172,7 +245,7 @@ internal sealed class DukoraWindow : Form
         try
         {
             if(MessageBox.Show($"Install TheBarcode {command.Version}?\n\nTheBarcode will verify the download, back up your database, close, install the update and reopen.","TheBarcode update",MessageBoxButtons.YesNo,MessageBoxIcon.Information)!=DialogResult.Yes){Reply(false,"Update cancelled");return;}
-            if(!Uri.TryCreate(command.DownloadUrl,UriKind.Absolute,out var download)||download.Scheme!="https"||!TrustedReleaseHost(download.Host))throw new InvalidOperationException("The release URL is not an approved Beyond Raw Data HTTPS address.");
+            if(!Uri.TryCreate(command.DownloadUrl,UriKind.Absolute,out var download)||download.Scheme!="https"||!TrustedReleaseHost(download.Host))throw new InvalidOperationException("The release URL is not an approved HTTPS release host.");
             if(string.IsNullOrWhiteSpace(command.Sha256)||command.Sha256.Length!=64)throw new InvalidOperationException("The release manifest does not contain a valid SHA-256 checksum.");
             var updates=Path.Combine(paths.Root,"Updates");Directory.CreateDirectory(updates);var installer=Path.Combine(updates,$"TheBarcode-Setup-{SafeVersion(command.Version??"update")}-x64.exe");
             using(var client=new HttpClient{Timeout=TimeSpan.FromMinutes(15)})await using(var input=await client.GetStreamAsync(download))await using(var output=File.Create(installer)){await input.CopyToAsync(output);}
@@ -185,9 +258,39 @@ internal sealed class DukoraWindow : Form
         catch(Exception ex){await File.AppendAllTextAsync(paths.DesktopLog,$"{DateTimeOffset.Now:O} Update failed: {ex}{Environment.NewLine}");Reply(false,ex.Message);}
     }
     void Reply(bool ok,string message,string type="dukoraUpdate")=>browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new{type,ok,message}));
-    static bool TrustedReleaseHost(string host)=>host.Equals("beyondrawdata.com",StringComparison.OrdinalIgnoreCase)||host.EndsWith(".beyondrawdata.com",StringComparison.OrdinalIgnoreCase)||host.Equals("beyondrawdata.co.ke",StringComparison.OrdinalIgnoreCase)||host.EndsWith(".beyondrawdata.co.ke",StringComparison.OrdinalIgnoreCase);
+    static bool TrustedReleaseHost(string host)=>host.Equals("beyondrawdata.com",StringComparison.OrdinalIgnoreCase)||host.EndsWith(".beyondrawdata.com",StringComparison.OrdinalIgnoreCase)||host.Equals("beyondrawdata.co.ke",StringComparison.OrdinalIgnoreCase)||host.EndsWith(".beyondrawdata.co.ke",StringComparison.OrdinalIgnoreCase)||host.Equals("drive.google.com",StringComparison.OrdinalIgnoreCase)||host.Equals("drive.usercontent.google.com",StringComparison.OrdinalIgnoreCase)||host.Equals("github.com",StringComparison.OrdinalIgnoreCase)||host.Equals("release-assets.githubusercontent.com",StringComparison.OrdinalIgnoreCase)||host.Equals("objects.githubusercontent.com",StringComparison.OrdinalIgnoreCase);
     static string SafeVersion(string value)=>string.Concat(value.Where(x=>char.IsAsciiLetterOrDigit(x)||x is '.' or '-' or '_'));
     sealed record DesktopCommand(string Command,string? Version,string? DownloadUrl,string? Sha256,string? FileName);
+}
+
+internal sealed class BrowserFallbackWindow : Form
+{
+    readonly string url;
+    public BrowserFallbackWindow(string url)
+    {
+        this.url = url;
+        Text = "TheBarcode is open in your browser";
+        StartPosition = FormStartPosition.CenterScreen;
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        MaximizeBox = false;
+        MinimizeBox = true;
+        ClientSize = new Size(560, 210);
+
+        var message = new Label
+        {
+            Text = "The desktop window could not start, so TheBarcode opened in your browser.\nKeep this small window open while you use it; closing this window also stops TheBarcode.",
+            AutoSize = true,
+            Font = new Font(Font.FontFamily, 11),
+            Location = new Point(28, 30)
+        };
+        var reopen = new Button { Text = "Open TheBarcode again", AutoSize = true, Height = 42, Location = new Point(28, 125) };
+        reopen.Click += (_, _) => Program.OpenBrowser(url);
+        var close = new Button { Text = "Close TheBarcode", AutoSize = true, Height = 42, Location = new Point(390, 125) };
+        close.Click += (_, _) => Close();
+        Controls.AddRange([message, reopen, close]);
+        AcceptButton = reopen;
+        CancelButton = close;
+    }
 }
 
 internal sealed class PinDialog : Form

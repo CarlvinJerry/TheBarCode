@@ -4,7 +4,8 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 if (-not $Version) { $Version = (Get-Content -Raw -LiteralPath (Join-Path $root 'VERSION')).Trim() }
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'VERSION must use semantic versioning.' }
-$stage = Join-Path $root 'installer\stage-lite'
+$stageName = "stage-lite-$Version"
+$stage = Join-Path $root "installer\$stageName"
 $web = Join-Path $root 'apps\web'
 $driver = Join-Path $root 'installer\vendor\Xprinter-Receipt-Driver-2025.12.22.01.exe'
 $webView = Join-Path $root 'installer\vendor\MicrosoftEdgeWebView2RuntimeInstallerX64.exe'
@@ -43,11 +44,11 @@ Get-ChildItem -LiteralPath $stage -Recurse -File | Where-Object { $_.Extension -
 Copy-Item -LiteralPath $driver -Destination "$stage\driver\Xprinter-Receipt-Driver-2025.12.22.01.exe"
 Copy-Item -LiteralPath $webView -Destination "$stage\prerequisites\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"
 $iscc = Get-Command iscc.exe -ErrorAction SilentlyContinue
-if (-not $iscc) { $isccPath = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1 } else { $isccPath=$iscc.Source }
+if (-not $iscc) { $isccPath = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe","$env:USERPROFILE\AppData\Local\Programs\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1 } else { $isccPath=$iscc.Source }
 if (-not $isccPath) { throw 'Inno Setup 6 is required.' }
-& $isccPath "/DAppVersion=$Version" (Join-Path $root 'installer\DukoraLite.iss')
+& $isccPath "/DAppVersion=$Version" "/DStageDir=$stageName" (Join-Path $root 'installer\DukoraLite.iss')
 if ($LASTEXITCODE -ne 0) { throw 'Lite installer compilation failed.' }
-$installer=Join-Path $root "installer\output\TheBarcode-Setup-$Version-x64.exe"
+$installer=Join-Path $root "installer\output\TheBarcode-Lite-Setup-$Version-x64.exe"
 if (-not (Test-Path -LiteralPath $installer)) { throw 'Lite installer output was not created.' }
 Write-Host "Installer created: $installer" -ForegroundColor Green
 Write-Host "SHA256: $((Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash)" -ForegroundColor Green

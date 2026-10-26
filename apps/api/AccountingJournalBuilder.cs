@@ -5,16 +5,33 @@ namespace TheBarcode.Api;
 /// <summary>Reconciles operational source journals while preserving manual adjustments.</summary>
 public static class AccountingJournalBuilder
 {
+    static readonly SemaphoreSlim[] Gates = [new(1, 1), new(1, 1)];
+    static readonly long[] CompletedVersions = [-1, -1];
+    static readonly DateTime[] CompletedAt = [DateTime.MinValue, DateTime.MinValue];
+    static long sourceVersion;
+    public static void MarkSourceChanged() => Interlocked.Increment(ref sourceVersion);
+
     public static async Task Ensure(AppDbContext db, bool demo)
     {
-        try { await Reconcile(db, demo); }
-        catch (DbUpdateConcurrencyException)
+        var index = demo ? 1 : 0;
+        await Gates[index].WaitAsync();
+        try
         {
-            // A concurrent terminal may have refreshed the same derived journal.
-            // Never prevent the API from starting; operational accounting overview
-            // remains calculated directly from sales and expenses.
-            db.ChangeTracker.Clear();
+            var version = Interlocked.Read(ref sourceVersion);
+            if (CompletedVersions[index] == version && DateTime.UtcNow - CompletedAt[index] < TimeSpan.FromSeconds(15)) return;
+            try
+            {
+                await Reconcile(db, demo);
+                CompletedVersions[index] = version;
+                CompletedAt[index] = DateTime.UtcNow;
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                // A separate process may have reconciled the same source.
+                db.ChangeTracker.Clear();
+            }
         }
+        finally { Gates[index].Release(); }
     }
 
     public static async Task Reconcile(AppDbContext db, bool demo)
@@ -29,7 +46,7 @@ public static class AccountingJournalBuilder
         if (oldCorrections.Count > 0) await db.SaveChangesAsync();
         var entries = await db.JournalEntries.Include(x => x.Lines).Where(x => x.IsDemo == demo && x.SourceId != null && x.Status != "Superseded").ToListAsync();
         var latest = entries.GroupBy(x => x.SourceId!).ToDictionary(x => x.Key, x => x.OrderByDescending(y => y.CreatedAt).First());
-        var sales = await db.Sales.AsNoTracking().Include(x => x.Items).Include(x => x.Payments).Where(x => x.IsDemo == demo && x.Status != "Held" && x.Status != "PendingApproval" && x.Status != "Cancelled").ToListAsync();
+        var sales = await db.Sales.AsNoTracking().Include(x => x.Items).Include(x => x.Payments).AsSplitQuery().Where(x => x.IsDemo == demo && x.Status != "Held" && x.Status != "PendingApproval" && x.Status != "Cancelled").ToListAsync();
         foreach (var sale in sales)
         {
             var key = $"sale:{sale.Id}"; var lines = SaleLines(sale, accounts); AddOrCorrect(db, latest.GetValueOrDefault(key), key, "Sale", $"Sale {sale.ReceiptNumber}", sale.UpdatedAt, DateOnly.FromDateTime(sale.OccurredAt.LocalDateTime), sale.Status, lines, demo);

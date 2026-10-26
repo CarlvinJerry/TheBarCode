@@ -11,7 +11,12 @@
 *.log
 installer/stage/
 installer/stage-lite/
+installer/stage-lite-*/
 installer/output/
 installer/vendor/MicrosoftEdgeWebView2RuntimeInstallerX64.exe
 installer/vendor/postgresql-*-windows-x64.exe
 installer/install-xprinter-driver.ps1
+.build/
+installer/TheBarcode-stage.zip
+installer/TheBarcode-1.12.20*.sed
+installer/iexpress-install.*

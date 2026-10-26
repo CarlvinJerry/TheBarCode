@@ -1,18 +1,20 @@
 #ifndef AppVersion
-#define AppVersion "1.12.19"
+#define AppVersion "1.12.32"
 #endif
+#ifndef StageDir
 #define StageDir "stage-lite"
+#endif
 
 [Setup]
 AppId={{39B83C6A-CB14-46E7-94E8-4915E6AFA6E8}
-AppName=TheBarcode
+AppName=TheBarcode Lite
 AppVersion={#AppVersion}
 AppPublisher=Beyond Raw Data
 DefaultDirName={autopf}\Beyond Raw Data\TheBarcode
 UsePreviousAppDir=yes
-DefaultGroupName=TheBarcode
+DefaultGroupName=TheBarcode Lite
 OutputDir=output
-OutputBaseFilename=TheBarcode-Setup-{#AppVersion}-x64
+OutputBaseFilename=TheBarcode-Lite-Setup-{#AppVersion}-x64
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
@@ -40,16 +42,38 @@ Name: "desktopicon"; Description: "Create a TheBarcode desktop shortcut"; GroupD
 Name: "printerdriver"; Description: "Install or repair the Xprinter receipt-printer driver (uncheck to skip)"; GroupDescription: "Printer support:"
 
 [Icons]
-Name: "{group}\TheBarcode"; Filename: "{app}\TheBarcode.Desktop.exe"; IconFilename: "{app}\thebarcode.ico"
-Name: "{autodesktop}\TheBarcode"; Filename: "{app}\TheBarcode.Desktop.exe"; IconFilename: "{app}\thebarcode.ico"; Tasks: desktopicon
+Name: "{group}\TheBarcode Lite"; Filename: "{app}\TheBarcode.Desktop.exe"; IconFilename: "{app}\thebarcode.ico"
+Name: "{autodesktop}\TheBarcode Lite"; Filename: "{app}\TheBarcode.Desktop.exe"; IconFilename: "{app}\thebarcode.ico"; Tasks: desktopicon
 Name: "{group}\Install Xprinter Driver"; Filename: "{app}\Dukora.DriverInstaller.exe"; IconFilename: "{app}\thebarcode.ico"
 
 [Run]
-Filename: "{tmp}\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; Parameters: "/silent /install"; StatusMsg: "Installing the Microsoft Edge WebView2 desktop runtime..."; Flags: runhidden waituntilterminated; Check: NeedsWebView2
+; Always run the official Evergreen standalone installer. It is safe when the
+; runtime is already present and repairs incomplete/corrupt installations that
+; would otherwise be skipped by a registry-only check.
+Filename: "{tmp}\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; Parameters: "/silent /install"; StatusMsg: "Installing or repairing the Microsoft Edge WebView2 desktop runtime..."; Flags: runhidden waituntilterminated
 Filename: "{app}\Dukora.DriverInstaller.exe"; StatusMsg: "Installing Xprinter receipt-printer support..."; Flags: waituntilterminated; Tasks: printerdriver
 Filename: "{app}\TheBarcode.Desktop.exe"; Description: "Open TheBarcode"; Flags: postinstall nowait runasoriginaluser
 
 [Code]
+function InitializeSetup(): Boolean;
+var
+  NativeConfig: String;
+begin
+  Result := IsWin64;
+  if not Result then
+  begin
+    MsgBox('TheBarcode Lite requires 64-bit Windows.', mbError, MB_OK);
+    exit;
+  end;
+
+  NativeConfig := ExpandConstant('{autopf}\Beyond Raw Data\TheBarcode\server\appsettings.Production.json');
+  if FileExists(NativeConfig) then
+  begin
+    MsgBox('This computer has an existing server-edition database configuration. It will be left untouched. To avoid showing an older SQLite database as current, TheBarcode Lite setup has stopped. Back up or migrate the server-edition records before switching editions.', mbError, MB_OK);
+    Result := False;
+  end;
+end;
+
 function WebView2Installed(): Boolean;
 var
   Version: String;
@@ -66,8 +90,3 @@ begin
   Result := not WebView2Installed();
 end;
 
-function InitializeSetup(): Boolean;
-begin
-  Result := IsWin64;
-  if not Result then MsgBox('TheBarcode requires 64-bit Windows.', mbError, MB_OK);
-end;

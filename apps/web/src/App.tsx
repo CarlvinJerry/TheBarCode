@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { bootstrap, getBills, getLoginStaff, getNotifications, getOperationalOverview, getSettings, holdBill, login, refreshSession, postBill, session, syncOutbox, updateBill, verifyLocalPin } from "./api";
 import {
@@ -9,7 +9,7 @@ import {
   type Product,
   type Staff,
 } from "./db";
-import { Management } from "./Management";
+const Management=lazy(async()=>({default:(await import("./Management")).Management}));
 import { buildSaleReceipt, cachedOrganizationSettings, cachedReceiptSettings, printReceiptText } from "./receiptPrinter";
 import { enabledModules, productMeasure, profileFor } from "./industryProfiles";
 import { APP_VERSION } from "./version";
@@ -21,6 +21,7 @@ type CartLine = Product & { quantity: number };
 const DRIVE_RELEASE_FOLDER = "https://drive.google.com/drive/folders/1IzlVfcc9nDLh_mdpndCANs1ThsKDHLS9?authuser=0";
 const PRIMARY_UPDATE_MANIFEST = "https://thebarcode.beyondrawdata.com/releases/lite/latest.json";
 const FALLBACK_UPDATE_MANIFEST = "https://thebarcode.beyondrawdata.co.ke/releases/lite/latest.json";
+const GITHUB_UPDATE_MANIFEST = "https://raw.githubusercontent.com/CarlvinJerry/TheBarCode/release/release/latest.json";
 type UpdateManifest = { version: string; downloadUrl: string; sha256: string; summary?: string };
 function compareVersions(left:string,right:string){const a=left.replace(/^v/i,"").split(/[.-]/).map(x=>Number.parseInt(x,10)||0),b=right.replace(/^v/i,"").split(/[.-]/).map(x=>Number.parseInt(x,10)||0);for(let i=0;i<Math.max(a.length,b.length);i++){const difference=(a[i]||0)-(b[i]||0);if(difference)return difference}return 0}
 function validUpdateManifest(value:any): value is UpdateManifest {
@@ -34,7 +35,7 @@ async function fetchLatestUpdate():Promise<UpdateManifest|undefined>{
   // A Drive folder is a human-facing container, not a JSON endpoint. If an old
   // folder URL was saved, ignore it rather than showing a misleading failure;
   // a direct latest.json mirror can still be configured and is checked last.
-  const candidates=[PRIMARY_UPDATE_MANIFEST,FALLBACK_UPDATE_MANIFEST,configured].filter((x,i,a):x is string=>typeof x==="string"&&!isDriveFolderUrl(x)&&a.indexOf(x)===i);
+  const candidates=[PRIMARY_UPDATE_MANIFEST,FALLBACK_UPDATE_MANIFEST,GITHUB_UPDATE_MANIFEST,configured].filter((x,i,a):x is string=>typeof x==="string"&&!isDriveFolderUrl(x)&&a.indexOf(x)===i);
   let latest:UpdateManifest|undefined;
   for(const candidate of candidates){try{const parsed=new URL(candidate);if(parsed.protocol!=="https:")continue;const response=await fetch(parsed,{cache:"no-store"});if(!response.ok)continue;const manifest=await response.json();if(validUpdateManifest(manifest)&&(!latest||compareVersions(manifest.version,latest.version)>0))latest=manifest}catch{}}
   return latest;
@@ -47,6 +48,7 @@ export default function App() {
     useLiveQuery(() => db.products.toArray(), []) ?? [];
   const staff = useLiveQuery(() => db.staff.toArray(), []) ?? [];
   const customers = useLiveQuery(() => db.customers.toArray(), []) ?? [];
+  const pendingStockRows = useLiveQuery(() => db.outbox.filter(row=>row.type==='stock'||row.type==='product-create').toArray(), []) ?? [];
   const queued = useLiveQuery(() => db.outbox.count(), []) ?? 0;
   const [user, setUser] = useState(session.user),
     [view, setView] = useState("Sell"),
@@ -87,6 +89,13 @@ export default function App() {
       localStorage.getItem("sidebar_collapsed") === "true",
     );
   const notificationRequest=useRef(0);
+  const pendingIncreases=new Map<string,number>();
+  for(const row of pendingStockRows)if(Boolean(row.payload?.isDemo)===Boolean(user?.isDemo)){
+    const productId=String(row.type==='stock'?row.payload?.productId:row.payload?.id||'');
+    const change=Number(row.type==='stock'?row.payload?.quantityChange:row.payload?.stock||0);
+    if(productId&&change>0)pendingIncreases.set(productId,(pendingIncreases.get(productId)||0)+change);
+  }
+  const readyStock=(product:Product)=>Math.max(0,product.stock-(pendingIncreases.get(product.id)||0));
   const notificationFingerprint=JSON.stringify(Object.values(notifications.Details||{}).flat().map((x:any)=>[x.id,x.status,x.stock,x.minStock,x.balance,x.total]));
   const notificationsSeen=Boolean(notificationFingerprint)&&seenNotificationFingerprint===notificationFingerprint;
   const attention=notifications;
@@ -101,6 +110,7 @@ export default function App() {
     addEventListener("offline", change);
     const navigationChanged=(event:Event)=>setNavigationLayout((event as CustomEvent<string>).detail);const lockDurationChanged=(event:Event)=>setLockDurationMinutes(Number((event as CustomEvent<number>).detail)||5);const industryChanged=(event:Event)=>{const next=(event as CustomEvent<any>).detail;setOrganizationProfile(next);const modules=enabledModules(next.enabledModules);setView(current=>(current==="Production"&&!modules.has("production"))||(current==="Reports"&&!modules.has("reports"))||(current==="Accounting"&&!modules.has("accounting"))||(current==="Smart Insights"&&!modules.has("ai"))?"Dashboard":current)};addEventListener("dukora:navigation-layout",navigationChanged);addEventListener("thebarcode:lock-duration",lockDurationChanged);addEventListener("dukora:industry-profile",industryChanged);
     let refreshTimer=0;const dataChanged=()=>{clearTimeout(refreshTimer);refreshTimer=window.setTimeout(()=>bootstrap().catch(()=>0),80)};addEventListener("thebarcode:data-changed",dataChanged);
+    const syncFailed=(event:Event)=>{const detail=(event as CustomEvent<{message:string}>).detail;if(detail?.message)setMessage(`Stock update rejected: ${detail.message}`)};addEventListener("thebarcode:sync-failed",syncFailed);
     const timer = setInterval(() => syncOutbox().catch(() => 0), 15000);
     return () => {
       removeEventListener("online", change);
@@ -109,6 +119,7 @@ export default function App() {
       removeEventListener("thebarcode:lock-duration",lockDurationChanged);
       removeEventListener("dukora:industry-profile",industryChanged);
       removeEventListener("thebarcode:data-changed",dataChanged);clearTimeout(refreshTimer);
+      removeEventListener("thebarcode:sync-failed",syncFailed);
       clearInterval(timer);
     };
   }, []);
@@ -122,8 +133,8 @@ export default function App() {
   },[user?.id,locked,lockDurationMinutes]);
   useEffect(()=>{if(!user)return;void getSettings().then(settings=>{if(!settings?.organization)return;setOrganizationProfile(settings.organization);localStorage.setItem("organization_profile",JSON.stringify(settings.organization))}).catch(()=>0)},[user?.id]);
   useEffect(()=>{if(!user)return;const refreshProfile=()=>{void getSettings().then(settings=>{if(settings?.organization){setOrganizationProfile(settings.organization);localStorage.setItem("organization_profile",JSON.stringify(settings.organization))}}).catch(()=>0)};addEventListener("thebarcode:data-changed",refreshProfile);return()=>removeEventListener("thebarcode:data-changed",refreshProfile)},[user?.id]);
-  useEffect(()=>{if(!user)return;const refresh=async()=>{const request=++notificationRequest.current;try{const current=await getNotifications();if(request===notificationRequest.current)setNotifications(current)}catch{}};const attention=()=>void refresh();const visible=()=>{if(document.visibilityState==="visible")void refresh()};addEventListener("dukora:attention",attention);addEventListener("focus",attention);document.addEventListener("visibilitychange",visible);void refresh();const timer=setInterval(refresh,10000);return()=>{removeEventListener("dukora:attention",attention);removeEventListener("focus",attention);document.removeEventListener("visibilitychange",visible);clearInterval(timer)}},[user?.id]);
-  useEffect(()=>{if(!user)return;let active=true;const refreshAccess=async()=>{try{const updated=await refreshSession();if(active)setUser((current:any)=>current?{...current,...updated}:current)}catch{}};const timer=setInterval(refreshAccess,15000);addEventListener("focus",refreshAccess);return()=>{active=false;removeEventListener("focus",refreshAccess);clearInterval(timer)}},[user?.id]);
+  useEffect(()=>{if(!user)return;let busy=false;const refresh=async()=>{if(busy||document.visibilityState!=="visible")return;busy=true;const request=++notificationRequest.current;try{const current=await getNotifications();if(request===notificationRequest.current)setNotifications(current)}catch{}finally{busy=false}};const attention=()=>void refresh();const visible=()=>{if(document.visibilityState==="visible")void refresh()};addEventListener("dukora:attention",attention);addEventListener("thebarcode:data-changed",attention);addEventListener("focus",attention);document.addEventListener("visibilitychange",visible);void refresh();const timer=setInterval(attention,30000);return()=>{removeEventListener("dukora:attention",attention);removeEventListener("thebarcode:data-changed",attention);removeEventListener("focus",attention);document.removeEventListener("visibilitychange",visible);clearInterval(timer)}},[user?.id]);
+  useEffect(()=>{if(!user)return;let active=true,busy=false;const refreshAccess=async()=>{if(busy||document.visibilityState!=="visible")return;busy=true;try{const updated=await refreshSession();if(active)setUser((current:any)=>current?{...current,...updated}:current)}catch{}finally{busy=false}};const timer=setInterval(refreshAccess,60000);addEventListener("focus",refreshAccess);return()=>{active=false;removeEventListener("focus",refreshAccess);clearInterval(timer)}},[user?.id]);
   useEffect(()=>{if(!user)return;let active=true;let timer:number|undefined;const check=()=>{if(!navigator.onLine)return;timer=window.setTimeout(()=>{void fetchLatestUpdate().then(latest=>{if(active&&latest&&compareVersions(latest.version,APP_VERSION)>0)setLoginUpdate(latest)}).catch(()=>0)},900)};check();addEventListener("online",check);return()=>{active=false;if(timer)clearTimeout(timer);removeEventListener("online",check)}},[user?.id]);
   useEffect(()=>{if(!message)return;const timer=setTimeout(()=>setMessage(""),5000);return()=>clearTimeout(timer)},[message]);
   useEffect(()=>{if(seenNotificationFingerprint)localStorage.setItem("notification_seen",seenNotificationFingerprint)},[seenNotificationFingerprint]);
@@ -146,16 +157,18 @@ export default function App() {
   );
   async function unlock(e:React.FormEvent){e.preventDefault();setLockError("");if(!lockStaffId){setLockError("Choose a staff account to unlock this session.");return}try{const signedIn=await login(lockStaffId,lockPin);setUser(signedIn);setLocked(false);setLockPin("");activityRef.current=Date.now();try{await bootstrap();setMessage(`Welcome back, ${signedIn.name}`)}catch{setMessage(`Welcome back, ${signedIn.name}. Using cached data until the server reconnects.`)}}catch(error){const networkFailure=!navigator.onLine||/failed to fetch|network|connection|refused|unavailable/i.test(String(error));const current=session.user;const localMatch=Boolean(current&&current.id===lockStaffId&&await verifyLocalPin(lockStaffId,lockPin));if(networkFailure&&localMatch){setLocked(false);setLockPin("");activityRef.current=Date.now();setMessage(`Unlocked offline, ${current!.name}. Changes will sync when the server reconnects.`);return}setLockError(error instanceof Error&&error.message?error.message:"Unable to unlock. Check the staff PIN and connection.")}}
   if (!user) return <Login staff={staff} onLogin={setUser} message={message} />;
-  const add = (p: Product) => setCart((c) => {const current=c.find(x=>x.id===p.id)?.quantity||0;if(current>=p.stock){setMessage(`${p.name} is limited to ${p.stock} available unit${p.stock===1?"":"s"}`);return c}return c.some(x=>x.id===p.id)?c.map(x=>x.id===p.id?{...x,quantity:Math.min(p.stock,x.quantity+1)}:x):[...c,{...p,quantity:1}]});
+  const add = (p: Product) => setCart((c) => {const current=c.find(x=>x.id===p.id)?.quantity||0,available=readyStock(p);if(current>=available){setMessage(`${p.name} has ${available} confirmed unit${available===1?"":"s"} available. Pending intakes must reach the local server first.`);return c}return c.some(x=>x.id===p.id)?c.map(x=>x.id===p.id?{...x,quantity:Math.min(available,x.quantity+1)}:x):[...c,{...p,quantity:1}]});
   const qty = (id: string, d: number) =>
     setCart((c) =>
       c
-        .map((x) => (x.id === id ? { ...x, quantity: Math.max(0,Math.min(x.stock,x.quantity + d)) } : x))
+        .map((x) => (x.id === id ? { ...x, quantity: Math.max(0,Math.min(readyStock(products.find(p=>p.id===id)||x),x.quantity + d)) } : x))
         .filter((x) => x.quantity > 0),
     );
   const billPayload=()=>({deviceTransactionId:activeBill?.deviceTransactionId||draftTransactionId,customerId:selectedCustomer?.id,staffId:user.id,discount:0,notes:"POS order",expectedDeliveryAt:expectedDeliveryAt?new Date(`${expectedDeliveryAt}T12:00:00`).toISOString():undefined,assignedStaffId:assignedStaffId||undefined,deviceId:localStorage.getItem("device_id")??"windows-pos-01",items:cart.map(x=>({productId:x.id,quantity:x.quantity,unitPrice:x.sellingPrice,discount:0}))});
   async function ensureHeld(openPrint=false){
     if(!cart.length)return;
+    const unavailable=cart.find(line=>line.quantity>readyStock(products.find(p=>p.id===line.id)||line));
+    if(unavailable){const reason=`${unavailable.name} has fewer confirmed units than this order needs. Check pending stock updates in Inventory.`;setOrderFailure(reason);setMessage(reason);return;}
     try{
       const saved=activeBill?await updateBill(activeBill.id,{...billPayload(),reason:"Updated from active POS order",expectedRevision:activeBill.revision}):await holdBill(billPayload());setActiveBill(saved);setOrderFailure("");dispatchEvent(new Event("dukora:attention"));
       const unpaid=buildSaleReceipt({id:String(saved.receiptNumber||saved.deviceTransactionId),dailyOrderNumber:saved.dailyOrderNumber,walkInNumber:saved.walkInNumber,customerName:selectedCustomer?.name||"Walk-in customer",cashierName:user.name,method:"Unpaid",status:"UNPAID",credit:true,items:cart.filter(x=>x.itemType!=="AddOn").map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
@@ -222,7 +235,7 @@ export default function App() {
   }
   const primaryViews=["Sell","Dashboard","Bills","Orders","Inventory"];
   const institutionModules=enabledModules(organizationProfile.enabledModules||(organizationProfile as any).EnabledModules),industry=profileFor(organizationProfile.industryProfile||(organizationProfile as any).IndustryProfile);
-  const menuGroups={Operations:["Expense",...(institutionModules.has("accounting")?["Accounting"]:[]),...(institutionModules.has("production")?["Production"]:[]),...(institutionModules.has("inventory")?["Purchasing","Stocktake"]:[]),...(institutionModules.has("reports")?["Reports"]:[]),"Audit trail"],"Data & Setup":["Customers","Staff & Roles","Item Setup"]};
+  const menuGroups={Operations:["Expense",...(institutionModules.has("accounting")?["Accounting"]:[]),...(institutionModules.has("production")?["Production"]:[]),...(institutionModules.has("inventory")?["Purchasing","Stocktake"]:[]),...(institutionModules.has("reports")?["Reports"]:[]),"Audit trail",...(user?.role==="Owner"||user?.role==="Manager"?["System logs"]:[])],"Data & Setup":["Customers","Staff & Roles","Item Setup"]};
   const alertKeys:Record<string,string>={Bills:"Bills",Inventory:"Inventory",Customers:"Customers",Expenses:"Expenses",Expense:"Expenses","Audit trail":"AuditTrail",Settings:"Settings"};
   const today = new Intl.DateTimeFormat("en-GB", {
     weekday: "long",
@@ -306,8 +319,8 @@ export default function App() {
             <h1>{pageTitle}</h1>
           </div>
           <div className="status">
-            <span className={online ? "online" : "offline"}>
-              {online ? "● Online" : "● Offline ready"} · {queued} queued
+            <span className={online ? "online" : "offline"} title="Local stock and sales save to this device even without Internet. Queued changes are sent to the local server when available.">
+              {online ? "● Internet available" : "● No Internet · local mode"} · {queued} queued
             </span>
             <button className="notification-bell" aria-expanded={alertsOpen} onClick={()=>setAlertsOpen(open=>{if(!open&&notificationFingerprint)setSeenNotificationFingerprint(notificationFingerprint);return !open})} aria-label="Open notifications"><Icon name="Bell" size={18}/>{!notificationsSeen&&Number(notifications.Total||0)>0&&<em>{notifications.Total}</em>}</button>
             {alertsOpen&&<div className="notification-panel" role="dialog" aria-label="Active notifications"><div className="notification-heading"><span><small>NOTIFICATIONS</small><h3>Active conditions</h3></span><b>{notifications.Total||0}</b></div>{Number(notifications.Total||0)>0&&<p className="notification-guidance">Opening clears the bell badge. Unresolved work stays visible here and on its menu until the underlying record is addressed.</p>}{Number(notifications.Approvals||0)>0&&<button onClick={()=>{setView("Bills");setAlertsOpen(false)}}><b>{notifications.Approvals} approval requests</b><small>{notifications.Details?.approvals?.slice(0,2).map((x:any)=>x.label).join(" · ")||"Held-bill changes need review"}</small><i>Review →</i></button>}{Number(notifications.Bills||0)>0&&<button onClick={()=>{setView("Bills");setAlertsOpen(false)}}><b>{notifications.Bills} unresolved bills</b><small>{notifications.Details?.bills?.slice(0,3).map((x:any)=>`${x.label} ${x.status}`).join(" · ")}</small><i>Open bills →</i></button>}{Number(notifications.Inventory||0)>0&&<button onClick={()=>{setView("Inventory");setAlertsOpen(false)}}><b>{notifications.Inventory} stock alerts</b><small>{notifications.Details?.inventory?.slice(0,3).map((x:any)=>x.label).join(" · ")}</small><i>Review stock →</i></button>}{Number(notifications.Expenses||0)>0&&<button onClick={()=>{setView("Expense");setAlertsOpen(false)}}><b>{notifications.Expenses} unpaid expenses</b><small>{notifications.Details?.expenses?.slice(0,3).map((x:any)=>x.label).join(" · ")}</small><i>Open expenses →</i></button>}{Number(notifications.Total||0)===0&&<p className="notification-empty">All caught up. No unresolved issues.</p>}</div>}
@@ -356,9 +369,9 @@ export default function App() {
               </div>
               <div className="products">
                 {filtered.map((p) => (
-                  <button className={p.stock<=0?"out-of-stock":""} disabled={p.stock<=0} onClick={() => add(p)} key={p.id}>
+                  <button className={readyStock(p)<=0?"out-of-stock":""} disabled={readyStock(p)<=0} onClick={() => add(p)} key={p.id}>
                     <span
-                      className={`tile ${p.stock <= p.minStock ? "low" : ""}`}
+                      className={`tile ${readyStock(p) <= p.minStock ? "low" : ""}`}
                     >
                       {p.name.slice(0, 2).toUpperCase()}
                     </span>
@@ -370,8 +383,9 @@ export default function App() {
                     </span>
                     <span className="product-price">
                       <strong>{money(p.sellingPrice)}</strong>
-                      <em>{p.stock} in stock</em>
-                      {p.stock<=0&&<em className="stock-out-label">Out of stock</em>}
+                      <em>{readyStock(p)} ready to sell</em>
+                      {(pendingIncreases.get(p.id)||0)>0&&<em className="stock-out-label">{pendingIncreases.get(p.id)} stock pending</em>}
+                      {readyStock(p)<=0&&(pendingIncreases.get(p.id)||0)===0&&<em className="stock-out-label">Out of stock</em>}
                     </span>
                   </button>
                 ))}
@@ -459,6 +473,7 @@ export default function App() {
             </section>
           </div>
         ) : (
+          <Suspense fallback={<div className="spec-page" role="status">Opening {view}…</div>}>
             <Management
             view={view}
             products={visibleProducts}
@@ -466,6 +481,7 @@ export default function App() {
             notify={setMessage}
             navigate={setView}
           />
+          </Suspense>
         )}{" "}
       </main>
       {message && (
@@ -650,6 +666,8 @@ function CustomerPicker({
               Credit limit
               <input
                 type="number"
+                min="0"
+                step="0.01"
                 value={form.creditLimit}
                 onChange={(e) =>
                   setForm({ ...form, creditLimit: +e.target.value })
