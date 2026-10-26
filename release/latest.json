@@ -1,11 +1,11 @@
 {
-  "version": "1.12.34",
+  "version": "1.12.36",
   "channel": "lite-windows",
   "edition": "Lite",
-  "summary": "TheBarcode Lite 1.12.34 adds a public GitHub update fallback. The app checks when the Owner signs in and when internet connectivity returns, shows a short release summary, and verifies the installer checksum before installation.",
-  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.34/TheBarcode-Lite-Setup-1.12.34-x64.exe",
-  "sha256": "325d610ca038d1392363581355c6fcac4adac5c66668f2f10e3876246e44a631",
+  "summary": "TheBarcode Lite 1.12.36: fix(ci): write manifest after release checkout",
+  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.36/TheBarcode-Lite-Setup-1.12.36-x64.exe",
+  "sha256": "74e74005209b2c76c2a20ddcf11c073a1d01f0441f2d4aafdb383ffeee8f762b",
   "notes": [
-    "TheBarcode Lite 1.12.34 adds a public GitHub update fallback. The app checks when the Owner signs in and when internet connectivity returns, shows a short release summary, and verifies the installer checksum before installation."
+    "TheBarcode Lite 1.12.36: fix(ci): write manifest after release checkout"
   ]
 }
