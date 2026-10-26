@@ -248,9 +248,29 @@ internal sealed class DukoraWindow : Form
             if(!Uri.TryCreate(command.DownloadUrl,UriKind.Absolute,out var download)||download.Scheme!="https"||!TrustedReleaseHost(download.Host))throw new InvalidOperationException("The release URL is not an approved HTTPS release host.");
             if(string.IsNullOrWhiteSpace(command.Sha256)||command.Sha256.Length!=64)throw new InvalidOperationException("The release manifest does not contain a valid SHA-256 checksum.");
             var updates=Path.Combine(paths.Root,"Updates");Directory.CreateDirectory(updates);var installer=Path.Combine(updates,$"TheBarcode-Setup-{SafeVersion(command.Version??"update")}-x64.exe");
-            using(var client=new HttpClient{Timeout=TimeSpan.FromMinutes(15)})await using(var input=await client.GetStreamAsync(download))await using(var output=File.Create(installer)){await input.CopyToAsync(output);}
+            ReportUpdateProgress(0,0,"Connecting to update service");
+            using(var client=new HttpClient{Timeout=TimeSpan.FromMinutes(15)})
+            using(var response=await client.GetAsync(download,HttpCompletionOption.ResponseHeadersRead))
+            {
+                response.EnsureSuccessStatusCode();
+                var total=response.Content.Headers.ContentLength??0;
+                await using var input=await response.Content.ReadAsStreamAsync();
+                await using var output=File.Create(installer);
+                var buffer=new byte[128*1024];long received=0,lastReported=0;
+                ReportUpdateProgress(0,total,"Downloading update");
+                while(true)
+                {
+                    var count=await input.ReadAsync(buffer);
+                    if(count==0)break;
+                    await output.WriteAsync(buffer.AsMemory(0,count));received+=count;
+                    if(received-lastReported>=1024*1024||(total>0&&received>=total)){ReportUpdateProgress(received,total,"Downloading update");lastReported=received;}
+                }
+            }
+            ReportUpdateProgress(0,0,"Verifying update");
             await using(var stream=File.OpenRead(installer)){var actual=Convert.ToHexString(await SHA256.HashDataAsync(stream));if(!actual.Equals(command.Sha256,StringComparison.OrdinalIgnoreCase)){File.Delete(installer);throw new InvalidOperationException("The downloaded installer failed checksum verification and was deleted.");}}
+            ReportUpdateProgress(0,0,"Backing up business data");
             if(File.Exists(paths.DatabaseFile)){Directory.CreateDirectory(paths.BackupDir);File.Copy(paths.DatabaseFile,Path.Combine(paths.BackupDir,$"thebarcode-before-update-{DateTime.Now:yyyyMMdd-HHmmss}.db"),true);}
+            ReportUpdateProgress(100,100,"Starting installer");
             Reply(true,$"TheBarcode {command.Version} verified. Windows will now request permission to install it.");
             Process.Start(new ProcessStartInfo(installer,"/SILENT /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS"){UseShellExecute=true,Verb="runas",WorkingDirectory=updates});
             await Task.Delay(700);BeginInvoke(Application.Exit);
@@ -258,6 +278,10 @@ internal sealed class DukoraWindow : Form
         catch(Exception ex){await File.AppendAllTextAsync(paths.DesktopLog,$"{DateTimeOffset.Now:O} Update failed: {ex}{Environment.NewLine}");Reply(false,ex.Message);}
     }
     void Reply(bool ok,string message,string type="dukoraUpdate")=>browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new{type,ok,message}));
+    void ReportUpdateProgress(long received,long total,string status)
+    {
+        try{browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new{type="dukoraUpdateProgress",receivedBytes=received,totalBytes=total,status}));}catch{}
+    }
     static bool TrustedReleaseHost(string host)=>host.Equals("beyondrawdata.com",StringComparison.OrdinalIgnoreCase)||host.EndsWith(".beyondrawdata.com",StringComparison.OrdinalIgnoreCase)||host.Equals("beyondrawdata.co.ke",StringComparison.OrdinalIgnoreCase)||host.EndsWith(".beyondrawdata.co.ke",StringComparison.OrdinalIgnoreCase)||host.Equals("drive.google.com",StringComparison.OrdinalIgnoreCase)||host.Equals("drive.usercontent.google.com",StringComparison.OrdinalIgnoreCase)||host.Equals("github.com",StringComparison.OrdinalIgnoreCase)||host.Equals("release-assets.githubusercontent.com",StringComparison.OrdinalIgnoreCase)||host.Equals("objects.githubusercontent.com",StringComparison.OrdinalIgnoreCase);
     static string SafeVersion(string value)=>string.Concat(value.Where(x=>char.IsAsciiLetterOrDigit(x)||x is '.' or '-' or '_'));
     sealed record DesktopCommand(string Command,string? Version,string? DownloadUrl,string? Sha256,string? FileName);
