@@ -89,6 +89,18 @@ export default function App() {
       localStorage.getItem("sidebar_collapsed") === "true",
     );
   const notificationRequest=useRef(0);
+  const [updateDownload,setUpdateDownload]=useState<{status:string;receivedBytes:number;totalBytes:number}>();
+  useEffect(()=>{
+    const desktop=(window as any).chrome?.webview;
+    const receive=(event:any)=>{
+      const result=event.data;
+      if(result?.type==="dukoraUpdateProgress"){setUpdateDownload({status:String(result.status||"Downloading update"),receivedBytes:Number(result.receivedBytes)||0,totalBytes:Number(result.totalBytes)||0});return}
+      if(result?.type==="dukoraUpdate"){if(result.ok)setUpdateDownload({status:"Starting installer",receivedBytes:0,totalBytes:0});else setUpdateDownload(undefined)}
+    };
+    const localProgress=(event:Event)=>{const detail=(event as CustomEvent).detail;if(detail)setUpdateDownload({status:String(detail.status||"Preparing update"),receivedBytes:Number(detail.receivedBytes)||0,totalBytes:Number(detail.totalBytes)||0})};
+    desktop?.addEventListener("message",receive);addEventListener("thebarcode:update-progress",localProgress);
+    return()=>{desktop?.removeEventListener("message",receive);removeEventListener("thebarcode:update-progress",localProgress)};
+  },[]);
   const pendingIncreases=new Map<string,number>();
   for(const row of pendingStockRows)if(Boolean(row.payload?.isDemo)===Boolean(user?.isDemo)){
     const productId=String(row.type==='stock'?row.payload?.productId:row.payload?.id||'');
@@ -489,6 +501,7 @@ export default function App() {
           {message}
         </div>
       )}
+      {updateDownload&&<aside className="update-download-progress" role="status" aria-live="polite"><div className="update-download-progress__heading"><span className="update-download-progress__dot"/><strong>TheBarcode update</strong><small>{updateDownload.status}{updateDownload.totalBytes>0?` · ${Math.min(100,Math.floor(updateDownload.receivedBytes/updateDownload.totalBytes*100))}%`:""}</small></div><div className="update-download-progress__track" role="progressbar" aria-label="Update download progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={updateDownload.totalBytes>0?Math.min(100,Math.floor(updateDownload.receivedBytes/updateDownload.totalBytes*100)):undefined}><i className={updateDownload.totalBytes>0?"":"is-indeterminate"} style={updateDownload.totalBytes>0?{width:`${Math.min(100,Math.floor(updateDownload.receivedBytes/updateDownload.totalBytes*100))}%`}:undefined}/></div></aside>}
       {urgency&&<div className="urgency-popover" role="status"><strong>{urgency.title}</strong><p>{urgency.text}</p><div className="button-row"><button onClick={()=>{localStorage.setItem("urgency_dismissed",urgency.key);setUrgency(undefined)}}>Dismiss</button><button onClick={()=>{setView(urgency.view);setUrgency(undefined)}}>Review now</button></div></div>}
       <RuleAssistant open={assistantOpen} onToggle={()=>setAssistantOpen(x=>!x)} view={view} notifications={notifications} products={visibleProducts} onNavigate={setView} loadOverview={getOperationalOverview}/>
       {customerOpen && (
