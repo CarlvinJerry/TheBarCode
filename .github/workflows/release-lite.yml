@@ -59,7 +59,7 @@ jobs:
           $tagRange = if ($latestTag -and (git rev-parse --verify "refs/tags/$latestTag" 2>$null)) { "$latestTag..$env:GITHUB_SHA" } else { $env:GITHUB_SHA }
           $subjects = @(git log $tagRange --format=%s)
           $summaryParts = @($subjects | Where-Object { $_ -and $_ -notmatch '^(chore\(release\):|Publish Lite update manifest|ci:)' } | Select-Object -First 3)
-          $summary = if ($summaryParts.Count) { "TheBarcode Lite $version: " + ($summaryParts -join '; ') } else { "TheBarcode Lite $version includes improvements and fixes." }
+          $summary = if ($summaryParts.Count) { "TheBarcode Lite ${version}: " + ($summaryParts -join '; ') } else { "TheBarcode Lite $version includes improvements and fixes." }
           "version=$version" >> $env:GITHUB_OUTPUT
           "tag=v$version" >> $env:GITHUB_OUTPUT
           "summary=$summary" >> $env:GITHUB_OUTPUT
