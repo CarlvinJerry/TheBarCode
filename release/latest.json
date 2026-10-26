@@ -1,11 +1,11 @@
 {
-  "version": "1.12.36",
+  "version": "1.12.37",
   "channel": "lite-windows",
   "edition": "Lite",
-  "summary": "TheBarcode Lite 1.12.36: fix(ci): write manifest after release checkout",
-  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.36/TheBarcode-Lite-Setup-1.12.36-x64.exe",
-  "sha256": "74e74005209b2c76c2a20ddcf11c073a1d01f0441f2d4aafdb383ffeee8f762b",
+  "summary": "TheBarcode Lite 1.12.37: feat(updates): show download progress; fix(updates): refresh update check when app regains focus",
+  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.37/TheBarcode-Lite-Setup-1.12.37-x64.exe",
+  "sha256": "6dc5b6fce2f66d7c8baf94189fb2709e5dcfa7f5fc85cf832cb60f848479760e",
   "notes": [
-    "TheBarcode Lite 1.12.36: fix(ci): write manifest after release checkout"
+    "TheBarcode Lite 1.12.37: feat(updates): show download progress; fix(updates): refresh update check when app regains focus"
   ]
 }

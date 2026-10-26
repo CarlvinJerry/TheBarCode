@@ -1,4 +1,4 @@
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.36";
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.12.37";
 export const APP_CHANNEL = "lite-windows";
 export const RELEASE_NOTES = [
   "The app now checks the public GitHub release channel when the Owner signs in or internet returns, then shows the version summary; the installer is checksum-verified before setup.",
@@ -147,4 +147,5 @@ export const RELEASE_NOTES = [
   "Offline sales, customers and stock synchronization outbox",
   "Multi-terminal institution, outlet and device preparation",
 ];
+
 
