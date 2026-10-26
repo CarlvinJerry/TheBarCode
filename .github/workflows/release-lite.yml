@@ -112,7 +112,6 @@ jobs:
             sha256 = $sha256
             notes = @($summary)
           }
-          $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath 'release/latest.json' -Encoding utf8
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           $remoteRelease = git ls-remote --heads origin refs/heads/release
