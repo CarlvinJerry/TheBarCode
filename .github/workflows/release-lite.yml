@@ -7,7 +7,6 @@ on:
       - release/latest.json
       - docs/**
       - README.md
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -26,21 +25,20 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Read and validate release version
+      - name: Calculate the next patch version
         id: version
         shell: pwsh
         run: |
-          $version = (Get-Content -Raw VERSION).Trim()
-          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'VERSION must be MAJOR.MINOR.PATCH.' }
-          $current = [version]::Parse($version)
+          $currentText = (Get-Content -Raw VERSION).Trim()
+          if ($currentText -notmatch '^\d+\.\d+\.\d+$') { throw 'VERSION must use MAJOR.MINOR.PATCH.' }
           $latestTag = gh release list --limit 1 --json tagName | ConvertFrom-Json | Select-Object -First 1 -ExpandProperty tagName -ErrorAction SilentlyContinue
-          $previousVersions = @()
+          $publishedVersions = @()
           if ($latestTag -match '^v(\d+\.\d+\.\d+)$') {
-            $previousVersions += [version]::Parse($Matches[1])
+            $publishedVersions += [version]::Parse($Matches[1])
           }
           if (Test-Path -LiteralPath 'release/latest.json') {
             $localFeed = Get-Content -Raw 'release/latest.json' | ConvertFrom-Json
-            if ($localFeed.version -match '^\d+\.\d+\.\d+$') { $previousVersions += [version]::Parse($localFeed.version) }
+            if ($localFeed.version -match '^\d+\.\d+\.\d+$') { $publishedVersions += [version]::Parse($localFeed.version) }
           }
           $releaseRef = git ls-remote --heads origin refs/heads/release
           if ($LASTEXITCODE -eq 0 -and $releaseRef) {
@@ -49,15 +47,22 @@ jobs:
             $feedJson = git show origin/release:release/latest.json
             if ($LASTEXITCODE -eq 0 -and $feedJson) {
               $feed = ($feedJson -join "`n") | ConvertFrom-Json
-              if ($feed.version -match '^\d+\.\d+\.\d+$') { $previousVersions += [version]::Parse($feed.version) }
+              if ($feed.version -match '^\d+\.\d+\.\d+$') { $publishedVersions += [version]::Parse($feed.version) }
             }
           }
-          if ($previousVersions.Count -gt 0) {
-            $latest = $previousVersions | Sort-Object -Descending | Select-Object -First 1
-            if ($current -le $latest) { throw "VERSION $version must be greater than the current published version $latest. Continue from VERSION; do not restart numbering." }
+          if ($publishedVersions.Count -gt 0) {
+            $base = $publishedVersions | Sort-Object -Descending | Select-Object -First 1
+          } else {
+            $base = [version]::Parse($currentText)
           }
+          $version = '{0}.{1}.{2}' -f $base.Major, $base.Minor, ($base.Build + 1)
+          $tagRange = if ($latestTag -and (git rev-parse --verify "refs/tags/$latestTag" 2>$null)) { "$latestTag..$env:GITHUB_SHA" } else { $env:GITHUB_SHA }
+          $subjects = @(git log $tagRange --format=%s)
+          $summaryParts = @($subjects | Where-Object { $_ -and $_ -notmatch '^(chore\(release\):|Publish Lite update manifest|ci:)' } | Select-Object -First 3)
+          $summary = if ($summaryParts.Count) { "TheBarcode Lite $version: " + ($summaryParts -join '; ') } else { "TheBarcode Lite $version includes improvements and fixes." }
           "version=$version" >> $env:GITHUB_OUTPUT
           "tag=v$version" >> $env:GITHUB_OUTPUT
+          "summary=$summary" >> $env:GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -92,12 +97,11 @@ jobs:
           $installer = "installer/output/TheBarcode-Lite-Setup-$version-x64.exe"
           if (-not (Test-Path -LiteralPath $installer)) { throw "Installer artifact missing: $installer" }
           $sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
-          if (Test-Path -LiteralPath 'release/summary.txt') { $summary = (Get-Content -Raw 'release/summary.txt').Trim() }
-          else { $summary = (git log -1 --format=%s $env:GITHUB_SHA).Trim() }
-          if (-not $summary) { $summary = "TheBarcode Lite $version release." }
+          $summary = $env:RELEASE_SUMMARY
+          $releaseSourceSha = $env:GITHUB_SHA
           $notesPath = Join-Path $env:RUNNER_TEMP 'thebarcode-release-notes.md'
-          Set-Content -LiteralPath $notesPath -Value $summary -Encoding utf8
-          gh release create $tag $installer --title "TheBarcode Lite $version" --notes-file $notesPath
+          Set-Content -LiteralPath $notesPath -Value "$summary`n`nSource commit: $env:GITHUB_SHA`nRelease source: $releaseSourceSha" -Encoding utf8
+          gh release create $tag $installer --title "TheBarcode Lite $version" --notes-file $notesPath --target $releaseSourceSha
           if ($LASTEXITCODE -ne 0) { throw "GitHub release $tag could not be published." }
           $manifest = [ordered]@{
             version = $version
@@ -117,18 +121,26 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Could not fetch the release branch.' }
             git checkout -B release origin/release
             if ($LASTEXITCODE -ne 0) { throw 'Could not switch to the release branch.' }
-            git merge --no-ff $env:GITHUB_SHA -m "Release TheBarcode Lite $version"
+            git merge --no-ff $releaseSourceSha -m "Release TheBarcode Lite $version"
             if ($LASTEXITCODE -ne 0) { throw 'Could not promote the built develop revision to release.' }
           } else {
-            git checkout -b release $env:GITHUB_SHA
+            git checkout -b release $releaseSourceSha
             if ($LASTEXITCODE -ne 0) { throw 'Could not create the release branch from develop.' }
           }
+          $version = '${{ steps.version.outputs.version }}'
+          Set-Content -LiteralPath 'VERSION' -Value $version -NoNewline -Encoding utf8
+          $source = Get-Content -Raw -LiteralPath 'apps/web/src/version.ts'
+          $line = 'export const APP_VERSION = import.meta.env.VITE_APP_VERSION || "' + $version + '";'
+          $source = [regex]::new('export const APP_VERSION = import\.meta\.env\.VITE_APP_VERSION \|\| "[^"]+";').Replace($source, $line, 1)
+          Set-Content -LiteralPath 'apps/web/src/version.ts' -Value $source -Encoding utf8
           $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath 'release/latest.json' -Encoding utf8
           git add release/latest.json
-          git commit -m "Publish Lite update manifest $version"
+          git add VERSION apps/web/src/version.ts
+          git commit -m "Release TheBarcode Lite $version"
           if ($LASTEXITCODE -ne 0) { throw 'Could not commit the latest update manifest.' }
           git push origin HEAD:release
           if ($LASTEXITCODE -ne 0) { throw 'Could not publish latest.json to the release branch.' }
           "sha256=$sha256" >> $env:GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_SUMMARY: ${{ steps.version.outputs.summary }}

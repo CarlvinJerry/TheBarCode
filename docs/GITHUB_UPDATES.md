@@ -8,10 +8,9 @@ Work on `develop`. A push there starts the release workflow. After it successful
 
 ## Publishing an update
 
-1. Bump `VERSION` to a new `MAJOR.MINOR.PATCH` value and update `release/summary.txt` with a brief user-facing description.
-2. Push the code and version change to `develop`.
-3. GitHub Actions validates that the version is higher than both the latest GitHub release and the version in the release manifest, builds the Windows Lite installer, publishes a GitHub Release, and updates the manifest on `release`.
-4. Connected installations check after the Owner signs in and when internet returns. The Owner sees the summary and approves installation.
+Push code to `develop`. No version or release-summary edit is needed. GitHub Actions increments the patch from the latest published version, builds the installer with that generated version, publishes a GitHub Release, and writes the generated version and update manifest to `release`. The summary is generated from the pushed commit messages. The `develop` branch remains your working branch; version generation does not push a commit back to it.
+
+Connected installations check after the Owner signs in and when internet returns. The Owner sees the summary and approves installation.
 
 The repository and release assets must remain public for anonymous update checks and downloads. GitHub Actions uses its temporary repository-scoped `GITHUB_TOKEN` to publish. The installed app contains no GitHub token or other publishing credential. Before installation, the Windows desktop app verifies the SHA-256 checksum and backs up the local SQLite database.
 
