@@ -2,7 +2,7 @@ name: Build and publish TheBarcode Lite
 
 on:
   push:
-    branches: [release]
+    branches: [develop]
     paths-ignore:
       - release/latest.json
       - docs/**
@@ -18,9 +18,10 @@ concurrency:
 
 jobs:
   release:
+    if: github.ref_name == 'develop'
     runs-on: windows-latest
     steps:
-      - name: Check out release branch
+      - name: Check out develop branch
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -33,9 +34,27 @@ jobs:
           if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'VERSION must be MAJOR.MINOR.PATCH.' }
           $current = [version]::Parse($version)
           $latestTag = gh release list --limit 1 --json tagName | ConvertFrom-Json | Select-Object -First 1 -ExpandProperty tagName -ErrorAction SilentlyContinue
+          $previousVersions = @()
           if ($latestTag -match '^v(\d+\.\d+\.\d+)$') {
-            $latest = [version]::Parse($Matches[1])
-            if ($current -le $latest) { throw "VERSION $version must be greater than the latest published release $latestTag. Bump VERSION before pushing release code." }
+            $previousVersions += [version]::Parse($Matches[1])
+          }
+          if (Test-Path -LiteralPath 'release/latest.json') {
+            $localFeed = Get-Content -Raw 'release/latest.json' | ConvertFrom-Json
+            if ($localFeed.version -match '^\d+\.\d+\.\d+$') { $previousVersions += [version]::Parse($localFeed.version) }
+          }
+          $releaseRef = git ls-remote --heads origin refs/heads/release
+          if ($LASTEXITCODE -eq 0 -and $releaseRef) {
+            git fetch origin release
+            if ($LASTEXITCODE -ne 0) { throw 'Could not read the release branch version.' }
+            $feedJson = git show origin/release:release/latest.json
+            if ($LASTEXITCODE -eq 0 -and $feedJson) {
+              $feed = ($feedJson -join "`n") | ConvertFrom-Json
+              if ($feed.version -match '^\d+\.\d+\.\d+$') { $previousVersions += [version]::Parse($feed.version) }
+            }
+          }
+          if ($previousVersions.Count -gt 0) {
+            $latest = $previousVersions | Sort-Object -Descending | Select-Object -First 1
+            if ($current -le $latest) { throw "VERSION $version must be greater than the current published version $latest. Continue from VERSION; do not restart numbering." }
           }
           "version=$version" >> $env:GITHUB_OUTPUT
           "tag=v$version" >> $env:GITHUB_OUTPUT
@@ -92,8 +111,22 @@ jobs:
           $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath 'release/latest.json' -Encoding utf8
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          $remoteRelease = git ls-remote --heads origin refs/heads/release
+          if ($LASTEXITCODE -eq 0 -and $remoteRelease) {
+            git fetch origin release
+            if ($LASTEXITCODE -ne 0) { throw 'Could not fetch the release branch.' }
+            git checkout -B release origin/release
+            if ($LASTEXITCODE -ne 0) { throw 'Could not switch to the release branch.' }
+            git merge --no-ff $env:GITHUB_SHA -m "Release TheBarcode Lite $version"
+            if ($LASTEXITCODE -ne 0) { throw 'Could not promote the built develop revision to release.' }
+          } else {
+            git checkout -b release $env:GITHUB_SHA
+            if ($LASTEXITCODE -ne 0) { throw 'Could not create the release branch from develop.' }
+          }
+          $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath 'release/latest.json' -Encoding utf8
           git add release/latest.json
           git commit -m "Publish Lite update manifest $version"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not commit the latest update manifest.' }
           git push origin HEAD:release
           if ($LASTEXITCODE -ne 0) { throw 'Could not publish latest.json to the release branch.' }
           "sha256=$sha256" >> $env:GITHUB_OUTPUT
