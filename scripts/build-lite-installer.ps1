@@ -37,6 +37,7 @@ dotnet publish (Join-Path $root 'apps\driver-launcher\Dukora.DriverInstaller.csp
 if ($LASTEXITCODE -ne 0) { throw 'Driver launcher publish failed; refusing to package an incomplete installer.' }
 if (-not (Test-Path -LiteralPath (Join-Path $stage 'server\TheBarcode.Api.exe'))) { throw 'API executable is missing from the staging directory.' }
 Copy-Item -Path "$web\dist\*" -Destination "$stage\server\wwwroot" -Recurse -Force
+Set-Content -LiteralPath (Join-Path $stage 'server\wwwroot\build-version.txt') -Value $Version -NoNewline -Encoding ascii
 # Debug symbols and XML reference documentation are not needed at runtime. Excluding
 # them keeps the installer smaller and reduces the amount Defender must scan before
 # the setup wizard becomes interactive.
