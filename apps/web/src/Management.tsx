@@ -1256,7 +1256,12 @@ function Settings({
   const [branchForm,setBranchForm]=useState({name:"",code:"",address:"",phone:"",active:true});
   const [printers, setPrinters] = useState<string[]>([]);
   const [printer, setPrinter] = useState(localStorage.getItem("receipt_printer") || "");
-  const [silent, setSilent] = useState(localStorage.getItem("silent_print") === "true");
+  const [silent, setSilent] = useState(() => {
+    const saved = localStorage.getItem("silent_print");
+    // A printer already configured for this terminal should continue to print
+    // directly after an upgrade, including when older settings lack this key.
+    return saved === null ? Boolean(localStorage.getItem("receipt_printer")) : saved === "true";
+  });
   const [bridgeReady, setBridgeReady] = useState(false);
   const [printerQueue, setPrinterQueue] = useState<string[]>([]);
   const [deviceName, setDeviceName] = useState(localStorage.getItem("device_id") || `POS-${crypto.randomUUID().slice(0, 6).toUpperCase()}`);
@@ -1457,7 +1462,7 @@ function Settings({
           </div>
           <div className="settings-fields printer-settings">
             <Field label="Windows printer">
-              <select value={printer} onChange={(e) => setPrinter(e.target.value)}>
+              <select value={printer} onChange={(e) => { setPrinter(e.target.value); if (localStorage.getItem("silent_print") === null) setSilent(Boolean(e.target.value)); }}>
                 <option value="">Choose printer…</option>
                 {printers.map((name) => <option key={name}>{name}</option>)}
               </select>

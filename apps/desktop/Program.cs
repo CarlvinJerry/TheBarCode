@@ -29,7 +29,7 @@ internal static class Program
             // Keep the WinForms/WebView2 message loop on this original STA thread.
             // Awaiting in Main can resume on an MTA worker before Application.Run.
             Task.Run(() => EnsureApi(paths, configuration)).GetAwaiter().GetResult();
-            StartPrintBridge(paths);
+            Task.Run(() => StartPrintBridge(paths)).GetAwaiter().GetResult();
             Application.Run(new DukoraWindow(AppUrl, paths));
         }
         catch (Exception ex)
@@ -130,11 +130,31 @@ internal static class Program
         throw new TimeoutException("The local API did not become ready on port 8090.");
     }
 
-    static void StartPrintBridge(AppPaths paths)
+    static async Task StartPrintBridge(AppPaths paths)
     {
         var executable = Path.Combine(AppContext.BaseDirectory, "print-bridge", "TheBarcode.PrintBridge.exe");
-        if (!File.Exists(executable)) return;
+        if (!File.Exists(executable))
+        {
+            await File.AppendAllTextAsync(paths.DesktopLog, $"{DateTimeOffset.Now:O} Receipt print bridge was not installed: {executable}{Environment.NewLine}");
+            return;
+        }
         bridge = Process.Start(new ProcessStartInfo(executable, "--urls http://127.0.0.1:17777") { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Path.GetDirectoryName(executable)! });
+        // Do not show the POS until the silent-print endpoint is ready. Without
+        // this check the first receipt can race bridge startup and fall through
+        // to Chromium's Windows print dialog.
+        using var client = new HttpClient { Timeout = TimeSpan.FromMilliseconds(500) };
+        for (var attempt = 0; attempt < 16; attempt++)
+        {
+            try
+            {
+                using var response = await client.GetAsync("http://127.0.0.1:17777/health");
+                if (response.IsSuccessStatusCode) return;
+            }
+            catch { }
+            if (bridge is { HasExited: true }) break;
+            await Task.Delay(250);
+        }
+        await File.AppendAllTextAsync(paths.DesktopLog, $"{DateTimeOffset.Now:O} Receipt print bridge did not become ready; receipts will use the browser print fallback.{Environment.NewLine}");
     }
 
     static void BackupDatabase(AppPaths paths)
@@ -162,7 +182,7 @@ internal static class Program
         var safeName=Path.GetFileName(fileName);var source=Path.GetFullPath(Path.Combine(paths.BackupDir,safeName));var root=Path.GetFullPath(paths.BackupDir)+Path.DirectorySeparatorChar;
         if(string.IsNullOrWhiteSpace(safeName)||!source.StartsWith(root,StringComparison.OrdinalIgnoreCase)||!File.Exists(source))throw new FileNotFoundException("The selected backup no longer exists.");
         Stop(api);Stop(bridge);File.Copy(source,paths.DatabaseFile,true);foreach(var suffix in new[]{"-wal","-shm"})if(File.Exists(paths.DatabaseFile+suffix))File.Delete(paths.DatabaseFile+suffix);
-        var configuration=LiteConfiguration.Load(paths.ConfigFile)??throw new InvalidOperationException("TheBarcode configuration could not be loaded.");await EnsureApi(paths,configuration);StartPrintBridge(paths);
+        var configuration=LiteConfiguration.Load(paths.ConfigFile)??throw new InvalidOperationException("TheBarcode configuration could not be loaded.");await EnsureApi(paths,configuration);await StartPrintBridge(paths);
     }
     static void Stop(Process? process) { try { if (process is { HasExited: false }) process.Kill(true); } catch { } process?.Dispose(); }
     sealed record Health(string Status);
