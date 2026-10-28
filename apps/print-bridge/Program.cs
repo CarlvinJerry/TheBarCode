@@ -3,14 +3,17 @@ using TheBarcode.PrintBridge;
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls("http://127.0.0.1:17777");
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
-  .WithOrigins("http://localhost:8088", "http://127.0.0.1:8088", "http://localhost:8090", "http://127.0.0.1:8090")
+  .WithOrigins("http://localhost:8088", "http://127.0.0.1:8088", "http://localhost:8090", "http://127.0.0.1:8090", "http://localhost:5173", "http://127.0.0.1:5173")
   .AllowAnyHeader()
   .AllowAnyMethod()));
 
 var app = builder.Build();
 app.UseCors();
 app.MapGet("/health", () => Results.Ok(new { ready = true, service = "Dukora Print Bridge" }));
-app.MapGet("/printers", () => Results.Ok(RawPrinter.GetInstalledPrinters()));
+app.MapGet("/printers", () => {
+  try { return Results.Ok(RawPrinter.GetInstalledPrinters()); }
+  catch (Exception ex) { return Results.Problem(ex.Message, statusCode: 503, title: "Unable to enumerate Windows printers"); }
+});
 app.MapGet("/queue", (string printerName) => {
   if (string.IsNullOrWhiteSpace(printerName)) return Results.BadRequest(new { error = "Choose a printer" });
   try { return Results.Ok(new { printerName, jobs = RawPrinter.GetQueue(printerName) }); }

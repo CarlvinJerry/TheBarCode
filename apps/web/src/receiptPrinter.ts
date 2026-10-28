@@ -7,8 +7,11 @@ export function cachedReceiptSettings():ReceiptSettings{try{return {...defaultRe
 export function cachedOrganizationSettings():OrganizationSettings{try{return {...defaultOrganizationSettings,...JSON.parse(localStorage.getItem("organization_profile")||"{}")} }catch{return defaultOrganizationSettings}}
 
 export async function listSilentPrinters(): Promise<string[]> {
-  const response = await fetch(`${bridgeUrl}/printers`, { signal: AbortSignal.timeout(2500) });
-  if (!response.ok) throw new Error("Print bridge unavailable");
+  const response = await fetch(`${bridgeUrl}/printers`, { signal: AbortSignal.timeout(6000) });
+  if (!response.ok) {
+    const problem=await response.json().catch(()=>null);
+    throw new Error(problem?.detail||problem?.title||"Print bridge unavailable");
+  }
   return response.json();
 }
 
@@ -51,7 +54,13 @@ export async function printReceiptText(text: string) {
   try {
     if (await silentPrint(text)) return "silent" as const;
   } catch (error) {
-    console.warn("Silent printer unavailable; opening print preview", error);
+    console.warn("Configured silent printer unavailable", error);
+    // A saved printer is the terminal's intended destination. Do not silently
+    // redirect its receipt to Microsoft Print to PDF or a landscape page when
+    // the bridge is unreachable; surface the real printer problem instead.
+    if (localStorage.getItem("receipt_printer") && localStorage.getItem("silent_print") !== "false") {
+      throw new Error("The configured receipt printer is unavailable. Check that the printer is on and TheBarcode print bridge is running, then retry.");
+    }
   }
   printReceiptPreview(text);
   return "preview" as const;
