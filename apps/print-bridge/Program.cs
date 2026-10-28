@@ -1,7 +1,24 @@
 using TheBarcode.PrintBridge;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.UseUrls("http://127.0.0.1:17777");
+// Respect the port supplied by the desktop host (Lite uses 17778 to avoid an
+// older server-edition bridge already occupying 17777). Keep 17777 as the
+// default for the server/browser edition and direct launches.
+var listenUrl = "http://127.0.0.1:17777";
+for (var index = 0; index < args.Length; index++)
+{
+  if (args[index].Equals("--urls", StringComparison.OrdinalIgnoreCase) && index + 1 < args.Length)
+  {
+    listenUrl = args[index + 1];
+    break;
+  }
+  if (args[index].StartsWith("--urls=", StringComparison.OrdinalIgnoreCase))
+  {
+    listenUrl = args[index]["--urls=".Length..];
+    break;
+  }
+}
+builder.WebHost.UseUrls(listenUrl);
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
   .WithOrigins("http://localhost:8088", "http://127.0.0.1:8088", "http://localhost:8090", "http://127.0.0.1:8090", "http://localhost:5173", "http://127.0.0.1:5173")
   .AllowAnyHeader()
