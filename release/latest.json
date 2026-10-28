@@ -1,11 +1,11 @@
 {
-  "version": "1.12.40",
+  "version": "1.12.41",
   "channel": "lite-windows",
   "edition": "Lite",
-  "summary": "TheBarcode Lite 1.12.40: Fix printer bridge startup and update flow",
-  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.40/TheBarcode-Lite-Setup-1.12.40-x64.exe",
-  "sha256": "926f52a14e39b8c76255c0e02a5fee0317a0c100655df09f48701a0a3715fbbd",
+  "summary": "TheBarcode Lite 1.12.41: Isolate Lite receipt bridge port",
+  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.41/TheBarcode-Lite-Setup-1.12.41-x64.exe",
+  "sha256": "7e58c0ff6c89efd79b55d809288f1b78790206e16b225c9860a7f28abb4ea06f",
   "notes": [
-    "TheBarcode Lite 1.12.40: Fix printer bridge startup and update flow"
+    "TheBarcode Lite 1.12.41: Isolate Lite receipt bridge port"
   ]
 }
