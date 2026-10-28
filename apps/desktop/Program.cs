@@ -11,6 +11,7 @@ namespace Dukora.Desktop;
 internal static class Program
 {
     const string AppUrl = "http://127.0.0.1:8090";
+    const string PrintBridgeUrl = "http://127.0.0.1:17778";
     static Process? api;
     static Process? bridge;
 
@@ -43,8 +44,9 @@ internal static class Program
             {
                 try
                 {
-                    OpenBrowser(AppUrl);
-                    Application.Run(new BrowserFallbackWindow(AppUrl));
+                    var fallbackUrl = $"{AppUrl}/?printBridgePort=17778";
+                    OpenBrowser(fallbackUrl);
+                    Application.Run(new BrowserFallbackWindow(fallbackUrl));
                 }
                 catch (Exception fallbackError)
                 {
@@ -138,7 +140,7 @@ internal static class Program
             await File.AppendAllTextAsync(paths.DesktopLog, $"{DateTimeOffset.Now:O} Receipt print bridge was not installed: {executable}{Environment.NewLine}");
             return;
         }
-        bridge = Process.Start(new ProcessStartInfo(executable, "--urls http://127.0.0.1:17777") { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Path.GetDirectoryName(executable)! });
+        bridge = Process.Start(new ProcessStartInfo(executable, "--urls http://127.0.0.1:17778") { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Path.GetDirectoryName(executable)! });
         // Do not show the POS until the silent-print endpoint is ready. Without
         // this check the first receipt can race bridge startup and fall through
         // to Chromium's Windows print dialog.
@@ -147,14 +149,15 @@ internal static class Program
         {
             try
             {
-                using var response = await client.GetAsync("http://127.0.0.1:17777/health");
+                using var response = await client.GetAsync($"{PrintBridgeUrl}/health");
                 if (response.IsSuccessStatusCode) return;
             }
             catch { }
             if (bridge is { HasExited: true }) break;
             await Task.Delay(250);
         }
-        await File.AppendAllTextAsync(paths.DesktopLog, $"{DateTimeOffset.Now:O} Receipt print bridge did not become ready; receipts will use the browser print fallback.{Environment.NewLine}");
+        var exit = bridge is { HasExited: true } ? $" Process exit code: {bridge.ExitCode}." : "";
+        await File.AppendAllTextAsync(paths.DesktopLog, $"{DateTimeOffset.Now:O} Receipt print bridge did not become ready at {PrintBridgeUrl}; receipts will use the browser print fallback.{exit}{Environment.NewLine}");
     }
 
     static void BackupDatabase(AppPaths paths)
