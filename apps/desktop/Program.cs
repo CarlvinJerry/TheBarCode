@@ -193,6 +193,7 @@ internal sealed class DukoraWindow : Form
     readonly WebView2 browser = new() { Dock = DockStyle.Fill };
     readonly string url;
     readonly AppPaths paths;
+    int updateInProgress;
     public DukoraWindow(string url, AppPaths paths)
     {
         this.url = url; this.paths = paths;
@@ -262,9 +263,9 @@ internal sealed class DukoraWindow : Form
             try{if(MessageBox.Show($"Restore {command.FileName}?\n\nCurrent records will be replaced by this backup and TheBarcode will reload.","Restore TheBarcode backup",MessageBoxButtons.YesNo,MessageBoxIcon.Warning)!=DialogResult.Yes){Reply(false,"Restore cancelled","dukoraRestore");return;}await Dukora.Desktop.Program.RestoreBackup(paths,command.FileName??"");Reply(true,"Backup restored. TheBarcode is reloading.","dukoraRestore");browser.CoreWebView2.Navigate(url);}catch(Exception ex){Reply(false,ex.Message,"dukoraRestore");}return;
         }
         if(command?.Command!="installUpdate")return;
+        if(Interlocked.CompareExchange(ref updateInProgress,1,0)!=0)return;
         try
         {
-            if(MessageBox.Show($"Install TheBarcode {command.Version}?\n\nTheBarcode will verify the download, back up your database, close, install the update and reopen.","TheBarcode update",MessageBoxButtons.YesNo,MessageBoxIcon.Information)!=DialogResult.Yes){Reply(false,"Update cancelled");return;}
             if(!Uri.TryCreate(command.DownloadUrl,UriKind.Absolute,out var download)||download.Scheme!="https"||!TrustedReleaseHost(download.Host))throw new InvalidOperationException("The release URL is not an approved HTTPS release host.");
             if(string.IsNullOrWhiteSpace(command.Sha256)||command.Sha256.Length!=64)throw new InvalidOperationException("The release manifest does not contain a valid SHA-256 checksum.");
             var updates=Path.Combine(paths.Root,"Updates");Directory.CreateDirectory(updates);var installer=Path.Combine(updates,$"TheBarcode-Setup-{SafeVersion(command.Version??"update")}-x64.exe");
@@ -292,10 +293,10 @@ internal sealed class DukoraWindow : Form
             if(File.Exists(paths.DatabaseFile)){Directory.CreateDirectory(paths.BackupDir);File.Copy(paths.DatabaseFile,Path.Combine(paths.BackupDir,$"thebarcode-before-update-{DateTime.Now:yyyyMMdd-HHmmss}.db"),true);}
             ReportUpdateProgress(100,100,"Starting installer");
             Reply(true,$"TheBarcode {command.Version} verified. Windows will now request permission to install it.");
-            Process.Start(new ProcessStartInfo(installer,"/SILENT /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS"){UseShellExecute=true,Verb="runas",WorkingDirectory=updates});
+            Process.Start(new ProcessStartInfo(installer,"/VERYSILENT /SUPPRESSMSGBOXES /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS"){UseShellExecute=true,Verb="runas",WorkingDirectory=updates});
             await Task.Delay(700);BeginInvoke(Application.Exit);
         }
-        catch(Exception ex){await File.AppendAllTextAsync(paths.DesktopLog,$"{DateTimeOffset.Now:O} Update failed: {ex}{Environment.NewLine}");Reply(false,ex.Message);}
+        catch(Exception ex){Interlocked.Exchange(ref updateInProgress,0);await File.AppendAllTextAsync(paths.DesktopLog,$"{DateTimeOffset.Now:O} Update failed: {ex}{Environment.NewLine}");Reply(false,ex.Message);}
     }
     void Reply(bool ok,string message,string type="dukoraUpdate")=>browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new{type,ok,message}));
     void ReportUpdateProgress(long received,long total,string status)

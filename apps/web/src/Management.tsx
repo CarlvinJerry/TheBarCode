@@ -28,6 +28,7 @@ import {
   type OrganizationSettings,
   type ReceiptSettings,
 } from "./receiptPrinter";
+import { compareVersions, fetchLatestUpdate, GITHUB_UPDATE_MANIFEST } from "./updater";
 import { APP_CHANNEL, APP_VERSION, RELEASE_NOTES } from "./version";
 import { displayScales, saveDisplayScale, storedDisplayScale, type DisplayScaleName } from "./displayScale";
 import {
@@ -1237,10 +1238,6 @@ function Settings({
   // folder pages are not manifests, so a direct shared latest.json URL is the
   // supported mirror format.
   const driveReleaseFolder="https://drive.google.com/drive/folders/1IzlVfcc9nDLh_mdpndCANs1ThsKDHLS9?authuser=0";
-  const primaryUpdateManifest="https://thebarcode.beyondrawdata.com/releases/lite/latest.json";
-  const fallbackUpdateManifest="https://thebarcode.beyondrawdata.co.ke/releases/lite/latest.json";
-  const githubUpdateManifest="https://raw.githubusercontent.com/CarlvinJerry/TheBarCode/release/release/latest.json";
-  const isDriveFolderUrl=(value:string)=>value.toLowerCase().startsWith(driveReleaseFolder.split("?")[0].toLowerCase());
   const [theme, setTheme] = useState(localStorage.getItem("theme") ?? "Forest");
   const [settingsTab,setSettingsTab]=useState(sessionStorage.getItem("dukora_settings_tab")||"appearance");
   const [navigationLayout,setNavigationLayout]=useState(localStorage.getItem("navigation_layout")??"Vertical");
@@ -1269,8 +1266,7 @@ function Settings({
   const [terminalName,setTerminalName]=useState(localStorage.getItem("terminal_name")||"Front counter");
   const [branchId,setBranchId]=useState(localStorage.getItem("branch_id")||"");
   const [apiUrl, setApiUrl] = useState(localStorage.getItem("api_url") || "/api");
-  const [updateUrl, setUpdateUrl] = useState(()=>{const saved=localStorage.getItem("update_manifest_url")||"";return isDriveFolderUrl(saved)?primaryUpdateManifest:(saved||primaryUpdateManifest)});
-  const [availableUpdate, setAvailableUpdate] = useState<{ version: string; downloadUrl: string; sha256:string; summary?: string }>();
+  const [updateUrl, setUpdateUrl] = useState(()=>{const saved=localStorage.getItem("update_manifest_url")||"";return saved.toLowerCase().startsWith("https://drive.google.com/drive/folders/1izlvfcc9ndlh_md")?GITHUB_UPDATE_MANIFEST:(saved||GITHUB_UPDATE_MANIFEST)});
   const [updateBusy,setUpdateBusy]=useState(false);
   const [insightsConfig,setInsightsConfig]=useState({enabled:false,endpoint:"https://api.openai.com/v1/chat/completions",model:"gpt-5-mini",apiKey:"",apiKeyConfigured:false,clearApiKey:false,allowUserNames:false});
   const [backups,setBackups]=useState<any[]>([]),[purgeConfirmation,setPurgeConfirmation]=useState(""),[purgeReason,setPurgeReason]=useState(""),[maintenanceBusy,setMaintenanceBusy]=useState(false);
@@ -1313,7 +1309,7 @@ function Settings({
   function saveTerminal() {
     localStorage.setItem("device_id", deviceName);
     localStorage.setItem("api_url", apiUrl);
-    const normalizedUpdateUrl=isDriveFolderUrl(updateUrl.trim())?primaryUpdateManifest:(updateUrl.trim()||primaryUpdateManifest);
+    const normalizedUpdateUrl=updateUrl.trim().toLowerCase().startsWith("https://drive.google.com/drive/folders/1izlvfcc9ndlh_md")?GITHUB_UPDATE_MANIFEST:(updateUrl.trim()||GITHUB_UPDATE_MANIFEST);
     setUpdateUrl(normalizedUpdateUrl);
     localStorage.setItem("update_manifest_url", normalizedUpdateUrl);
     notify("Terminal connection and update channel saved");
@@ -1330,22 +1326,16 @@ function Settings({
     if (!navigator.onLine) { if(!silent)notify("Update check skipped while offline"); return; }
     setUpdateBusy(true);
     try {
-      const candidates=[primaryUpdateManifest,fallbackUpdateManifest,githubUpdateManifest,updateUrl].filter((x,i,a):x is string=>Boolean(x)&&!isDriveFolderUrl(x)&&a.indexOf(x)===i);let manifest:any;
-      for(const candidate of candidates){try{const parsed=new URL(candidate);if(parsed.protocol!=="https:")continue;const response=await fetch(parsed,{cache:"no-store"});if(!response.ok)continue;const value=await response.json();if(value?.version&&value?.downloadUrl&&value?.sha256&&/^[a-f0-9]{64}$/i.test(value.sha256)&&(()=>{try{return new URL(value.downloadUrl).protocol==="https:"}catch{return false}})()&&(!manifest||compareVersions(value.version,manifest.version)>0))manifest=value}catch{}}
-      if(!manifest?.version||!manifest?.downloadUrl||!manifest?.sha256||!/^[a-f0-9]{64}$/i.test(manifest.sha256)||(()=>{try{return new URL(manifest.downloadUrl).protocol==="https:"}catch{return false}})())throw new Error("No reachable release manifest with a SHA-256 checksum");
+      const manifest=await fetchLatestUpdate(updateUrl);
+      if(!manifest)throw new Error("No reachable release manifest with a SHA-256 checksum");
       if (compareVersions(manifest.version,APP_VERSION)<=0) {
-        setAvailableUpdate(undefined);
         if(!silent)notify(`TheBarcode ${APP_VERSION} is current`);
       } else {
-        setAvailableUpdate(manifest);
-        notify(`Update ${manifest.version} is available: ${manifest.summary || "New release"}`);
+        dispatchEvent(new CustomEvent("thebarcode:update-available",{detail:manifest}));
       }
     } catch { if(!silent)notify("No reachable update manifest was found; checked Beyond Raw Data, GitHub and the configured mirror."); }
     finally{setUpdateBusy(false)}
   }
-  function installUpdate(){if(!availableUpdate)return;if(user.role!=="Owner"){notify("Only the Owner can install application updates");return}const desktop=(window as any).chrome?.webview;if(!desktop){window.open(availableUpdate.downloadUrl,"_blank","noopener");notify("Installer download opened; run it after the download completes");return}setUpdateBusy(true);dispatchEvent(new CustomEvent("thebarcode:update-progress",{detail:{status:"Preparing secure download",receivedBytes:0,totalBytes:0}}));desktop.postMessage({command:"installUpdate",version:availableUpdate.version,downloadUrl:availableUpdate.downloadUrl,sha256:availableUpdate.sha256})}
-  useEffect(()=>{const desktop=(window as any).chrome?.webview;if(!desktop)return;const receive=(event:any)=>{const result=event.data;if(result?.type!=="dukoraUpdate")return;setUpdateBusy(false);notify(result.ok?result.message:`Update failed: ${result.message}`)};desktop.addEventListener("message",receive);return()=>desktop.removeEventListener("message",receive)},[]);
-  useEffect(()=>{if(user.role!=="Owner")return;const timer=setTimeout(()=>void checkUpdates(true),5000);return()=>clearTimeout(timer)},[]);
   async function restore() {
     await resetDemo();
     await bootstrap();
@@ -1437,9 +1427,8 @@ function Settings({
             <p><b>Channel:</b> {APP_CHANNEL}</p>
             <div className="release-notes-scroll" aria-label="Release notes by topic">{releaseGroups.map(group=><details key={group.title}><summary><span>{group.title}</span><small>{group.notes.length} notes</small></summary><ul>{group.notes.map(note=><li key={note}>{note}</li>)}</ul></details>)}</div>
             <Field label="Update manifest URL"><input value={updateUrl} onChange={(e) => setUpdateUrl(e.target.value)} placeholder="https://…/latest.json" /></Field>
-            <p className="update-source-note">TheBarcode checks the primary release channel first, then the secondary channel automatically. A configured direct HTTPS manifest mirror is checked silently after both channels. If automatic installation is unavailable, you can <a className="update-source-link" href={driveReleaseFolder} target="_blank" rel="noreferrer">open the manual release folder</a>.</p>
+            <p className="update-source-note">TheBarcode checks the public release branch first, then the official mirrors. A configured direct HTTPS manifest is also checked. If automatic installation is unavailable, you can <a className="update-source-link" href={driveReleaseFolder} target="_blank" rel="noreferrer">open the manual release folder</a>.</p>
             <div className="button-row"><button onClick={saveTerminal}>Save update channel</button><button disabled={updateBusy} onClick={()=>void checkUpdates(false)}>{updateBusy?"Checking…":"Check for updates"}</button></div>
-            {availableUpdate?.downloadUrl && <button className="update-download" disabled={updateBusy} onClick={installUpdate}>{updateBusy?"Preparing update…":`Install TheBarcode ${availableUpdate.version}`}</button>}
             <small>Built and maintained by Beyond Raw Data</small>
           </div>
         </Panel>
@@ -1481,7 +1470,7 @@ function Settings({
               <input type="checkbox" checked={silent} onChange={(e) => setSilent(e.target.checked)} />
               Print silently through the local bridge
             </label>
-            {!bridgeReady&&<small className="muted">{printerScanError?`Printer service unavailable: ${printerScanError}`:"Checking installed printers…"}</small>}
+            {!bridgeReady&&<small className={printerScanError?"printer-service-error":"muted"} role={printerScanError?"alert":undefined}>{printerScanError?`Printer service unavailable: ${printerScanError}`:"Checking installed printers…"}</small>}
             <button className="outline-button" onClick={() => {
               localStorage.setItem("receipt_printer", printer);
               localStorage.setItem("silent_print", String(silent));
@@ -1617,7 +1606,6 @@ async function downloadPdfReport({from,to,summary,detail,accounting,accountingTr
   if(accounting){heading("Accounting snapshot",y);const accountingRows=[["Revenue",fmt(Number(accounting.revenue||0))],["Cost of goods sold",fmt(-Number(accounting.cost||0))],["Gross profit",fmt(Number(accounting.grossProfit||0))],["Approved expenses",fmt(-Number(accounting.expenses||0))],["Net profit",fmt(Number(accounting.netProfit||0))],["Receivables at period end",fmt(Number(accounting.receivables||0))],["Payables at period end",fmt(Number(accounting.payables||0))]];const accountingEnd=table(y+5,["Statement line","Amount"],accountingRows,{columnStyles:{0:{cellWidth:115},1:{halign:"right",cellWidth:55}}});y=accountingEnd+8;if(accountingTrial?.length){heading("Trial balance",y);y=table(y+5,["Account","Debit","Credit"],accountingTrial.slice(0,24).map((x:any)=>[`${x.code} · ${x.name}`,fmt(Number(x.debit||0)),fmt(Number(x.credit||0))]),{columnStyles:{0:{cellWidth:100},1:{halign:"right",cellWidth:35},2:{halign:"right",cellWidth:35}}})+6}}
   const pages=doc.getNumberOfPages();for(let p=1;p<=pages;p++){doc.setPage(p);doc.setDrawColor(...line);doc.setLineWidth(.25);doc.line(14,284,196,284);doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...muted);doc.text(`TheBarcode  ·  ${org.name}  ·  ${from} — ${to}`,14,290);doc.text(`Page ${p} of ${pages}`,196,290,{align:"right"});doc.setTextColor(...teal);doc.text("Smarter Business Operations",105,294,{align:"center"})}doc.save(`TheBarcode-report-${from}-to-${to}.pdf`);
 }
-function compareVersions(left:string,right:string){const a=left.replace(/^v/i,"").split(/[.-]/).map(x=>Number.parseInt(x,10)||0),b=right.replace(/^v/i,"").split(/[.-]/).map(x=>Number.parseInt(x,10)||0);for(let i=0;i<Math.max(a.length,b.length);i++){const difference=(a[i]||0)-(b[i]||0);if(difference)return difference}return 0}
 const inventoryUnits=["item","piece","bottle","can","pack","tray","bag","portion","serving","shot","glass","ml","L","g","kg"];
 const measureUnits=["item","piece","bottle","can","pack","tray","bag","portion","serving","shot","glass","ml","L","g","kg"];
 const productTemplateHeaders=["name","category","item_type","brand","barcode_sku","stock_unit","package_quantity","package_unit","tracking_mode","cost_price","selling_price","opening_stock","minimum_stock","supplier","tax_rate","sellable"];

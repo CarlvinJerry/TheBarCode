@@ -35,10 +35,11 @@ internal static class Program
 
             if (!WaitForHealth())
             {
-            ShowError("TheBarcode installed successfully, but its local server is not ready. Run TheBarcode again as Administrator or repair the installation.");
+                ShowError("TheBarcode installed successfully, but its local server is not ready. Run TheBarcode again as Administrator or repair the installation.");
                 return 1;
             }
 
+            EnsurePrintBridge(installRoot);
             Process.Start(new ProcessStartInfo($"{ApiUrl}/") { UseShellExecute = true });
             return 0;
         }
@@ -129,6 +130,39 @@ internal static class Program
             Thread.Sleep(500);
         }
         return false;
+    }
+
+    private static void EnsurePrintBridge(string installRoot)
+    {
+        const string healthUrl = "http://127.0.0.1:17777/health";
+        var executable = Path.Combine(installRoot, "print-bridge", "TheBarcode.PrintBridge.exe");
+        var logDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Beyond Raw Data", "TheBarcode", "Logs");
+        var logFile = Path.Combine(logDirectory, "print-bridge.log");
+        void Log(string message)
+        {
+            try { Directory.CreateDirectory(logDirectory); File.AppendAllText(logFile, $"{DateTimeOffset.Now:O} {message}{Environment.NewLine}"); } catch { }
+        }
+
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromMilliseconds(800) };
+            try { if (client.GetAsync(healthUrl).GetAwaiter().GetResult().IsSuccessStatusCode) return; } catch { }
+            if (!File.Exists(executable)) { Log($"Bridge executable missing: {executable}"); return; }
+            var process = Process.Start(new ProcessStartInfo(executable, "--urls http://127.0.0.1:17777")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = Path.GetDirectoryName(executable)!
+            });
+            for (var attempt = 0; attempt < 20; attempt++)
+            {
+                try { if (client.GetAsync(healthUrl).GetAwaiter().GetResult().IsSuccessStatusCode) { Log("Print bridge is ready on port 17777."); return; } } catch { }
+                if (process is { HasExited: true }) { Log($"Print bridge exited during startup with code {process.ExitCode}."); return; }
+                Thread.Sleep(250);
+            }
+            Log("Print bridge did not respond on port 17777 after 5 seconds.");
+        }
+        catch (Exception ex) { Log($"Print bridge startup failed: {ex}"); }
     }
 
     private static bool IsAdministrator()
