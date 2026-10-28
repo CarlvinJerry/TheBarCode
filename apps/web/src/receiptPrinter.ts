@@ -35,91 +35,26 @@ export async function clearPrinterQueue(printerName: string): Promise<number> {
   return Number(value?.removed || 0);
 }
 
-export async function silentPrint(text: string): Promise<boolean> {
+export async function bridgePrint(text: string): Promise<void> {
   const printerName = localStorage.getItem("receipt_printer");
-  // Older terminal profiles may have a printer saved without the newer
-  // silent_print preference. Treat that as silent printing enabled; only an
-  // explicit false means the operator asked for the Windows dialog.
-  if (!printerName || localStorage.getItem("silent_print") === "false") return false;
+  if (!printerName) throw new Error("Choose and save a receipt printer in Settings before printing.");
   const response = await fetch(`${bridgeUrl}/print`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ printerName, text, charactersPerLine: cachedReceiptSettings().paperWidthMm===58?32:48, cut: localStorage.getItem("receipt_cut") === "true" }),
     signal: AbortSignal.timeout(6000),
   });
-  if (!response.ok) throw new Error((await response.json().catch(() => null))?.detail || "Silent printing failed");
-  return true;
+  if (!response.ok) throw new Error((await response.json().catch(() => null))?.detail || "The printer bridge rejected the receipt.");
 }
 
-export async function printReceiptText(text: string) {
+export async function printReceiptText(text: string): Promise<void> {
   try {
-    if (await silentPrint(text)) return "silent" as const;
+    await bridgePrint(text);
   } catch (error) {
-    console.warn("Configured silent printer unavailable", error);
-    // A saved printer is the terminal's intended destination. Do not silently
-    // redirect its receipt to Microsoft Print to PDF or a landscape page when
-    // the bridge is unreachable; surface the real printer problem instead.
-    if (localStorage.getItem("receipt_printer") && localStorage.getItem("silent_print") !== "false") {
-      throw new Error("The configured receipt printer is unavailable. Check that the printer is on and TheBarcode print bridge is running, then retry.");
-    }
+    console.warn("Configured receipt printer unavailable", error);
+    const detail = error instanceof Error ? error.message : "The print service could not be reached.";
+    throw new Error(`Receipt was not sent to the configured printer. ${detail} Check that the printer and TheBarcode print bridge are running, then retry.`);
   }
-  printReceiptPreview(text);
-  return "preview" as const;
-}
-
-function printReceiptPreview(text: string) {
-  const width=cachedReceiptSettings().paperWidthMm;
-  const columns=width===58?32:48;
-  // Chromium does not consistently accept `auto` as a thermal page height.
-  // It then falls back to Letter/A4 and scales the receipt past the roll width.
-  const wrappedLines=text.split("\n").reduce((count,line)=>count+Math.max(1,Math.ceil(line.length/columns)),0);
-  const height=Math.max(70,Math.min(600,Math.ceil(wrappedLines*4.2+12)));
-  const frame = document.createElement("iframe");
-  frame.title = "Receipt print job";
-  Object.assign(frame.style, {
-    position: "fixed",
-    width: "1px",
-    height: "1px",
-    opacity: "0",
-    pointerEvents: "none",
-    left: "-10000px",
-  });
-  document.body.appendChild(frame);
-  const doc = frame.contentDocument;
-  if (!doc) {
-    frame.remove();
-    throw new Error("Unable to create receipt print job");
-  }
-  const escaped = text
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .split("\n").map(line=>{
-      const trimmed=line.trim();
-      if(trimmed.startsWith("STATUS: ")) return `<strong>${line}</strong>`;
-      if(trimmed.startsWith("BALANCE: ")) return `<span class="receipt-balance">${line}</span>`;
-      if(trimmed.startsWith("DEPOSIT: ")||trimmed.startsWith("PAID: ")) return `<span class="receipt-deposit">${line}</span>`;
-      return trimmed==="Powered by TheBarcode | Beyond Raw Data"?`<small>${line}</small>`:line;
-    }).join("\n");
-  doc.open();
-  doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Receipt</title><style>
-    @page { size: ${width}mm ${height}mm; margin: 0; }
-    html,body { margin:0; padding:0; width:${width}mm; max-width:${width}mm; background:#fff; }
-    body { box-sizing:border-box; padding:3mm 4mm 5mm; color:#000; overflow:hidden; }
-    pre { box-sizing:border-box; margin:0; width:100%; max-width:100%; overflow:hidden; white-space:pre-wrap; overflow-wrap:anywhere; font:9pt/1.35 "Courier New",monospace; }
-    strong { display:block; font-size:13pt; line-height:1.5; text-align:center; font-weight:900; }
-    .receipt-balance { display:block; color:#b42318; font-weight:900; }
-    .receipt-deposit { display:block; color:#176b4d; font-weight:800; }
-    small { display:block; font-size:6.5pt; line-height:1.2; text-align:center; }
-  </style></head><body><pre>${escaped}</pre></body></html>`);
-  doc.close();
-  const cleanup = () => window.setTimeout(() => frame.remove(), 1000);
-  frame.contentWindow?.addEventListener("afterprint", cleanup, { once: true });
-  window.setTimeout(() => {
-    frame.contentWindow?.focus();
-    frame.contentWindow?.print();
-    cleanup();
-  }, 250);
 }
 
 export function testReceiptText() {
