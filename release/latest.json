@@ -1,11 +1,11 @@
 {
-  "version": "1.12.39",
+  "version": "1.12.40",
   "channel": "lite-windows",
   "edition": "Lite",
-  "summary": "TheBarcode Lite 1.12.39: fix(printing): restore printer discovery and receipt routing",
-  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.39/TheBarcode-Lite-Setup-1.12.39-x64.exe",
-  "sha256": "918d795e1979246c53f4a24b58a4e8183f5beaef8617946c45f631077015b4f0",
+  "summary": "TheBarcode Lite 1.12.40: Fix printer bridge startup and update flow",
+  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.40/TheBarcode-Lite-Setup-1.12.40-x64.exe",
+  "sha256": "926f52a14e39b8c76255c0e02a5fee0317a0c100655df09f48701a0a3715fbbd",
   "notes": [
-    "TheBarcode Lite 1.12.39: fix(printing): restore printer discovery and receipt routing"
+    "TheBarcode Lite 1.12.40: Fix printer bridge startup and update flow"
   ]
 }
