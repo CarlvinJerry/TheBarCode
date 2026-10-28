@@ -1,11 +1,11 @@
 {
-  "version": "1.12.42",
+  "version": "1.12.43",
   "channel": "lite-windows",
   "edition": "Lite",
-  "summary": "TheBarcode Lite 1.12.42: Honor requested print bridge port",
-  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.42/TheBarcode-Lite-Setup-1.12.42-x64.exe",
-  "sha256": "b3fc94f8c956a93bb25ef411c749d3938328028841690c751dbc2b0aa6792a47",
+  "summary": "TheBarcode Lite 1.12.43: tests...",
+  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.43/TheBarcode-Lite-Setup-1.12.43-x64.exe",
+  "sha256": "215d374d60829dd99fa9daaa139d6649959110a3a4dedbd6899372e33c138db4",
   "notes": [
-    "TheBarcode Lite 1.12.42: Honor requested print bridge port"
+    "TheBarcode Lite 1.12.43: tests..."
   ]
 }
