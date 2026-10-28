@@ -1253,12 +1253,6 @@ function Settings({
   const [branchForm,setBranchForm]=useState({name:"",code:"",address:"",phone:"",active:true});
   const [printers, setPrinters] = useState<string[]>([]);
   const [printer, setPrinter] = useState(localStorage.getItem("receipt_printer") || "");
-  const [silent, setSilent] = useState(() => {
-    const saved = localStorage.getItem("silent_print");
-    // A printer already configured for this terminal should continue to print
-    // directly after an upgrade, including when older settings lack this key.
-    return saved === null ? Boolean(localStorage.getItem("receipt_printer")) : saved === "true";
-  });
   const [bridgeReady, setBridgeReady] = useState(false);
   const [printerScanError,setPrinterScanError]=useState("");
   const [printerQueue, setPrinterQueue] = useState<string[]>([]);
@@ -1458,21 +1452,18 @@ function Settings({
           </div>
           <div className="settings-fields printer-settings">
             <Field label="Windows printer">
-              <select value={printer} onChange={(e) => { setPrinter(e.target.value); if (localStorage.getItem("silent_print") === null) setSilent(Boolean(e.target.value)); }}>
+              <select value={printer} onChange={(e) => setPrinter(e.target.value)}>
                 <option value="">Choose printer…</option>
                 {printer&&!printers.some(name=>name===printer)&&<option value={printer}>{printer} · saved printer</option>}
                 {printers.map((name) => <option key={name}>{name}</option>)}
               </select>
             </Field>
             <button className="outline-button" onClick={()=>void refreshPrinters()}>Refresh printer list</button>
-            <label className="print-toggle">
-              <input type="checkbox" checked={silent} onChange={(e) => setSilent(e.target.checked)} />
-              Print silently through the local bridge
-            </label>
+            <small className="muted">Receipts print directly through the configured printer. Browser and Windows print dialogs are not used.</small>
             {!bridgeReady&&<small className={printerScanError?"printer-service-error":"muted"} role={printerScanError?"alert":undefined}>{printerScanError?`Printer service unavailable: ${printerScanError}`:"Checking installed printers…"}</small>}
             <button className="outline-button" onClick={() => {
               localStorage.setItem("receipt_printer", printer);
-              localStorage.setItem("silent_print", String(silent));
+              localStorage.removeItem("silent_print");
               localStorage.setItem("receipt_cut", "false");
               notify("XP-80 printer configuration saved");
             }}>Save printer</button>
@@ -1481,10 +1472,10 @@ function Settings({
             className="outline-button"
             onClick={async () => {
               localStorage.setItem("receipt_printer", printer);
-              localStorage.setItem("silent_print", String(silent));
+              localStorage.removeItem("silent_print");
               try {
-                const mode = await printReceiptText(testReceiptText());
-                notify(mode === "silent" ? "Silent test receipt sent to the selected printer" : "Opened the manual receipt print dialog");
+                await printReceiptText(testReceiptText());
+                notify("Test receipt sent to the selected printer");
               } catch (error) {
                 notify(error instanceof Error?error.message:"The selected receipt printer could not be reached");
               }
