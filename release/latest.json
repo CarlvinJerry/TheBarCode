@@ -1,11 +1,11 @@
 {
-  "version": "1.12.37",
+  "version": "1.12.38",
   "channel": "lite-windows",
   "edition": "Lite",
-  "summary": "TheBarcode Lite 1.12.37: feat(updates): show download progress; fix(updates): refresh update check when app regains focus",
-  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.37/TheBarcode-Lite-Setup-1.12.37-x64.exe",
-  "sha256": "6dc5b6fce2f66d7c8baf94189fb2709e5dcfa7f5fc85cf832cb60f848479760e",
+  "summary": "TheBarcode Lite 1.12.38: fix(printing): restore configured receipt printing",
+  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.38/TheBarcode-Lite-Setup-1.12.38-x64.exe",
+  "sha256": "5ec5fdd89fe2563403bee3de0e354df7ae766d8ae12a7619a991b9b4d302333c",
   "notes": [
-    "TheBarcode Lite 1.12.37: feat(updates): show download progress; fix(updates): refresh update check when app regains focus"
+    "TheBarcode Lite 1.12.38: fix(printing): restore configured receipt printing"
   ]
 }
