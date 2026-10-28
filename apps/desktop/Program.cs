@@ -232,6 +232,7 @@ internal sealed class DukoraWindow : Form
             browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
             browser.CoreWebView2.Settings.IsStatusBarEnabled = false;
             browser.CoreWebView2.WebMessageReceived += HandleWebMessage;
+            await RefreshWebAssetsAfterUpgrade();
             browser.CoreWebView2.Navigate(url);
         }
         catch (Exception ex)
@@ -246,6 +247,26 @@ internal sealed class DukoraWindow : Form
             open.PerformClick();
         }
     }
+    async Task RefreshWebAssetsAfterUpgrade()
+    {
+        var versionFile = Path.Combine(AppContext.BaseDirectory, "server", "wwwroot", "build-version.txt");
+        if (!File.Exists(versionFile)) return;
+
+        var installedVersion = (await File.ReadAllTextAsync(versionFile)).Trim();
+        if (string.IsNullOrWhiteSpace(installedVersion)) return;
+
+        var marker = Path.Combine(paths.Root, "webview-assets-version.txt");
+        var previousVersion = File.Exists(marker) ? (await File.ReadAllTextAsync(marker)).Trim() : string.Empty;
+        if (string.Equals(previousVersion, installedVersion, StringComparison.OrdinalIgnoreCase)) return;
+
+        // Discard only the PWA worker and its static asset cache. IndexedDB,
+        // local storage, cookies, and other business data stay in place.
+        await browser.CoreWebView2.Profile.ClearBrowsingDataAsync(
+            CoreWebView2BrowsingDataKinds.ServiceWorkers | CoreWebView2BrowsingDataKinds.CacheStorage);
+        await File.WriteAllTextAsync(marker, installedVersion);
+        await LogWebViewEvent($"Cleared stale WebView2 service worker and asset cache after upgrade: {previousVersion} -> {installedVersion}");
+    }
+
     async Task LogWebViewEvent(string message)
     {
         try { await File.AppendAllTextAsync(paths.DesktopLog, $"{DateTimeOffset.Now:O} {message}{Environment.NewLine}"); } catch { }
@@ -296,7 +317,10 @@ internal sealed class DukoraWindow : Form
             if(File.Exists(paths.DatabaseFile)){Directory.CreateDirectory(paths.BackupDir);File.Copy(paths.DatabaseFile,Path.Combine(paths.BackupDir,$"thebarcode-before-update-{DateTime.Now:yyyyMMdd-HHmmss}.db"),true);}
             ReportUpdateProgress(100,100,"Starting installer");
             Reply(true,$"TheBarcode {command.Version} verified. Windows will now request permission to install it.");
-            Process.Start(new ProcessStartInfo(installer,"/VERYSILENT /SUPPRESSMSGBOXES /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS"){UseShellExecute=true,Verb="runas",WorkingDirectory=updates});
+            // Let Inno Setup close this process, replace the installed files,
+            // then launch the exact installed executable from its [Run] entry.
+            // /RESTARTAPPLICATIONS can revive the pre-update process image.
+            Process.Start(new ProcessStartInfo(installer,"/VERYSILENT /SUPPRESSMSGBOXES /CLOSEAPPLICATIONS"){UseShellExecute=true,Verb="runas",WorkingDirectory=updates});
             await Task.Delay(700);BeginInvoke(Application.Exit);
         }
         catch(Exception ex){Interlocked.Exchange(ref updateInProgress,0);await File.AppendAllTextAsync(paths.DesktopLog,$"{DateTimeOffset.Now:O} Update failed: {ex}{Environment.NewLine}");Reply(false,ex.Message);}
