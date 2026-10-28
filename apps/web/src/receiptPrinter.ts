@@ -33,7 +33,10 @@ export async function clearPrinterQueue(printerName: string): Promise<number> {
 
 export async function silentPrint(text: string): Promise<boolean> {
   const printerName = localStorage.getItem("receipt_printer");
-  if (!printerName || localStorage.getItem("silent_print") !== "true") return false;
+  // Older terminal profiles may have a printer saved without the newer
+  // silent_print preference. Treat that as silent printing enabled; only an
+  // explicit false means the operator asked for the Windows dialog.
+  if (!printerName || localStorage.getItem("silent_print") === "false") return false;
   const response = await fetch(`${bridgeUrl}/print`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -56,6 +59,11 @@ export async function printReceiptText(text: string) {
 
 function printReceiptPreview(text: string) {
   const width=cachedReceiptSettings().paperWidthMm;
+  const columns=width===58?32:48;
+  // Chromium does not consistently accept `auto` as a thermal page height.
+  // It then falls back to Letter/A4 and scales the receipt past the roll width.
+  const wrappedLines=text.split("\n").reduce((count,line)=>count+Math.max(1,Math.ceil(line.length/columns)),0);
+  const height=Math.max(70,Math.min(600,Math.ceil(wrappedLines*4.2+12)));
   const frame = document.createElement("iframe");
   frame.title = "Receipt print job";
   Object.assign(frame.style, {
@@ -85,10 +93,10 @@ function printReceiptPreview(text: string) {
     }).join("\n");
   doc.open();
   doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Receipt</title><style>
-    @page { size: ${width}mm auto; margin: 0; }
-    html,body { margin:0; padding:0; width:${width}mm; background:#fff; }
-    body { box-sizing:border-box; padding:3mm 5mm 5mm; color:#000; }
-    pre { margin:0; width:${width-10}mm; overflow:hidden; white-space:pre-wrap; overflow-wrap:anywhere; font:9pt/1.35 "Courier New",monospace; }
+    @page { size: ${width}mm ${height}mm; margin: 0; }
+    html,body { margin:0; padding:0; width:${width}mm; max-width:${width}mm; background:#fff; }
+    body { box-sizing:border-box; padding:3mm 4mm 5mm; color:#000; overflow:hidden; }
+    pre { box-sizing:border-box; margin:0; width:100%; max-width:100%; overflow:hidden; white-space:pre-wrap; overflow-wrap:anywhere; font:9pt/1.35 "Courier New",monospace; }
     strong { display:block; font-size:13pt; line-height:1.5; text-align:center; font-weight:900; }
     .receipt-balance { display:block; color:#b42318; font-weight:900; }
     .receipt-deposit { display:block; color:#176b4d; font-weight:800; }
