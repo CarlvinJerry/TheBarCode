@@ -563,7 +563,7 @@ function Login({
           <b>Demo account</b>
           <span>Demo User · PIN 123456</span>
         </div>
-        <div className="login-signoff"><span>Built by</span><b>Beyond Raw Data</b></div>
+        <div className="login-company-mark"><span>Built by</span><img src="/beyond-raw-data-logo.png" alt="Beyond Raw Data" /></div>
         {(error || message) && <small>{error || message}</small>}
       </form>
     </div>
