@@ -1,11 +1,11 @@
 {
-  "version": "1.12.44",
+  "version": "1.12.45",
   "channel": "lite-windows",
   "edition": "Lite",
-  "summary": "TheBarcode Lite 1.12.44: Fix self-update relaunch and stale app cache",
-  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.44/TheBarcode-Lite-Setup-1.12.44-x64.exe",
-  "sha256": "54db7acc42c23df868badaf376aedb13eb0b5b046e3181386c13ecdb9c961338",
+  "summary": "TheBarcode Lite 1.12.45: logo update",
+  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.45/TheBarcode-Lite-Setup-1.12.45-x64.exe",
+  "sha256": "e00195bd7f9fc1fe59715bd4bc2a30fc7286668324d6d5e75c2536c2c0ade359",
   "notes": [
-    "TheBarcode Lite 1.12.44: Fix self-update relaunch and stale app cache"
+    "TheBarcode Lite 1.12.45: logo update"
   ]
 }
