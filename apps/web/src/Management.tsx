@@ -1263,6 +1263,7 @@ function Settings({
     return saved === null ? Boolean(localStorage.getItem("receipt_printer")) : saved === "true";
   });
   const [bridgeReady, setBridgeReady] = useState(false);
+  const [printerScanError,setPrinterScanError]=useState("");
   const [printerQueue, setPrinterQueue] = useState<string[]>([]);
   const [deviceName, setDeviceName] = useState(localStorage.getItem("device_id") || `POS-${crypto.randomUUID().slice(0, 6).toUpperCase()}`);
   const [terminalName,setTerminalName]=useState(localStorage.getItem("terminal_name")||"Front counter");
@@ -1275,19 +1276,26 @@ function Settings({
   const [backups,setBackups]=useState<any[]>([]),[purgeConfirmation,setPurgeConfirmation]=useState(""),[purgeReason,setPurgeReason]=useState(""),[maintenanceBusy,setMaintenanceBusy]=useState(false);
   const [backupJobId,setBackupJobId]=useState(()=>sessionStorage.getItem("thebarcode_backup_job")||"");
   const [backupJob,setBackupJob]=useState<any>();
+  async function refreshPrinters(){
+    let lastError:unknown;
+    for(let attempt=0;attempt<4;attempt++){
+      try{
+        const items=await listSilentPrinters();
+        setPrinters(items);setBridgeReady(true);setPrinterScanError("");
+        if(!localStorage.getItem("receipt_printer")&&items.length===1)setPrinter(items[0]);
+        return;
+      }catch(error){lastError=error;if(attempt<3)await new Promise(resolve=>setTimeout(resolve,600*(attempt+1)))}
+    }
+    setPrinters([]);setBridgeReady(false);
+    setPrinterScanError(lastError instanceof Error?lastError.message:"The printer service could not be reached");
+  }
   useEffect(()=>{if(!backupJobId||user.role!=="Owner")return;let active=true;let polling=false;const check=async()=>{if(polling||document.visibilityState!=="visible")return;polling=true;try{const job=await getBackgroundJob(backupJobId);if(!active)return;setBackupJob(job);if(job.status==="Completed"){sessionStorage.removeItem("thebarcode_backup_job");setBackupJobId("");setBackups(await getMaintenanceBackups());notify("Local database backup completed and verified")}else if(job.status==="Cancelled"){sessionStorage.removeItem("thebarcode_backup_job");setBackupJobId("")}}catch(e){if(active)notify(e instanceof Error?e.message:"Could not read backup status")}finally{polling=false}};void check();const timer=window.setInterval(()=>{if(backupJob?.status!=="Failed")void check()},1500);return()=>{active=false;clearInterval(timer)}},[backupJobId,backupJob?.status,user.role]);
   useEffect(() => {
     getSettings().then((data)=>{setOrganization(data.organization);setRegistration((current:any)=>({...current,...data.organization,planCode:data.organization.planCode||"OpenPreview",enabledModules:data.organization.enabledModules||current.enabledModules}));setReceiptConfig(data.receipt);setBranches(data.branches);setTerminals(data.terminals);localStorage.setItem("organization_profile",JSON.stringify(data.organization));localStorage.setItem("receipt_configuration",JSON.stringify(data.receipt));if(!branchId&&data.branches.length)setBranchId(data.branches[0].id)}).catch(()=>notify("Shared settings unavailable · using saved terminal configuration"));
     if(user.role==="Owner"){getRegistrationCatalog().then((x:any)=>setRegistrationPlans(x.plans||[])).catch(()=>0);getRegistration().then((x:any)=>{if(x?.organization){setRegistration((current:any)=>({...current,...x.organization,planCode:x.organization.planCode||"OpenPreview",enabledModules:x.organization.enabledModules||current.enabledModules}));setRegistrationPlans(x.plans||[])}}).catch(()=>0)}
     if(["Owner","Manager"].includes(user.role))getInsightsSettings().then(x=>setInsightsConfig(current=>({...current,...x,apiKey:"",clearApiKey:false}))).catch(()=>0);
     if(user.role==="Owner")getMaintenanceBackups().then(setBackups).catch(()=>0);
-    listSilentPrinters()
-      .then((items) => {
-        setPrinters(items);
-        setBridgeReady(true);
-        if (!printer && items.length === 1) setPrinter(items[0]);
-      })
-      .catch(() => setBridgeReady(false));
+    void refreshPrinters();
   }, []);
   useEffect(() => { if (!printer || !bridgeReady) { setPrinterQueue([]); return; } const refresh=()=>getPrinterQueue(printer).then(setPrinterQueue).catch(()=>setPrinterQueue([])); void refresh(); const timer=window.setInterval(refresh,8000); return()=>clearInterval(timer); }, [printer, bridgeReady]);
   function choose(x: string) {
@@ -1464,13 +1472,16 @@ function Settings({
             <Field label="Windows printer">
               <select value={printer} onChange={(e) => { setPrinter(e.target.value); if (localStorage.getItem("silent_print") === null) setSilent(Boolean(e.target.value)); }}>
                 <option value="">Choose printer…</option>
+                {printer&&!printers.some(name=>name===printer)&&<option value={printer}>{printer} · saved printer</option>}
                 {printers.map((name) => <option key={name}>{name}</option>)}
               </select>
             </Field>
+            <button className="outline-button" onClick={()=>void refreshPrinters()}>Refresh printer list</button>
             <label className="print-toggle">
               <input type="checkbox" checked={silent} onChange={(e) => setSilent(e.target.checked)} />
               Print silently through the local bridge
             </label>
+            {!bridgeReady&&<small className="muted">{printerScanError?`Printer service unavailable: ${printerScanError}`:"Checking installed printers…"}</small>}
             <button className="outline-button" onClick={() => {
               localStorage.setItem("receipt_printer", printer);
               localStorage.setItem("silent_print", String(silent));
@@ -1483,8 +1494,12 @@ function Settings({
             onClick={async () => {
               localStorage.setItem("receipt_printer", printer);
               localStorage.setItem("silent_print", String(silent));
-              const mode = await printReceiptText(testReceiptText());
-              notify(mode === "silent" ? "Silent test receipt sent to XP-80" : "Print bridge unavailable · opened print preview");
+              try {
+                const mode = await printReceiptText(testReceiptText());
+                notify(mode === "silent" ? "Silent test receipt sent to the selected printer" : "Opened the manual receipt print dialog");
+              } catch (error) {
+                notify(error instanceof Error?error.message:"The selected receipt printer could not be reached");
+              }
             }}
           >
             Print test receipt

@@ -28,16 +28,25 @@ internal static class RawPrinter {
   const uint PrinterEnumConnections = 0x00000004;
 
   public static IReadOnlyList<string> GetInstalledPrinters() {
-    EnumPrinters(PrinterEnumLocal | PrinterEnumConnections, null, 4, IntPtr.Zero, 0, out var needed, out _);
+    const uint flags = PrinterEnumLocal | PrinterEnumConnections;
+    // Level 4 is fast and lightweight. Some older or vendor-managed printer
+    // queues do not return entries at that level, so retry with level 1 before
+    // reporting an empty printer list to the POS.
+    var names = EnumeratePrinterNames(flags, 4, static item => Marshal.PtrToStructure<PrinterInfo4>(item).PrinterName);
+    if (names.Count == 0)
+      names = EnumeratePrinterNames(flags, 1, static item => Marshal.PtrToStructure<PrinterInfo1>(item).PrinterName);
+    return names.Where(x => !string.IsNullOrWhiteSpace(x)).Cast<string>().Distinct(StringComparer.OrdinalIgnoreCase).Order().ToList();
+  }
+
+  static List<string?> EnumeratePrinterNames(uint flags, uint level, Func<IntPtr, string?> readName) {
+    EnumPrinters(flags, null, level, IntPtr.Zero, 0, out var needed, out _);
     if (needed == 0) return [];
     var buffer = Marshal.AllocHGlobal((int)needed);
     try {
-      if (!EnumPrinters(PrinterEnumLocal | PrinterEnumConnections, null, 4, buffer, needed, out _, out var returned))
+      if (!EnumPrinters(flags, null, level, buffer, needed, out _, out var returned))
         throw new Win32Exception(Marshal.GetLastWin32Error());
-      var size = Marshal.SizeOf<PrinterInfo4>();
-      return Enumerable.Range(0, (int)returned)
-        .Select(i => Marshal.PtrToStructure<PrinterInfo4>(buffer + i * size).PrinterName)
-        .Where(x => !string.IsNullOrWhiteSpace(x)).Cast<string>().Order().ToList();
+      var size = level == 4 ? Marshal.SizeOf<PrinterInfo4>() : Marshal.SizeOf<PrinterInfo1>();
+      return Enumerable.Range(0, (int)returned).Select(i => readName(buffer + i * size)).ToList();
     } finally { Marshal.FreeHGlobal(buffer); }
   }
 
@@ -102,6 +111,8 @@ internal static class RawPrinter {
 
   [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
   struct PrinterInfo4 { [MarshalAs(UnmanagedType.LPWStr)] public string? PrinterName; [MarshalAs(UnmanagedType.LPWStr)] public string? ServerName; public uint Attributes; }
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  struct PrinterInfo1 { public uint Flags; [MarshalAs(UnmanagedType.LPWStr)] public string? Description; [MarshalAs(UnmanagedType.LPWStr)] public string? PrinterName; [MarshalAs(UnmanagedType.LPWStr)] public string? Comment; }
   [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
   struct JobInfo1 { public uint JobId; public IntPtr PrinterName; public IntPtr MachineName; public IntPtr UserName; public IntPtr Document; public IntPtr DataType; public IntPtr PrintProcessor; public IntPtr Parameters; public IntPtr DriverName; public IntPtr DevMode; public IntPtr Status; public uint StatusCode; public uint Priority; public uint Position; public uint TotalPages; public uint Size; public SystemTime Submitted; }
   [StructLayout(LayoutKind.Sequential)] struct SystemTime { public ushort Year, Month, DayOfWeek, Day, Hour, Minute, Second, Milliseconds; }
