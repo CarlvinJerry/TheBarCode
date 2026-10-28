@@ -1429,7 +1429,6 @@ function Settings({
             <Field label="Update manifest URL"><input value={updateUrl} onChange={(e) => setUpdateUrl(e.target.value)} placeholder="https://…/latest.json" /></Field>
             <p className="update-source-note">TheBarcode checks the public release branch first, then the official mirrors. A configured direct HTTPS manifest is also checked. If automatic installation is unavailable, you can <a className="update-source-link" href={driveReleaseFolder} target="_blank" rel="noreferrer">open the manual release folder</a>.</p>
             <div className="button-row"><button onClick={saveTerminal}>Save update channel</button><button disabled={updateBusy} onClick={()=>void checkUpdates(false)}>{updateBusy?"Checking…":"Check for updates"}</button></div>
-            <small>Built and maintained by Beyond Raw Data</small>
           </div>
         </Panel>
       </Two></div>}
@@ -1581,6 +1580,10 @@ function Settings({
           </div>
         </Panel>
       </div>}
+      <footer className="settings-brand-footer" aria-label="TheBarcode publisher and version">
+        <img src="/beyond-raw-data-logo.png" alt="Beyond Raw Data" />
+        <small>TheBarcode Lite · v{APP_VERSION}</small>
+      </footer>
     </Page>
   );
 }
