@@ -23,13 +23,16 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
   .WithOrigins("http://localhost:8088", "http://127.0.0.1:8088", "http://localhost:8090", "http://127.0.0.1:8090", "http://localhost:5173", "http://127.0.0.1:5173")
   .AllowAnyHeader()
   .AllowAnyMethod()));
+builder.Services.AddSingleton<PrinterCatalog>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<PrinterCatalog>());
 
 var app = builder.Build();
 app.UseCors();
 app.MapGet("/health", () => Results.Ok(new { ready = true, service = "Dukora Print Bridge" }));
-app.MapGet("/printers", () => {
-  try { return Results.Ok(RawPrinter.GetInstalledPrinters()); }
-  catch (Exception ex) { return Results.Problem(ex.Message, statusCode: 503, title: "Unable to enumerate Windows printers"); }
+app.MapGet("/printers", (PrinterCatalog catalog) => {
+  var known = catalog.Printers;
+  if (known.Count > 0 || catalog.HasCompletedScan) return Results.Ok(known);
+  return Results.Problem(catalog.LastError ?? "Printer discovery is still starting; retry shortly.", statusCode: 503, title: "Unable to enumerate Windows printers");
 });
 app.MapGet("/queue", (string printerName) => {
   if (string.IsNullOrWhiteSpace(printerName)) return Results.BadRequest(new { error = "Choose a printer" });

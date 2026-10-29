@@ -27,15 +27,19 @@ internal static class RawPrinter {
   const uint PrinterEnumLocal = 0x00000002;
   const uint PrinterEnumConnections = 0x00000004;
 
-  public static IReadOnlyList<string> GetInstalledPrinters() {
-    const uint flags = PrinterEnumLocal | PrinterEnumConnections;
+  public static IReadOnlyList<string> GetInstalledPrinters() => GetLocalInstalledPrinters().Concat(GetConnectedPrinters()).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToList();
+
+  public static IReadOnlyList<string> GetLocalInstalledPrinters() => EnumerateInstalled(PrinterEnumLocal);
+  public static IReadOnlyList<string> GetConnectedPrinters() => EnumerateInstalled(PrinterEnumConnections);
+
+  static IReadOnlyList<string> EnumerateInstalled(uint flags) {
     // Level 4 is fast and lightweight. Some older or vendor-managed printer
     // queues do not return entries at that level, so retry with level 1 before
     // reporting an empty printer list to the POS.
     var names = EnumeratePrinterNames(flags, 4, static item => Marshal.PtrToStructure<PrinterInfo4>(item).PrinterName);
     if (names.Count == 0)
       names = EnumeratePrinterNames(flags, 1, static item => Marshal.PtrToStructure<PrinterInfo1>(item).PrinterName);
-    return names.Where(x => !string.IsNullOrWhiteSpace(x)).Cast<string>().Distinct(StringComparer.OrdinalIgnoreCase).Order().ToList();
+    return names.Where(x => !string.IsNullOrWhiteSpace(x)).Cast<string>().Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToList();
   }
 
   static List<string?> EnumeratePrinterNames(uint flags, uint level, Func<IntPtr, string?> readName) {
