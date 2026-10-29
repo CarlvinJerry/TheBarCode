@@ -1,11 +1,11 @@
 {
-  "version": "1.12.46",
+  "version": "1.12.47",
   "channel": "lite-windows",
   "edition": "Lite",
-  "summary": "TheBarcode Lite 1.12.46: Route all receipts through the printer bridge",
-  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.46/TheBarcode-Lite-Setup-1.12.46-x64.exe",
-  "sha256": "29b07e0f8ab6e3d062c4de4d5286b9b5d1e8bb9b1741ed2cf2f1f14ddbdf3d38",
+  "summary": "TheBarcode Lite 1.12.47: Add security settings and richer reporting",
+  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.47/TheBarcode-Lite-Setup-1.12.47-x64.exe",
+  "sha256": "8b59613828562d94d2cbfdaee7403cc6105953be9df670c95fe2ca9a4bc72b77",
   "notes": [
-    "TheBarcode Lite 1.12.46: Route all receipts through the printer bridge"
+    "TheBarcode Lite 1.12.47: Add security settings and richer reporting"
   ]
 }
