@@ -1,6 +1,8 @@
 import { Fragment, useDeferredValue, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -31,6 +33,7 @@ import {
 import { compareVersions, fetchLatestUpdate, GITHUB_UPDATE_MANIFEST } from "./updater";
 import { APP_CHANNEL, APP_VERSION, RELEASE_NOTES } from "./version";
 import { displayScales, saveDisplayScale, storedDisplayScale, type DisplayScaleName } from "./displayScale";
+import { getSecurityActivity, recordSecurityActivity } from "./securityAudit";
 import {
   bootstrap,
   bulkImportProducts,
@@ -798,33 +801,69 @@ function Accounting({user}:{user:{role:string}}) {
       <Panel title="Accounts by class"><Table heads={["Class","Debit","Credit"]} rows={classes.map((x:any)=>[x.type,<LedgerAmount value={x.debit}/>,<LedgerAmount value={x.credit}/>])}/><p className="accounting-chart-note">A balanced trial balance confirms total debits equal total credits.</p></Panel></Two>
     <Panel title="Journal history (immutable)"><p className="accounting-journal-note">Each transaction is balanced across its affected accounts. Superseded snapshots are retained for audit and shown struck through; only the latest active snapshot feeds the trial balance.</p><Table heads={["Date","Source","Memo","Status","Lines"]} rowClasses={journals.map(x=>x.status==="Superseded"?"journal-superseded":"")} rows={journals.map(x=>[String(x.date),x.sourceType,x.memo,x.status,String(x.lines?.length||0)])}/></Panel></Page>;
 }
+function buildReportTrendData(detail:any,from:string,to:string) {
+  const start=new Date(`${from}T00:00:00Z`),end=new Date(`${to}T00:00:00Z`);
+  if(Number.isNaN(start.getTime())||Number.isNaN(end.getTime())||end<start)return [];
+  const spanDays=Math.floor((end.getTime()-start.getTime())/86400000)+1;
+  const unit=spanDays<=90?"day":spanDays<=730?"week":"month";
+  const keyFor=(date:string)=>{
+    const d=new Date(`${date}T00:00:00Z`);
+    if(unit==="month")return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`;
+    if(unit==="week"){
+      const monday=new Date(d);monday.setUTCDate(monday.getUTCDate()-((monday.getUTCDay()+6)%7));
+      return monday.toISOString().slice(0,10);
+    }
+    return date;
+  };
+  const buckets=new Map<string,any>();
+  const merge=(date:string,values:any)=>{const key=keyFor(date),row=buckets.get(key)||{date:key,revenue:0,profit:0,expenses:0,inflow:0,outflow:0};for(const field of ["revenue","profit","expenses","inflow","outflow"])row[field]+=Number(values[field]||0);buckets.set(key,row)};
+  for(const row of detail?.daily||[])merge(String(row.date),{revenue:row.revenue,profit:row.profit});
+  for(const row of detail?.dailyExpenses||[])merge(String(row.date),{expenses:row.amount});
+  for(const row of detail?.dailyStockFlow||[])merge(String(row.date),{inflow:row.inflow,outflow:row.outflow});
+  if(!buckets.size)return [];
+  if(unit==="day"){
+    for(let d=new Date(start);d<=end;d.setUTCDate(d.getUTCDate()+1)){const key=d.toISOString().slice(0,10);if(!buckets.has(key))buckets.set(key,{date:key,revenue:0,profit:0,expenses:0,inflow:0,outflow:0})}
+  }else if(unit==="week"){
+    const d=new Date(start);d.setUTCDate(d.getUTCDate()-((d.getUTCDay()+6)%7));
+    while(d<=end){const key=d.toISOString().slice(0,10);if(!buckets.has(key))buckets.set(key,{date:key,revenue:0,profit:0,expenses:0,inflow:0,outflow:0});d.setUTCDate(d.getUTCDate()+7)}
+  }else{
+    const d=new Date(Date.UTC(start.getUTCFullYear(),start.getUTCMonth(),1));
+    while(d<=end){const key=`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`;if(!buckets.has(key))buckets.set(key,{date:key,revenue:0,profit:0,expenses:0,inflow:0,outflow:0});d.setUTCMonth(d.getUTCMonth()+1)}
+  }
+  return [...buckets.values()].sort((a,b)=>a.date.localeCompare(b.date)).map(row=>({...row,label:unit==="month"?new Date(`${row.date}-01T00:00:00Z`).toLocaleDateString(undefined,{month:"short",year:"2-digit",timeZone:"UTC"}):new Date(`${row.date}T00:00:00Z`).toLocaleDateString(undefined,{month:"short",day:"numeric",timeZone:"UTC"})}));
+}
+
 function Reports({user}:{user:{role:string}}) {
   const today=new Date().toISOString().slice(0,10), month=new Date();month.setDate(1);
-  const [range, setRange] = useState("This month"),[from,setFrom]=useState(month.toISOString().slice(0,10)),[to,setTo]=useState(today),[summary,setSummary]=useState<any>(null),[,setDetail]=useState<any>(null),[reportBusy,setReportBusy]=useState(false);
-  const permitted=canAccess(user,"reports");const load=async()=>{if(!permitted)return null;setReportBusy(true);try{const d=await getOperationalOverview(from,to);setSummary(d);setDetail(d);return {summary:d,detail:d}}catch{setSummary(null);setDetail(null);return null}finally{setReportBusy(false)}};useEffect(()=>{const timer=setTimeout(()=>void load(),250);return()=>clearTimeout(timer)},[from,to,permitted]);
-  const downloadLatest=async()=>{const latest=await load();if(!latest)return;let accounting:any=null,accountingTrial:any[]=[];if(enabledModules(cachedOrganizationSettings().enabledModules).has("accounting")){try{[accounting,accountingTrial]=await Promise.all([getAccountingOverview(from,to),getAccountingTrialBalance(from,to)])}catch{/* keep the operational report available if accounting is offline */}}await downloadPdfReport({from,to,...latest,accounting,accountingTrial})};
+  const [range, setRange] = useState("This month"),[from,setFrom]=useState(month.toISOString().slice(0,10)),[to,setTo]=useState(today),[summary,setSummary]=useState<any>(null),[detail,setDetail]=useState<any>(null),[accounting,setAccounting]=useState<any>(null),[productionRuns,setProductionRuns]=useState<any[]>([]),[reportBusy,setReportBusy]=useState(false);
+  const permitted=canAccess(user,"reports"),modules=enabledModules(cachedOrganizationSettings().enabledModules),accountingVisible=modules.has("accounting")&&canAccess(user,"accounting"),productionVisible=modules.has("production")&&canAccess(user,"inventory");
+  const load=async()=>{if(!permitted)return null;setReportBusy(true);try{const results=await Promise.allSettled([getOperationalOverview(from,to),accountingVisible?getAccountingOverview(from,to):Promise.resolve(null),productionVisible?getProductionRuns():Promise.resolve([])]);const d=results[0].status==="fulfilled"?results[0].value:null;setSummary(d);setDetail(d);setAccounting(results[1].status==="fulfilled"?results[1].value:null);setProductionRuns(results[2].status==="fulfilled"?results[2].value:[]);return d?{summary:d,detail:d,accounting:results[1].status==="fulfilled"?results[1].value:null,productionRuns:results[2].status==="fulfilled"?results[2].value:[]}:null}catch{setSummary(null);setDetail(null);return null}finally{setReportBusy(false)}};useEffect(()=>{const timer=setTimeout(()=>void load(),250);return()=>clearTimeout(timer)},[from,to,permitted,accountingVisible,productionVisible]);
+  const applyPreset=(preset:string)=>{setRange(preset);const end=new Date(),start=new Date(end);if(preset==="This week")start.setDate(start.getDate()-6);else if(preset==="This month")start.setDate(1);setFrom(start.toISOString().slice(0,10));setTo(end.toISOString().slice(0,10))};
+  const downloadLatest=async()=>{const latest=await load();if(!latest)return;let accountingTrial:any[]=[];if(accountingVisible)try{accountingTrial=await getAccountingTrialBalance(from,to)}catch{}await downloadPdfReport({from,to,...latest,accountingTrial})};
   const gross=(summary?.revenue??0)-(summary?.cost??0),net=gross-(summary?.expenses??0);
+  const trendData=buildReportTrendData(detail,from,to);
+  const productionRows=productionRuns.filter(x=>String(x.occurredAt).slice(0,10)>=from&&String(x.occurredAt).slice(0,10)<=to);
+  const currency=(value:any)=>`${cachedOrganizationSettings().currency||"KES"} ${Number(value||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   if(!permitted)return <Page><Intro title="Historical reports" text="Role-based financial access protects business-sensitive information."/><Panel title="Restricted access"><p>Full financial reports are available to Owners and Managers, with read-only access for Auditors. Cashiers use their Sell and Bills views; Storekeepers use Inventory reporting.</p></Panel></Page>;
   return (
     <Page>
       <Intro
         title="Historical reports & shift close"
         text={`${range} · Synced and on-device records included.`}
-        action="Close shift"
       />
       <div className="range-tabs">
         {["Today", "This week", "This month", "Custom range"].map((x) => (
           <button
             className={range === x ? "active" : ""}
-            onClick={() => setRange(x)}
+            onClick={() => x==="Custom range"?setRange(x):applyPreset(x)}
             key={x}
           >
             {x}
           </button>
         ))}
-        <input type="date" value={from} onChange={e=>setFrom(e.target.value)} />
+        <input type="date" value={from} onChange={e=>{setRange("Custom range");setFrom(e.target.value)}} />
         <span>to</span>
-        <input type="date" value={to} onChange={e=>setTo(e.target.value)} />
+        <input type="date" value={to} onChange={e=>{setRange("Custom range");setTo(e.target.value)}} />
         <button className="apply" disabled={reportBusy} onClick={()=>void load()}>{reportBusy?"Refreshing…":"Refresh report"}</button>
       </div>
       <Kpis
@@ -835,6 +874,12 @@ function Reports({user}:{user:{role:string}}) {
           ["Expenses", money(summary?.expenses??0), "Selected range"],
         ]}
       />
+      <Kpis items={[
+        ["Net profit",money(net),"Gross profit less approved operating expenses"],
+        ["Cash collected",money(summary?.cashCollected??0),"Payments recorded in the selected period"],
+        ["Receivables",money(accounting?.receivables??summary?.customerDebt??0),"Outstanding at period end"],
+        ["Inventory value",money(summary?.stockValue??0),"Current on-hand value at latest refresh"],
+      ]}/>
       <Two>
         <Panel title="Profit & loss">
           <Table
@@ -861,6 +906,24 @@ function Reports({user}:{user:{role:string}}) {
           </div>
         </Panel>
       </Two>
+      <Panel title="Business trends">
+        <p className="report-section-note">Sales and gross profit, approved expenses, and stock movement are plotted by day for ranges up to 90 days, by week up to two years, and by month for longer ranges. Quiet periods are shown as zero. Hover or focus chart points to inspect exact values.</p>
+        {!trendData.length?<div className="report-empty">No dated transactions are available for this period.</div>:<div className="report-chart-grid">
+          <section className="report-chart-card"><h4>Sales and gross profit</h4><Chart><AreaChart data={trendData}><defs><linearGradient id="salesTrendFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2f8065" stopOpacity={0.26}/><stop offset="95%" stopColor="#2f8065" stopOpacity={0.02}/></linearGradient><linearGradient id="profitTrendFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#d9a34c" stopOpacity={0.2}/><stop offset="95%" stopColor="#d9a34c" stopOpacity={0.01}/></linearGradient></defs><CartesianGrid vertical={false} stroke="var(--hairline)"/><XAxis dataKey="label" tick={{fontSize:10}}/><YAxis tick={{fontSize:9}} width={52}/><Tooltip formatter={(v:any)=>currency(v)}/><Area type="monotone" dataKey="revenue" name="Sales revenue" stroke="#2f8065" strokeWidth={2.5} fill="url(#salesTrendFill)"/><Area type="monotone" dataKey="profit" name="Gross profit" stroke="#c18b34" strokeWidth={2} fill="url(#profitTrendFill)"/></AreaChart></Chart></section>
+          <section className="report-chart-card"><h4>Approved operating expenses</h4><Chart><AreaChart data={trendData}><defs><linearGradient id="expenseTrendFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#c56d5b" stopOpacity={0.2}/><stop offset="95%" stopColor="#c56d5b" stopOpacity={0.01}/></linearGradient></defs><CartesianGrid vertical={false} stroke="var(--hairline)"/><XAxis dataKey="label" tick={{fontSize:10}}/><YAxis tick={{fontSize:9}} width={52}/><Tooltip formatter={(v:any)=>currency(v)}/><Area type="monotone" dataKey="expenses" name="Approved expenses" stroke="#b96655" strokeWidth={2.5} fill="url(#expenseTrendFill)"/></AreaChart></Chart></section>
+          <section className="report-chart-card"><h4>Inventory movement</h4><Chart><AreaChart data={trendData}><defs><linearGradient id="inflowTrendFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2f8065" stopOpacity={0.2}/><stop offset="95%" stopColor="#2f8065" stopOpacity={0.01}/></linearGradient><linearGradient id="outflowTrendFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#d18a52" stopOpacity={0.18}/><stop offset="95%" stopColor="#d18a52" stopOpacity={0.01}/></linearGradient></defs><CartesianGrid vertical={false} stroke="var(--hairline)"/><XAxis dataKey="label" tick={{fontSize:10}}/><YAxis tick={{fontSize:9}} width={42}/><Tooltip formatter={(v:any)=>Number(v||0).toLocaleString()}/><Area type="monotone" dataKey="inflow" name="Stock added" stroke="#2f8065" strokeWidth={2.5} fill="url(#inflowTrendFill)"/><Area type="monotone" dataKey="outflow" name="Stock used or sold" stroke="#c37b42" strokeWidth={2} fill="url(#outflowTrendFill)"/></AreaChart></Chart></section>
+          <section className="report-chart-card"><h4>Collections by payment method</h4><Chart><BarChart data={detail?.paymentMix||[]}><CartesianGrid vertical={false} stroke="var(--hairline)"/><XAxis dataKey="name" tick={{fontSize:10}}/><YAxis tick={{fontSize:9}} width={52}/><Tooltip formatter={(v:any)=>currency(v)}/><Bar dataKey="amount" name="Collected" fill="#518b7b" radius={[5,5,0,0]}/></BarChart></Chart><p className="report-chart-caption">Recorded payment entries. This is not a counted till variance.</p></section>
+        </div>}
+      </Panel>
+      {accountingVisible&&accounting&&<Two>
+        <Panel title="Receivables ageing · as at period end"><p className="report-section-note">Open customer balances aged by due date, or sale date when no due date was set.</p><Table heads={["Age band","Amount"]} rows={[["Not yet due",currency(accounting.receivablesAging?.current)],["1–30 days overdue",currency(accounting.receivablesAging?.overdue1To30)],["31–60 days overdue",currency(accounting.receivablesAging?.overdue31To60)],["Over 60 days overdue",currency(accounting.receivablesAging?.overdueOver60)]]}/></Panel>
+        <Panel title="Payables ageing · as at period end"><p className="report-section-note">Approved unpaid expenses aged by due date, or expense date when no due date was set.</p><Table heads={["Age band","Amount"]} rows={[["Not yet due",currency(accounting.payablesAging?.current)],["1–30 days overdue",currency(accounting.payablesAging?.overdue1To30)],["31–60 days overdue",currency(accounting.payablesAging?.overdue31To60)],["Over 60 days overdue",currency(accounting.payablesAging?.overdueOver60)]]}/></Panel>
+      </Two>}
+      <Two>
+        <Panel title="Stock movement for the period"><Table heads={["Measure","Quantity / items","Value"]} rows={[["Stock received",Number(summary?.stockInflow||0).toLocaleString(),currency(summary?.stockInflowValue)],["Stock used or sold",Number(summary?.stockOutflow||0).toLocaleString(),currency(summary?.stockOutflowValue)],["Inventory purchases","—",money(summary?.inventoryPurchases||0)],["Low or projected low",String(summary?.lowStockCount||0),"Current risk count"]]}/><p className="report-section-note">Inventory purchases are tracked separately from operating expenses so they do not reduce profit twice.</p></Panel>
+        <Panel title="Collections recorded by method"><Table heads={["Method","Collected"]} rows={(detail?.paymentMix||[]).map((x:any)=>[x.name,currency(x.amount)])}/>{!detail?.paymentMix?.length&&<p className="report-empty">No payments were recorded in this period.</p>}<p className="report-section-note">The app does not yet store an independent counted cash value, so it reports posted collections without claiming a till variance.</p></Panel>
+      </Two>
+      {productionVisible&&<Panel title={"Production costing · "+productionRows.length+" runs"}><p className="report-section-note">Ingredient costs are the saved values from each production run.</p>{productionRows.length?<div className="production-report-list">{productionRows.map((run:any)=><details key={run.id}><summary><span><b>{run.productName}</b><small>{new Date(run.occurredAt).toLocaleString()} · {run.quantityProduced} produced</small></span><strong>{currency(run.totalCost)} total · {currency(run.unitCost)} per unit</strong></summary><Table heads={["Ingredient","Quantity","Unit cost","Line cost"]} rows={(run.ingredients||[]).map((line:any)=>[line.ingredientName||line.name||"Ingredient",String(line.quantity)+" "+(line.unit||""),currency(line.unitCost),currency(line.totalCost??line.cost)])}/></details>)}</div>:<div className="report-empty">No production runs fall within this period.</div>}</Panel>}
     </Page>
   );
 }
@@ -1242,7 +1305,9 @@ function Settings({
   const [settingsTab,setSettingsTab]=useState(sessionStorage.getItem("dukora_settings_tab")||"appearance");
   const [navigationLayout,setNavigationLayout]=useState(localStorage.getItem("navigation_layout")??"Vertical");
   const [displayScale, setDisplayScale] = useState<DisplayScaleName>(storedDisplayScale());
-  const [lockDurationMinutes,setLockDurationMinutes]=useState(()=>{const value=Number(localStorage.getItem("lock_timeout_minutes"));return Number.isFinite(value)&&value>=1&&value<=240?value:5});
+  const [lockDurationMinutes,setLockDurationMinutes]=useState(()=>{const value=Number(localStorage.getItem("lock_timeout_minutes"));return Number.isFinite(value)&&value>=1&&value<=240?value:10});
+  const [securityActivity,setSecurityActivity]=useState(getSecurityActivity);
+  useEffect(()=>{const refresh=()=>setSecurityActivity(getSecurityActivity());addEventListener("thebarcode:security-activity",refresh);return()=>removeEventListener("thebarcode:security-activity",refresh)},[]);
   const [organization,setOrganization]=useState<OrganizationSettings>(defaultOrganizationSettings);
   const [registrationPlans,setRegistrationPlans]=useState<any[]>([]);
   const [registration,setRegistration]=useState<any>({planCode:"OpenPreview",billingStatus:"Trial",deploymentMode:"Local",branchLimit:99,terminalLimit:99,userLimit:99,trialEndsAt:"",enabledModules:"sales,inventory,expenses,reports,ai,production,accounting"});
@@ -1299,7 +1364,7 @@ function Settings({
     notify(`${x} display size saved on this terminal`);
   }
   function chooseNavigationLayout(value:string){setNavigationLayout(value);localStorage.setItem("navigation_layout",value);dispatchEvent(new CustomEvent("dukora:navigation-layout",{detail:value}));notify(`${value} navigation saved on this terminal`)}
-  function chooseLockDuration(value:number){setLockDurationMinutes(value);localStorage.setItem("lock_timeout_minutes",String(value));dispatchEvent(new CustomEvent("thebarcode:lock-duration",{detail:value}));notify(`Session lock set to ${value} minute${value===1?"":"s"} of inactivity`)}
+  function chooseLockDuration(value:number){setLockDurationMinutes(value);localStorage.setItem("lock_timeout_minutes",String(value));dispatchEvent(new CustomEvent("thebarcode:lock-duration",{detail:value}));recordSecurityActivity("Lock timer changed",user.name,`Locks after ${value} minutes of inactivity`);setSecurityActivity(getSecurityActivity());notify(`Session lock set to ${value} minute${value===1?"":"s"} of inactivity`)}
   function saveTerminal() {
     localStorage.setItem("device_id", deviceName);
     localStorage.setItem("api_url", apiUrl);
@@ -1345,7 +1410,7 @@ function Settings({
   async function retryBackup(){if(!backupJobId)return;try{setBackupJob(await retryBackgroundJob(backupJobId))}catch(e){notify(e instanceof Error?e.message:"Backup retry failed")}}
   async function purgeNow(){if(purgeConfirmation!=="PURGE LIVE DATA")return;setMaintenanceBusy(true);try{const result=await purgeLiveData(purgeConfirmation,purgeReason);await purgeLocalLiveData();await bootstrap();setBackups(await getMaintenanceBackups());setPurgeConfirmation("");setPurgeReason("");notify(`Live records purged after backup ${result.backup.fileName}`);dispatchEvent(new CustomEvent("dukora:attention-refresh"))}catch(e){notify(e instanceof Error?e.message:"Live data could not be purged")}finally{setMaintenanceBusy(false)}}
   function restoreBackup(fileName:string){const desktop=(window as any).chrome?.webview;if(!desktop){notify("Restore is available from the installed TheBarcode desktop app");return}desktop.postMessage({command:"restoreBackup",fileName})}
-  const settingsTabs=[{id:"appearance",label:"Appearance"},{id:"business",label:"Business"},...(user.role==="Owner"?[{id:"plan",label:"Plan & modules"}]:[]),{id:"hardware",label:"Devices & receipts"},...(["Owner","Manager"].includes(user.role)?[{id:"intelligence",label:"Smart Insights"}]:[]),...(user.role==="Owner"?[{id:"data",label:"Data protection"}]:[])];
+  const settingsTabs=[{id:"appearance",label:"Appearance"},{id:"security",label:"Security"},{id:"business",label:"Business"},...(user.role==="Owner"?[{id:"plan",label:"Plan & modules"}]:[]),{id:"hardware",label:"Devices & receipts"},...(["Owner","Manager"].includes(user.role)?[{id:"intelligence",label:"Smart Insights"}]:[]),...(user.role==="Owner"?[{id:"data",label:"Data protection"}]:[])];
   const activeSettingsTab=settingsTabs.some(tab=>tab.id===settingsTab)?settingsTab:"appearance";
   function selectSettingsTab(id:string){setSettingsTab(id);sessionStorage.setItem("dukora_settings_tab",id)}
   return (
@@ -1391,10 +1456,14 @@ function Settings({
         <p className="display-scale-help">Choose a traditional left sidebar or a horizontal top menu. The choice persists on this terminal.</p>
         <div className="navigation-layout-grid">{["Vertical","Horizontal"].map(value=><button className={navigationLayout===value?"active":""} onClick={()=>chooseNavigationLayout(value)} key={value}><b>{value==="Vertical"?"▥":"▤"}</b><span>{value}</span></button>)}</div>
       </Panel>
-      <Panel title="Session security">
-        <p className="display-scale-help">Choose how long this terminal may remain idle before it locks. Unlocking keeps the current session and held work intact.</p>
-        <div className="settings-fields"><Field label="Lock after"><select value={lockDurationMinutes} onChange={e=>chooseLockDuration(Number(e.target.value))}>{[1,5,10,15,30,60,120].map(value=><option key={value} value={value}>{value} minute{value===1?"":"s"}</option>)}</select></Field></div>
-      </Panel>
+      </div>}
+      {activeSettingsTab==="security"&&<div className="settings-tab-panel" id="settings-panel-security" role="tabpanel">
+        <Panel title="Session lock">
+          <p className="display-scale-help">Protect this terminal when staff step away. The app locks without signing the current user out, and held bills and offline work stay in place. The default is 10 minutes.</p>
+          <div className="security-session-grid"><div><b>{user.name}</b><small>{user.role} · Active session on this terminal</small><small>Last sign-in: {localStorage.getItem("thebarcode_security_last_signin")?new Date(localStorage.getItem("thebarcode_security_last_signin")!).toLocaleString():"Current session"}</small></div><Field label="Lock after inactivity"><select value={lockDurationMinutes} onChange={e=>chooseLockDuration(Number(e.target.value))}>{[1,5,10,15,30,60,120,240].map(value=><option key={value} value={value}>{value} minute{value===1?"":"s"}</option>)}</select></Field><button type="button" className="security-lock-now" onClick={()=>dispatchEvent(new Event("thebarcode:lock-now"))}>Lock this terminal now</button></div>
+          <p className="security-protection-note">Repeated incorrect unlock PINs are paused after five attempts. When online, sign-in attempts are also throttled by the local API.</p>
+        </Panel>
+        {(["Owner","Manager"].includes(user.role))&&<Panel title="Recent security activity · this terminal"><p className="display-scale-help">This list is stored on this device and records sign-ins, lock events, and PIN failures. It never stores PINs.</p><Table heads={["Time","Event","Staff","Details"]} rows={securityActivity.map(item=>[new Date(item.at).toLocaleString(),item.action,item.actor,item.detail||"—"])}/></Panel>}
       </div>}
       {activeSettingsTab==="business"&&<div className="settings-tab-panel" id="settings-panel-business" role="tabpanel"><Two>
         <Panel title="Business profile">
@@ -1578,7 +1647,7 @@ function Settings({
     </Page>
   );
 }
-async function downloadPdfReport({from,to,summary,detail,accounting,accountingTrial}:{from:string;to:string;summary:any;detail:any;accounting?:any;accountingTrial?:any[]}){
+async function downloadPdfReport({from,to,summary,detail,accounting,accountingTrial,productionRuns}:{from:string;to:string;summary:any;detail:any;accounting?:any;accountingTrial?:any[];productionRuns?:any[]}){
   const [{jsPDF},{default:autoTable}]=await Promise.all([import("jspdf"),import("jspdf-autotable")]);
   if(!summary||!detail)return;
   const org=cachedOrganizationSettings(),doc=new jsPDF({unit:"mm",format:"a4"}),ink=[20,35,44] as [number,number,number],teal=[20,104,91] as [number,number,number],coral=[235,103,70] as [number,number,number],amber=[205,145,54] as [number,number,number],muted=[103,120,116] as [number,number,number],line=[224,232,228] as [number,number,number],soft=[244,248,246] as [number,number,number];
@@ -1597,8 +1666,9 @@ async function downloadPdfReport({from,to,summary,detail,accounting,accountingTr
   doc.addPage();doc.setFillColor(...ink);doc.rect(0,0,210,25,"F");doc.setFillColor(...teal);doc.rect(0,23,210,2,"F");doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(255);doc.text("Operations & controls",14,15);doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(205,225,219);doc.text(`${from} to ${to}  ·  Live operational detail`,145,15);
   y=35;heading("Stock attention",y,coral);const risks=(detail.lowStock||[]).slice(0,14);y=table(y+5,["Item","Category","Available","Reorder at","Days left"],risks.length?risks.map((x:any)=>[x.name,x.category,String(x.stock),String(x.minStock),x.daysRemaining==null?"—":`${Number(x.daysRemaining).toFixed(1)} d`]):[["No projected low-stock items","—","—","—","—"]],{headStyles:{fillColor:coral},columnStyles:{0:{cellWidth:68},1:{cellWidth:43},2:{halign:"right",cellWidth:22},3:{halign:"right",cellWidth:22},4:{halign:"right",cellWidth:25}}})+8;
   heading("Expense register",y);const expenseRows=(detail.expenseRecords||[]).slice(0,16);y=table(y+5,["Date","Expense","Category","Amount","Paid","Method"],expenseRows.length?expenseRows.map((x:any)=>[String(x.date),x.description,x.category,fmt(Number(x.amount||0)),fmt(Number(x.paidAmount||0)),x.method]):[["—","No approved expenses","—","—","—","—"]],{columnStyles:{0:{cellWidth:24},1:{cellWidth:55},2:{cellWidth:35},3:{halign:"right",cellWidth:25},4:{halign:"right",cellWidth:25},5:{cellWidth:22}}})+8;
-  if(accounting){heading("Accounting snapshot",y);const accountingRows=[["Revenue",fmt(Number(accounting.revenue||0))],["Cost of goods sold",fmt(-Number(accounting.cost||0))],["Gross profit",fmt(Number(accounting.grossProfit||0))],["Approved expenses",fmt(-Number(accounting.expenses||0))],["Net profit",fmt(Number(accounting.netProfit||0))],["Receivables at period end",fmt(Number(accounting.receivables||0))],["Payables at period end",fmt(Number(accounting.payables||0))]];const accountingEnd=table(y+5,["Statement line","Amount"],accountingRows,{columnStyles:{0:{cellWidth:115},1:{halign:"right",cellWidth:55}}});y=accountingEnd+8;if(accountingTrial?.length){heading("Trial balance",y);y=table(y+5,["Account","Debit","Credit"],accountingTrial.slice(0,24).map((x:any)=>[`${x.code} · ${x.name}`,fmt(Number(x.debit||0)),fmt(Number(x.credit||0))]),{columnStyles:{0:{cellWidth:100},1:{halign:"right",cellWidth:35},2:{halign:"right",cellWidth:35}}})+6}}
-  const pages=doc.getNumberOfPages();for(let p=1;p<=pages;p++){doc.setPage(p);doc.setDrawColor(...line);doc.setLineWidth(.25);doc.line(14,284,196,284);doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...muted);doc.text(`TheBarcode  ·  ${org.name}  ·  ${from} — ${to}`,14,290);doc.text(`Page ${p} of ${pages}`,196,290,{align:"right"});doc.setTextColor(...teal);doc.text("Smarter Business Operations",105,294,{align:"center"})}doc.save(`TheBarcode-report-${from}-to-${to}.pdf`);
+  if(accounting){heading("Accounting snapshot",y);const accountingRows=[["Revenue",fmt(Number(accounting.revenue||0))],["Cost of goods sold",fmt(-Number(accounting.cost||0))],["Gross profit",fmt(Number(accounting.grossProfit||0))],["Approved expenses",fmt(-Number(accounting.expenses||0))],["Inventory purchases (capitalised)",fmt(Number(accounting.inventoryPurchases||0))],["Net profit",fmt(Number(accounting.netProfit||0))],["Receivables at period end",fmt(Number(accounting.receivables||0))],["Payables at period end",fmt(Number(accounting.payables||0))]];const accountingEnd=table(y+5,["Statement line","Amount"],accountingRows,{columnStyles:{0:{cellWidth:115},1:{halign:"right",cellWidth:55}}});y=accountingEnd+8;if(accountingTrial?.length){heading("Trial balance",y);y=table(y+5,["Account","Debit","Credit"],accountingTrial.slice(0,24).map((x:any)=>[`${x.code} · ${x.name}`,fmt(Number(x.debit||0)),fmt(Number(x.credit||0))]),{columnStyles:{0:{cellWidth:100},1:{halign:"right",cellWidth:35},2:{halign:"right",cellWidth:35}}})+6}}
+  if(accounting){heading("Receivables & payables ageing",y);const ar=accounting.receivablesAging||{},ap=accounting.payablesAging||{};y=table(y+5,["Age band","Receivables","Payables"],[["Not yet due",fmt(ar.current),fmt(ap.current)],["1–30 days overdue",fmt(ar.overdue1To30),fmt(ap.overdue1To30)],["31–60 days overdue",fmt(ar.overdue31To60),fmt(ap.overdue31To60)],["Over 60 days overdue",fmt(ar.overdueOver60),fmt(ap.overdueOver60)]],{columnStyles:{0:{cellWidth:80},1:{halign:"right",cellWidth:48},2:{halign:"right",cellWidth:48}}})+8}
+  const reportProduction=(productionRuns||[]).filter((x:any)=>String(x.occurredAt).slice(0,10)>=from&&String(x.occurredAt).slice(0,10)<=to);if(reportProduction.length){heading("Production costing",y);y=table(y+5,["Completed","Output","Quantity","Cost / unit","Total cost"],reportProduction.slice(0,18).map((x:any)=>[new Date(x.occurredAt).toLocaleDateString(),x.productName,Number(x.quantityProduced||0).toLocaleString(),fmt(Number(x.unitCost||0)),fmt(Number(x.totalCost||0))]),{columnStyles:{0:{cellWidth:32},1:{cellWidth:58},2:{halign:"right",cellWidth:28},3:{halign:"right",cellWidth:33},4:{halign:"right",cellWidth:35}}})+8}  const pages=doc.getNumberOfPages();for(let p=1;p<=pages;p++){doc.setPage(p);doc.setDrawColor(...line);doc.setLineWidth(.25);doc.line(14,284,196,284);doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...muted);doc.text(`TheBarcode  ·  ${org.name}  ·  ${from} — ${to}`,14,290);doc.text(`Page ${p} of ${pages}`,196,290,{align:"right"});doc.setTextColor(...teal);doc.text("Smarter Business Operations",105,294,{align:"center"})}doc.save(`TheBarcode-report-${from}-to-${to}.pdf`);
 }
 const inventoryUnits=["item","piece","bottle","can","pack","tray","bag","portion","serving","shot","glass","ml","L","g","kg"];
 const measureUnits=["item","piece","bottle","can","pack","tray","bag","portion","serving","shot","glass","ml","L","g","kg"];

@@ -14,6 +14,7 @@ import { buildSaleReceipt, cachedOrganizationSettings, cachedReceiptSettings, pr
 import { enabledModules, productMeasure, profileFor } from "./industryProfiles";
 import { APP_VERSION } from "./version";
 import { compareVersions, deferUpdateForSession, fetchLatestUpdate, isUpdateDeferred, type UpdateManifest } from "./updater";
+import { recordSecurityActivity } from "./securityAudit";
 import "./App.css";
 
 type CartLine = Product & { quantity: number };
@@ -56,7 +57,7 @@ export default function App() {
     [locked,setLocked]=useState(false),
     [lockDurationMinutes,setLockDurationMinutes]=useState(()=>{
       const value=Number(localStorage.getItem("lock_timeout_minutes"));
-      return Number.isFinite(value)&&value>=1&&value<=240?value:5;
+      return Number.isFinite(value)&&value>=1&&value<=240?value:10;
     }),
     [lockStaffId,setLockStaffId]=useState(session.user?.id||""),
     [lockPin,setLockPin]=useState(""),
@@ -98,7 +99,7 @@ export default function App() {
     const change = () => setOnline(navigator.onLine);
     addEventListener("online", change);
     addEventListener("offline", change);
-    const navigationChanged=(event:Event)=>setNavigationLayout((event as CustomEvent<string>).detail);const lockDurationChanged=(event:Event)=>setLockDurationMinutes(Number((event as CustomEvent<number>).detail)||5);const industryChanged=(event:Event)=>{const next=(event as CustomEvent<any>).detail;setOrganizationProfile(next);const modules=enabledModules(next.enabledModules);setView(current=>(current==="Production"&&!modules.has("production"))||(current==="Reports"&&!modules.has("reports"))||(current==="Accounting"&&!modules.has("accounting"))||(current==="Smart Insights"&&!modules.has("ai"))?"Dashboard":current)};addEventListener("dukora:navigation-layout",navigationChanged);addEventListener("thebarcode:lock-duration",lockDurationChanged);addEventListener("dukora:industry-profile",industryChanged);
+    const navigationChanged=(event:Event)=>setNavigationLayout((event as CustomEvent<string>).detail);const lockDurationChanged=(event:Event)=>setLockDurationMinutes(Number((event as CustomEvent<number>).detail)||10);const lockNow=()=>{if(!session.user)return;setLockStaffId(session.user.id);setLockPin("");setLockError("");setLocked(true);setAlertsOpen(false);recordSecurityActivity("Locked now",session.user.name,"Manual lock from Security settings")};const industryChanged=(event:Event)=>{const next=(event as CustomEvent<any>).detail;setOrganizationProfile(next);const modules=enabledModules(next.enabledModules);setView(current=>(current==="Production"&&!modules.has("production"))||(current==="Reports"&&!modules.has("reports"))||(current==="Accounting"&&!modules.has("accounting"))||(current==="Smart Insights"&&!modules.has("ai"))?"Dashboard":current)};addEventListener("dukora:navigation-layout",navigationChanged);addEventListener("thebarcode:lock-duration",lockDurationChanged);addEventListener("thebarcode:lock-now",lockNow);addEventListener("dukora:industry-profile",industryChanged);
     let refreshTimer=0;const dataChanged=()=>{clearTimeout(refreshTimer);refreshTimer=window.setTimeout(()=>bootstrap().catch(()=>0),80)};addEventListener("thebarcode:data-changed",dataChanged);
     const syncFailed=(event:Event)=>{const detail=(event as CustomEvent<{message:string}>).detail;if(detail?.message)setMessage(`Stock update rejected: ${detail.message}`)};addEventListener("thebarcode:sync-failed",syncFailed);
     const timer = setInterval(() => syncOutbox().catch(() => 0), 15000);
@@ -107,6 +108,7 @@ export default function App() {
       removeEventListener("offline", change);
       removeEventListener("dukora:navigation-layout",navigationChanged);
       removeEventListener("thebarcode:lock-duration",lockDurationChanged);
+      removeEventListener("thebarcode:lock-now",lockNow);
       removeEventListener("dukora:industry-profile",industryChanged);
       removeEventListener("thebarcode:data-changed",dataChanged);clearTimeout(refreshTimer);
       removeEventListener("thebarcode:sync-failed",syncFailed);
@@ -118,7 +120,7 @@ export default function App() {
     const markActivity=()=>{activityRef.current=Date.now()};
     const events=["pointerdown","keydown","touchstart","mousemove"];
     events.forEach(x=>addEventListener(x,markActivity,{passive:true}));
-    const timer=window.setInterval(()=>{if(!locked&&Date.now()-activityRef.current>=lockDurationMinutes*60*1000){setLocked(true);setLockStaffId(session.user?.id||user.id);setLockPin("");setLockError("");setAlertsOpen(false)}},15000);
+    const timer=window.setInterval(()=>{if(!locked&&Date.now()-activityRef.current>=lockDurationMinutes*60*1000){setLocked(true);setLockStaffId(session.user?.id||user.id);setLockPin("");setLockError("");setAlertsOpen(false);recordSecurityActivity("Locked automatically",user.name,`Inactive for ${lockDurationMinutes} minutes`)}},15000);
     return()=>{events.forEach(x=>removeEventListener(x,markActivity));clearInterval(timer)};
   },[user?.id,locked,lockDurationMinutes]);
   useEffect(()=>{if(!user)return;void getSettings().then(settings=>{if(!settings?.organization)return;setOrganizationProfile(settings.organization);localStorage.setItem("organization_profile",JSON.stringify(settings.organization))}).catch(()=>0)},[user?.id]);
@@ -145,7 +147,7 @@ export default function App() {
     () => cart.reduce((s, x) => s + x.quantity * x.sellingPrice, 0),
     [cart],
   );
-  async function unlock(e:React.FormEvent){e.preventDefault();setLockError("");if(!lockStaffId){setLockError("Choose a staff account to unlock this session.");return}try{const signedIn=await login(lockStaffId,lockPin);setUser(signedIn);setLocked(false);setLockPin("");activityRef.current=Date.now();try{await bootstrap();setMessage(`Welcome back, ${signedIn.name}`)}catch{setMessage(`Welcome back, ${signedIn.name}. Using cached data until the server reconnects.`)}}catch(error){const networkFailure=!navigator.onLine||/failed to fetch|network|connection|refused|unavailable/i.test(String(error));const current=session.user;const localMatch=Boolean(current&&current.id===lockStaffId&&await verifyLocalPin(lockStaffId,lockPin));if(networkFailure&&localMatch){setLocked(false);setLockPin("");activityRef.current=Date.now();setMessage(`Unlocked offline, ${current!.name}. Changes will sync when the server reconnects.`);return}setLockError(error instanceof Error&&error.message?error.message:"Unable to unlock. Check the staff PIN and connection.")}}
+  async function unlock(e:React.FormEvent){e.preventDefault();setLockError("");if(!lockStaffId){setLockError("Choose a staff account to unlock this session.");return}const attemptKey=`thebarcode_unlock_attempts:${lockStaffId}`;let attempts:{count:number;blockedUntil:number}={count:0,blockedUntil:0};try{attempts={...attempts,...JSON.parse(localStorage.getItem(attemptKey)||"{}")}}catch{}if(attempts.blockedUntil>Date.now()){setLockError(`Too many incorrect attempts. Try again in ${Math.ceil((attempts.blockedUntil-Date.now())/1000)} seconds.`);return}try{const signedIn=await login(lockStaffId,lockPin);localStorage.removeItem(attemptKey);recordSecurityActivity("Session unlocked",signedIn.name,"PIN accepted");setUser(signedIn);setLocked(false);setLockPin("");activityRef.current=Date.now();try{await bootstrap();setMessage(`Welcome back, ${signedIn.name}`)}catch{setMessage(`Welcome back, ${signedIn.name}. Using cached data until the server reconnects.`)}}catch(error){const networkFailure=!navigator.onLine||/failed to fetch|network|connection|refused|unavailable/i.test(String(error));const current=session.user;const localMatch=Boolean(current&&current.id===lockStaffId&&await verifyLocalPin(lockStaffId,lockPin));if(networkFailure&&localMatch){localStorage.removeItem(attemptKey);recordSecurityActivity("Session unlocked offline",current!.name,"Verified local PIN while the API was unreachable");setLocked(false);setLockPin("");activityRef.current=Date.now();setMessage(`Unlocked offline, ${current!.name}. Changes will sync when the server reconnects.`);return}attempts.count++;if(attempts.count>=5){attempts={count:0,blockedUntil:Date.now()+60000}}localStorage.setItem(attemptKey,JSON.stringify(attempts));recordSecurityActivity("Unlock failed",staff.find(x=>x.id===lockStaffId)?.name||"Unknown staff",attempts.blockedUntil?"Five invalid PIN attempts; paused for one minute":"PIN was not accepted");setLockPin("");setLockError(attempts.blockedUntil?"Too many incorrect PIN attempts. Unlock is paused for one minute.":error instanceof Error&&error.message?error.message:"Unable to unlock. Check the staff PIN and connection.")}}
   if (!user) return <Login staff={staff} onLogin={setUser} message={message} />;
   const add = (p: Product) => setCart((c) => {const current=c.find(x=>x.id===p.id)?.quantity||0,available=readyStock(p);if(current>=available){setMessage(`${p.name} has ${available} confirmed unit${available===1?"":"s"} available. Pending intakes must reach the local server first.`);return c}return c.some(x=>x.id===p.id)?c.map(x=>x.id===p.id?{...x,quantity:Math.min(available,x.quantity+1)}:x):[...c,{...p,quantity:1}]});
   const qty = (id: string, d: number) =>

@@ -1,4 +1,5 @@
 import { db, saveBootstrap, saveLoginStaff, recordLocalSystemLog, type LocalSale } from './db';
+import { recordSecurityActivity } from './securityAudit';
 const configuredBase=()=>localStorage.getItem('api_url')?.replace(/\/$/,'')||import.meta.env.VITE_API_URL||'/api';
 type ReadEntry={value:any;expiresAt:number};
 const readCache=new Map<string,ReadEntry>();
@@ -21,7 +22,7 @@ export async function rememberLocalPin(staffId:string,pin:string){if(!staffId||!
 export async function verifyLocalPin(staffId:string,pin:string){try{const value=JSON.parse(localStorage.getItem(localPinKey(staffId))||'null');return Boolean(value?.salt&&value?.hash&&(await pinDigest(pin,value.salt))===value.hash)}catch{return false;}}
 export async function bootstrap(){const data=await request('/bootstrap');await saveBootstrap(data);return data;}
 export async function getLoginStaff(){const staff=await request('/auth/staff');await saveLoginStaff(staff);return staff;}
-export async function login(staffId:string,pin:string){const result=await request('/auth/login',{method:'POST',body:JSON.stringify({staffId,pin})});session.set(result.token,result.user);try{const access=await request('/auth/permissions');result.user={...result.user,permissions:access.permissions};session.set(result.token,result.user);}catch{}try{await rememberLocalPin(staffId,pin);}catch{}return result.user;}
+export async function login(staffId:string,pin:string){const result=await request('/auth/login',{method:'POST',body:JSON.stringify({staffId,pin})});session.set(result.token,result.user);localStorage.setItem('thebarcode_security_last_signin',new Date().toISOString());recordSecurityActivity('Signed in',result.user.name,'Successful staff authentication');try{const access=await request('/auth/permissions');result.user={...result.user,permissions:access.permissions};session.set(result.token,result.user);}catch{}try{await rememberLocalPin(staffId,pin);}catch{}return result.user;}
 export async function refreshSession(){const result=await request('/auth/refresh',{method:'POST'});session.set(result.token,result.user);return result.user;}
 const rejectedStockMovements=new Map<string,string>();
 let activeSync:Promise<number>|undefined;

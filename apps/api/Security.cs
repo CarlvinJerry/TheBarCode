@@ -1,4 +1,4 @@
-using System.Security.Cryptography; using Microsoft.IdentityModel.Tokens; using Microsoft.AspNetCore.Authorization; using System.IdentityModel.Tokens.Jwt; using System.Security.Claims; using System.Text;
+using System.Collections.Concurrent; using System.Security.Cryptography; using Microsoft.IdentityModel.Tokens; using Microsoft.AspNetCore.Authorization; using System.IdentityModel.Tokens.Jwt; using System.Security.Claims; using System.Text;
 namespace TheBarcode.Api;
 public static class Security
 {
@@ -11,4 +11,14 @@ public static class Security
  public static bool HasPermission(ClaimsPrincipal principal,string permission){if(HasRole(principal,"Owner"))return true;var key=permission.ToLowerInvariant();if(principal.Claims.Any(c=>c.Type=="permission"&&c.Value.Equals(key,StringComparison.OrdinalIgnoreCase)))return true;var role=principal.FindFirst(ClaimTypes.Role)?.Value;return role switch {"Manager"=>key is "reports" or "approvals" or "accounting" or "audit" or "expenses" or "inventory","Auditor"=>key is "reports" or "audit" or "accounting","Storekeeper"=>key=="inventory","Cashier"=>key is "sales" or "expenses",_=>false};}
  public static bool HasRole(ClaimsPrincipal p,params string[] roles)=>p.Claims.Any(c=>(c.Type==ClaimTypes.Role||c.Type=="role"||c.Type.EndsWith("/role",StringComparison.OrdinalIgnoreCase))&&roles.Contains(c.Value,StringComparer.OrdinalIgnoreCase));
  public static bool IsDemo(ClaimsPrincipal principal)=>principal.FindFirst("dukora_demo")?.Value=="true";
+}
+
+public static class LoginProtection
+{
+ private sealed record Attempt(int Count, DateTimeOffset WindowStartedAt, DateTimeOffset? BlockedUntil);
+ private static readonly ConcurrentDictionary<string,Attempt> Attempts=new(StringComparer.Ordinal);
+ private static readonly TimeSpan Window=TimeSpan.FromMinutes(5),Cooldown=TimeSpan.FromMinutes(1);
+ public static TimeSpan? Remaining(string key){var now=DateTimeOffset.UtcNow;if(!Attempts.TryGetValue(key,out var attempt))return null;if(attempt.BlockedUntil is DateTimeOffset blocked&&blocked>now)return blocked-now;if(now-attempt.WindowStartedAt>Window){Attempts.TryRemove(key,out _);return null;}return null;}
+ public static TimeSpan? Failed(string key){var now=DateTimeOffset.UtcNow;var attempt=Attempts.AddOrUpdate(key,_=>new Attempt(1,now,null),(_,old)=>now-old.WindowStartedAt>Window?new Attempt(1,now,null):new Attempt(old.Count+1,old.WindowStartedAt,old.BlockedUntil));if(attempt.Count>=5){var until=now+Cooldown;Attempts[key]=new Attempt(0,now,until);return Cooldown;}return null;}
+ public static void Succeeded(string key)=>Attempts.TryRemove(key,out _);
 }
