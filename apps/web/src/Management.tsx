@@ -1,4 +1,4 @@
-import { Fragment, useDeferredValue, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { Fragment, useDeferredValue, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   Area,
@@ -1320,6 +1320,7 @@ function Settings({
   const [printer, setPrinter] = useState(localStorage.getItem("receipt_printer") || "");
   const [bridgeReady, setBridgeReady] = useState(false);
   const [printerScanError,setPrinterScanError]=useState("");
+  const printerScanInProgress=useRef(false);
   const [printerQueue, setPrinterQueue] = useState<string[]>([]);
   const [deviceName, setDeviceName] = useState(localStorage.getItem("device_id") || `POS-${crypto.randomUUID().slice(0, 6).toUpperCase()}`);
   const [terminalName,setTerminalName]=useState(localStorage.getItem("terminal_name")||"Front counter");
@@ -1332,25 +1333,29 @@ function Settings({
   const [backupJobId,setBackupJobId]=useState(()=>sessionStorage.getItem("thebarcode_backup_job")||"");
   const [backupJob,setBackupJob]=useState<any>();
   async function refreshPrinters(){
+    if(printerScanInProgress.current)return;
+    printerScanInProgress.current=true;
     let lastError:unknown;
-    for(let attempt=0;attempt<4;attempt++){
-      try{
-        const items=await listSilentPrinters();
-        setPrinters(items);setBridgeReady(true);setPrinterScanError("");
-        if(!localStorage.getItem("receipt_printer")&&items.length===1)setPrinter(items[0]);
-        return;
-      }catch(error){lastError=error;if(attempt<3)await new Promise(resolve=>setTimeout(resolve,600*(attempt+1)))}
-    }
-    setPrinters([]);setBridgeReady(false);
-    setPrinterScanError(lastError instanceof Error?lastError.message:"The printer service could not be reached");
+    try{
+      for(let attempt=0;attempt<4;attempt++){
+        try{
+          const items=await listSilentPrinters();
+          setPrinters(items);setBridgeReady(true);setPrinterScanError("");
+          if(!localStorage.getItem("receipt_printer")&&items.length===1)setPrinter(items[0]);
+          return;
+        }catch(error){lastError=error;if(attempt<3)await new Promise(resolve=>setTimeout(resolve,600*(attempt+1)))}
+      }
+      setBridgeReady(false);
+      setPrinterScanError(lastError instanceof Error?lastError.message:"The printer service could not be reached");
+    }finally{printerScanInProgress.current=false}
   }
+  useEffect(()=>{let active=true;const check=()=>{if(active&&document.visibilityState==="visible")void refreshPrinters()};check();const timer=window.setInterval(check,15000);document.addEventListener("visibilitychange",check);return()=>{active=false;clearInterval(timer);document.removeEventListener("visibilitychange",check)}},[]);
   useEffect(()=>{if(!backupJobId||user.role!=="Owner")return;let active=true;let polling=false;const check=async()=>{if(polling||document.visibilityState!=="visible")return;polling=true;try{const job=await getBackgroundJob(backupJobId);if(!active)return;setBackupJob(job);if(job.status==="Completed"){sessionStorage.removeItem("thebarcode_backup_job");setBackupJobId("");setBackups(await getMaintenanceBackups());notify("Local database backup completed and verified")}else if(job.status==="Cancelled"){sessionStorage.removeItem("thebarcode_backup_job");setBackupJobId("")}}catch(e){if(active)notify(e instanceof Error?e.message:"Could not read backup status")}finally{polling=false}};void check();const timer=window.setInterval(()=>{if(backupJob?.status!=="Failed")void check()},1500);return()=>{active=false;clearInterval(timer)}},[backupJobId,backupJob?.status,user.role]);
   useEffect(() => {
     getSettings().then((data)=>{setOrganization(data.organization);setRegistration((current:any)=>({...current,...data.organization,planCode:data.organization.planCode||"OpenPreview",enabledModules:data.organization.enabledModules||current.enabledModules}));setReceiptConfig(data.receipt);setBranches(data.branches);setTerminals(data.terminals);localStorage.setItem("organization_profile",JSON.stringify(data.organization));localStorage.setItem("receipt_configuration",JSON.stringify(data.receipt));if(!branchId&&data.branches.length)setBranchId(data.branches[0].id)}).catch(()=>notify("Shared settings unavailable · using saved terminal configuration"));
     if(user.role==="Owner"){getRegistrationCatalog().then((x:any)=>setRegistrationPlans(x.plans||[])).catch(()=>0);getRegistration().then((x:any)=>{if(x?.organization){setRegistration((current:any)=>({...current,...x.organization,planCode:x.organization.planCode||"OpenPreview",enabledModules:x.organization.enabledModules||current.enabledModules}));setRegistrationPlans(x.plans||[])}}).catch(()=>0)}
     if(["Owner","Manager"].includes(user.role))getInsightsSettings().then(x=>setInsightsConfig(current=>({...current,...x,apiKey:"",clearApiKey:false}))).catch(()=>0);
     if(user.role==="Owner")getMaintenanceBackups().then(setBackups).catch(()=>0);
-    void refreshPrinters();
   }, []);
   useEffect(() => { if (!printer || !bridgeReady) { setPrinterQueue([]); return; } const refresh=()=>getPrinterQueue(printer).then(setPrinterQueue).catch(()=>setPrinterQueue([])); void refresh(); const timer=window.setInterval(refresh,8000); return()=>clearInterval(timer); }, [printer, bridgeReady]);
   function choose(x: string) {

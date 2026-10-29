@@ -14,6 +14,8 @@ internal static class Program
     const string PrintBridgeUrl = "http://127.0.0.1:17778";
     static Process? api;
     static Process? bridge;
+    static bool ownsBridge;
+    static CancellationTokenSource? bridgeMonitor;
 
     [STAThread]
     static void Main()
@@ -30,6 +32,8 @@ internal static class Program
             // Keep the WinForms/WebView2 message loop on this original STA thread.
             // Awaiting in Main can resume on an MTA worker before Application.Run.
             Task.Run(() => EnsureApi(paths, configuration)).GetAwaiter().GetResult();
+            bridgeMonitor = new CancellationTokenSource();
+            _ = Task.Run(() => MonitorPrintBridge(paths, bridgeMonitor.Token));
             Task.Run(() => StartPrintBridge(paths)).GetAwaiter().GetResult();
             Application.Run(new DukoraWindow(AppUrl, paths));
         }
@@ -61,8 +65,9 @@ internal static class Program
         }
         finally
         {
+            bridgeMonitor?.Cancel();
             Stop(api);
-            Stop(bridge);
+            if (ownsBridge) Stop(bridge);
         }
     }
 
@@ -140,24 +145,79 @@ internal static class Program
             await File.AppendAllTextAsync(paths.DesktopLog, $"{DateTimeOffset.Now:O} Receipt print bridge was not installed: {executable}{Environment.NewLine}");
             return;
         }
-        bridge = Process.Start(new ProcessStartInfo(executable, "--urls http://127.0.0.1:17778") { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Path.GetDirectoryName(executable)! });
+        if (await IsPrintBridgeHealthy())
+        {
+            bridge = null;
+            ownsBridge = false;
+            await File.AppendAllTextAsync(paths.DesktopLog, $"{DateTimeOffset.Now:O} Reusing the existing receipt print bridge at {PrintBridgeUrl}.{Environment.NewLine}");
+            return;
+        }
+        var startInfo = new ProcessStartInfo(executable, $"--urls {PrintBridgeUrl}")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = Path.GetDirectoryName(executable)!,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        bridge = Process.Start(startInfo);
+        if (bridge is null) throw new InvalidOperationException("The receipt print bridge process could not be started.");
+        ownsBridge = true;
+        _ = Pump(bridge.StandardOutput, paths.DesktopLog);
+        _ = Pump(bridge.StandardError, paths.DesktopLog);
+        await File.AppendAllTextAsync(paths.DesktopLog, $"{DateTimeOffset.Now:O} Started receipt print bridge (pid {bridge.Id}) at {PrintBridgeUrl}.{Environment.NewLine}");
         // Do not show the POS until the silent-print endpoint is ready. Without
         // this check the first receipt can race bridge startup and fall through
         // to Chromium's Windows print dialog.
-        using var client = new HttpClient { Timeout = TimeSpan.FromMilliseconds(500) };
-        for (var attempt = 0; attempt < 16; attempt++)
+        for (var attempt = 0; attempt < 40; attempt++)
         {
-            try
+            if (await IsPrintBridgeHealthy())
             {
-                using var response = await client.GetAsync($"{PrintBridgeUrl}/health");
-                if (response.IsSuccessStatusCode) return;
+                await File.AppendAllTextAsync(paths.DesktopLog, $"{DateTimeOffset.Now:O} Receipt print bridge is ready at {PrintBridgeUrl}.{Environment.NewLine}");
+                return;
             }
-            catch { }
-            if (bridge is { HasExited: true }) break;
+            if (bridge.HasExited) break;
             await Task.Delay(250);
         }
-        var exit = bridge is { HasExited: true } ? $" Process exit code: {bridge.ExitCode}." : "";
+        var exit = bridge.HasExited ? $" Process exit code: {bridge.ExitCode}." : " Process remains running but its health endpoint did not respond.";
         await File.AppendAllTextAsync(paths.DesktopLog, $"{DateTimeOffset.Now:O} Receipt print bridge did not become ready at {PrintBridgeUrl}; receipts will use the browser print fallback.{exit}{Environment.NewLine}");
+    }
+
+    static async Task MonitorPrintBridge(AppPaths paths, CancellationToken cancellationToken)
+    {
+        var consecutiveFailures = 0;
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try { await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken); }
+            catch (OperationCanceledException) { break; }
+            if (await IsPrintBridgeHealthy()) { consecutiveFailures = 0; continue; }
+            consecutiveFailures++;
+            if (consecutiveFailures == 1 || consecutiveFailures % 3 == 0)
+                await File.AppendAllTextAsync(paths.DesktopLog, $"{DateTimeOffset.Now:O} Receipt print bridge health check failed ({consecutiveFailures}); checking recovery.{Environment.NewLine}");
+            if (consecutiveFailures < 3) continue;
+
+            if (ownsBridge && bridge is { HasExited: false })
+            {
+                await File.AppendAllTextAsync(paths.DesktopLog, $"{DateTimeOffset.Now:O} Restarting an unresponsive receipt print bridge.{Environment.NewLine}");
+                Stop(bridge);
+                bridge = null;
+                ownsBridge = false;
+            }
+            try { await StartPrintBridge(paths); }
+            catch (Exception ex) { await File.AppendAllTextAsync(paths.DesktopLog, $"{DateTimeOffset.Now:O} Receipt print bridge recovery failed: {ex}{Environment.NewLine}"); }
+            consecutiveFailures = 0;
+        }
+    }
+
+    static async Task<bool> IsPrintBridgeHealthy()
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+            using var response = await client.GetAsync($"{PrintBridgeUrl}/health");
+            return response.IsSuccessStatusCode;
+        }
+        catch { return false; }
     }
 
     static void BackupDatabase(AppPaths paths)
