@@ -1,11 +1,11 @@
 {
-  "version": "1.12.48",
+  "version": "1.12.49",
   "channel": "lite-windows",
   "edition": "Lite",
-  "summary": "TheBarcode Lite 1.12.48: Improve printer bridge recovery on Windows",
-  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.48/TheBarcode-Lite-Setup-1.12.48-x64.exe",
-  "sha256": "1b178c6fee0f420be80599d4352295b152ca12ecba8f6ab39e292b7261f4b941",
+  "summary": "TheBarcode Lite 1.12.49: Add bulk data operations and backdated sales",
+  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.49/TheBarcode-Lite-Setup-1.12.49-x64.exe",
+  "sha256": "da1b52c9872e2a30d72368e36ba8912992e4da76566e8b2749e77c82c6ef9b82",
   "notes": [
-    "TheBarcode Lite 1.12.48: Improve printer bridge recovery on Windows"
+    "TheBarcode Lite 1.12.49: Add bulk data operations and backdated sales"
   ]
 }
