@@ -1,11 +1,11 @@
 {
-  "version": "1.12.47",
+  "version": "1.12.48",
   "channel": "lite-windows",
   "edition": "Lite",
-  "summary": "TheBarcode Lite 1.12.47: Add security settings and richer reporting",
-  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.47/TheBarcode-Lite-Setup-1.12.47-x64.exe",
-  "sha256": "8b59613828562d94d2cbfdaee7403cc6105953be9df670c95fe2ca9a4bc72b77",
+  "summary": "TheBarcode Lite 1.12.48: Improve printer bridge recovery on Windows",
+  "downloadUrl": "https://github.com/CarlvinJerry/TheBarCode/releases/download/v1.12.48/TheBarcode-Lite-Setup-1.12.48-x64.exe",
+  "sha256": "1b178c6fee0f420be80599d4352295b152ca12ecba8f6ab39e292b7261f4b941",
   "notes": [
-    "TheBarcode Lite 1.12.47: Add security settings and richer reporting"
+    "TheBarcode Lite 1.12.48: Improve printer bridge recovery on Windows"
   ]
 }
