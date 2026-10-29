@@ -82,6 +82,9 @@ async function runOutbox(){
 }
 export async function createProduct(product:Record<string,unknown>){return request('/products/single',{method:'POST',body:JSON.stringify(product)});}
 export async function bulkImportProducts(value:Record<string,unknown>){return request('/products/bulk-import',{method:'POST',body:JSON.stringify(value)});}
+export async function bulkImportCustomers(value:Record<string,unknown>){return request('/bulk-data/import/customers',{method:'POST',body:JSON.stringify(value)});}
+export async function bulkImportExpenses(value:Record<string,unknown>){return request('/bulk-data/import/expenses',{method:'POST',body:JSON.stringify(value)});}
+export async function downloadBulkExport(table:string){const response=await fetch(`${configuredBase()}/bulk-data/export/${encodeURIComponent(table)}`,{headers:{...(session.token?{Authorization:`Bearer ${session.token}`}:{}) ,"X-Device-Id":localStorage.getItem('device_id')||'bulk-data-operations'}});if(!response.ok){const raw=await response.text();let message=raw;try{message=JSON.parse(raw).error||raw}catch{}throw new ApiRequestError(message||`Export failed (${response.status})`,response.status)}const blob=await response.blob();const disposition=response.headers.get('Content-Disposition')||'';const filename=disposition.match(/filename="?([^";]+)"?/i)?.[1]||`TheBarcode-${table}-export`;const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=filename;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);return response.headers.get('X-Records-Affected')||'';}
 export async function importHistoricalSales(value:Record<string,unknown>){return request('/background-jobs/historical-sales',{method:'POST',body:JSON.stringify(value)});}
 export async function getBackgroundJob(id:string){return request(`/background-jobs/${id}`);}
 export async function retryBackgroundJob(id:string){return request(`/background-jobs/${id}/retry`,{method:'POST'});}

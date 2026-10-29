@@ -107,8 +107,10 @@ public static class BillEndpoints
             if (duplicate is not null) return Results.Ok(BillView(duplicate, null, null));
             var products = await Products(r.Items, db,Security.IsDemo(principal));
             if (products is null) return await UnavailableResult(r.Items, db, Security.IsDemo(principal));
-            await using var tx=await db.Database.BeginTransactionAsync();var numbering=await NextDailyNumbers(db,r.CustomerId is null,Security.IsDemo(principal));
-            var sale = new Sale { DeviceTransactionId = r.DeviceTransactionId, ReceiptNumber = await NextNumber(db), DailyOrderNumber=numbering.Order,WalkInNumber=numbering.WalkIn,CustomerId = r.CustomerId, StaffId = r.StaffId, Status = "Held", Discount = Math.Max(0, r.Discount), Notes = r.Notes?.Trim(), ExpectedDeliveryAt = r.ExpectedDeliveryAt, AssignedStaffId = r.AssignedStaffId, FulfillmentStatus = r.ExpectedDeliveryAt is null ? "Immediate" : "Scheduled", OccurredAt = DateTimeOffset.Now,IsDemo=Security.IsDemo(principal) };
+            var occurredAt = r.OccurredAt ?? DateTimeOffset.Now;
+            if (occurredAt > DateTimeOffset.UtcNow.AddMinutes(5)) return Results.BadRequest(new { error = "Sale date and time cannot be in the future" });
+            await using var tx=await db.Database.BeginTransactionAsync();var numbering=await NextDailyNumbers(db,r.CustomerId is null,Security.IsDemo(principal),occurredAt);
+            var sale = new Sale { DeviceTransactionId = r.DeviceTransactionId, ReceiptNumber = await NextNumber(db), DailyOrderNumber=numbering.Order,WalkInNumber=numbering.WalkIn,CustomerId = r.CustomerId, StaffId = r.StaffId, Status = "Held", Discount = Math.Max(0, r.Discount), Notes = r.Notes?.Trim(), ExpectedDeliveryAt = r.ExpectedDeliveryAt, AssignedStaffId = r.AssignedStaffId, FulfillmentStatus = r.ExpectedDeliveryAt is null ? "Immediate" : "Scheduled", OccurredAt = occurredAt,IsDemo=Security.IsDemo(principal) };
             ReplaceLines(sale, r.Items, products);
             sale.Total = Total(sale);
             sale.Revisions.Add(Revision(sale, r.StaffId, "Held", "Initial unpaid bill"));
@@ -147,6 +149,11 @@ public static class BillEndpoints
             sale.ExpectedDeliveryAt = r.ExpectedDeliveryAt;
             sale.AssignedStaffId = r.AssignedStaffId;
             sale.FulfillmentStatus = r.ExpectedDeliveryAt is null ? "Immediate" : "Scheduled";
+            if (r.OccurredAt is DateTimeOffset occurredAt)
+            {
+                if (occurredAt > DateTimeOffset.UtcNow.AddMinutes(5)) return Results.BadRequest(new { error = "Sale date and time cannot be in the future" });
+                sale.OccurredAt = occurredAt;
+            }
             sale.Total = Total(sale);
             sale.Revision++;
             sale.UpdatedAt = DateTimeOffset.UtcNow;
@@ -196,6 +203,9 @@ public static class BillEndpoints
             var sale = await db.Sales.Include(x => x.Items).Include(x => x.Payments).Include(x => x.Revisions).AsSplitQuery().SingleOrDefaultAsync(x => x.Id == id&&x.IsDemo==Security.IsDemo(principal));
             if (sale is null) return Results.NotFound();
             if (sale.Status != "Held") return Results.Conflict(new { error = "This bill has already been posted" });
+            var accountingDate = DateOnly.FromDateTime(sale.OccurredAt.LocalDateTime);
+            if (await db.AccountingPeriods.AnyAsync(x => x.IsDemo == sale.IsDemo && x.Locked && accountingDate >= x.Start && accountingDate <= x.End))
+                return Results.Conflict(new { error = "This sale date falls in a locked accounting period. Choose an open date or ask an Owner to review the period." });
             if (sale.Items.Any(x=>x.Quantity<=0||x.Quantity!=decimal.Truncate(x.Quantity)))return Results.BadRequest(new{error="Bill quantities must be positive whole units"});
             if (!PostedStatuses.Contains(r.Status)) return Results.BadRequest(new { error = "Status must be Paid, Credit or PartiallyPaid" });
             if (r.Status != "Paid" && sale.CustomerId is null) return Results.BadRequest(new { error = "Credit requires a registered customer" });
@@ -224,9 +234,9 @@ public static class BillEndpoints
             {
                 var product = products[line.ProductId];
                 product.Stock -= line.Quantity;
-                db.StockMovements.Add(new StockMovement { ProductId = product.Id, StaffId = sale.StaffId, Type = "Sale", QuantityChange = -line.Quantity, Notes = sale.DeviceTransactionId, OccurredAt = DateTimeOffset.UtcNow });
+                db.StockMovements.Add(new StockMovement { ProductId = product.Id, StaffId = sale.StaffId, Type = "Sale", QuantityChange = -line.Quantity, Notes = sale.DeviceTransactionId, OccurredAt = sale.OccurredAt });
             }
-            if (amount > 0) { var payment=new Payment { SaleId=sale.Id,Method = r.Method, Amount = amount, PaidAt = DateTimeOffset.UtcNow };db.Payments.Add(payment);sale.Payments.Add(payment); }
+            if (amount > 0) { var payment=new Payment { SaleId=sale.Id,Method = r.Method, Amount = amount, PaidAt = sale.OccurredAt };db.Payments.Add(payment);sale.Payments.Add(payment); }
             sale.Status = amount >= sale.Total ? "Paid" : amount > 0 ? "PartiallyPaid" : "Credit";
             // Deposit and credit sales are orders even when the cashier leaves the
             // optional date blank. Keep them visible in Orders and the calendar by
@@ -413,7 +423,7 @@ public static class BillEndpoints
     static void ReplaceLines(Sale sale,IEnumerable<BillLineRequest> lines,IReadOnlyDictionary<Guid,Product> products){foreach(var line in lines){var p=products[line.ProductId];sale.Items.Add(new SaleItem{SaleId=sale.Id,ProductId=p.Id,ProductName=p.Name,Quantity=line.Quantity,UnitPrice=line.UnitPrice,UnitCost=p.CostPrice,Discount=Math.Max(0,line.Discount),IsAddon=p.ItemType.Equals("AddOn",StringComparison.OrdinalIgnoreCase)});}}
     static decimal Total(Sale sale)=>Math.Max(0,sale.Items.Sum(x=>x.Quantity*x.UnitPrice-x.Discount)-sale.Discount);
     static async Task<long> NextNumber(AppDbContext db)=>(await db.Sales.MaxAsync(x=>(long?)x.ReceiptNumber)??1000)+1;
-    static async Task<(int Order,int? WalkIn)> NextDailyNumbers(AppDbContext db,bool walkIn,bool demo){var today=DateOnly.FromDateTime(DateTime.Today);var rows=await db.Sales.AsNoTracking().Where(x=>x.IsDemo==demo).Select(x=>new{x.OccurredAt,x.DailyOrderNumber,x.WalkInNumber}).ToListAsync();var current=rows.Where(x=>DateOnly.FromDateTime(x.OccurredAt.LocalDateTime)==today).ToList();return(current.Select(x=>x.DailyOrderNumber).DefaultIfEmpty(0).Max()+1,walkIn?current.Where(x=>x.WalkInNumber!=null).Select(x=>x.WalkInNumber!.Value).DefaultIfEmpty(0).Max()+1:null);}
+    static async Task<(int Order,int? WalkIn)> NextDailyNumbers(AppDbContext db,bool walkIn,bool demo,DateTimeOffset saleAt){var saleDate=DateOnly.FromDateTime(saleAt.LocalDateTime);var rows=await db.Sales.AsNoTracking().Where(x=>x.IsDemo==demo).Select(x=>new{x.OccurredAt,x.DailyOrderNumber,x.WalkInNumber}).ToListAsync();var current=rows.Where(x=>DateOnly.FromDateTime(x.OccurredAt.LocalDateTime)==saleDate).ToList();return(current.Select(x=>x.DailyOrderNumber).DefaultIfEmpty(0).Max()+1,walkIn?current.Where(x=>x.WalkInNumber!=null).Select(x=>x.WalkInNumber!.Value).DefaultIfEmpty(0).Max()+1:null);}
     static Guid StaffId(ClaimsPrincipal p)=>Guid.TryParse(p.FindFirstValue(ClaimTypes.NameIdentifier),out var id)?id:Guid.Empty;
     static bool HasRole(ClaimsPrincipal p,params string[] roles)=>p.Claims.Any(c=>(c.Type==ClaimTypes.Role||c.Type=="role"||c.Type.EndsWith("/role",StringComparison.OrdinalIgnoreCase))&&roles.Contains(c.Value,StringComparer.OrdinalIgnoreCase));
     static bool IsManager(ClaimsPrincipal p)=>Security.HasPermission(p,"approvals");
