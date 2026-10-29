@@ -19,7 +19,8 @@ import "./App.css";
 
 type CartLine = Product & { quantity: number };
 const money = (n: number) => `KES ${n.toLocaleString()}`;
-const iconPaths:Record<string,string>={Sell:"M3 5h18M5 5l1.5 15h11L19 5M9 9v7m6-7v7",Dashboard:"M4 13h6V4H4v9Zm10 7h6V11h-6v9ZM4 20h6v-3H4v3Zm10-13h6V4h-6v3Z",Bills:"M6 3h12v18l-3-2-3 2-3-2-3 2V3Zm3 5h6m-6 4h6m-6 4h4",Inventory:"M4 7l8-4 8 4-8 4-8-4Zm0 0v10l8 4 8-4V7M12 11v10",Customers:"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm8-1a3 3 0 0 0 0-6m5 17v-2a4 4 0 0 0-3-3.87",Expense:"M12 2v20m5-16H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",Production:"M14.7 6.3a4 4 0 0 0-5-5L12 3.6 3.6 12l-2.3-.7a4 4 0 0 0 5 5L14.7 8l2.3.7a4 4 0 0 0 5-5L19.6 6l-8.3 8.3",Reports:"M4 20V10m6 10V4m6 16v-7m4 7H2",SmartInsights:"M12 3l1.4 4.1L17.5 8.5l-4.1 1.4L12 14l-1.4-4.1-4.1-1.4 4.1-1.4L12 3Zm6 10 .8 2.2L21 16l-2.2.8L18 19l-.8-2.2L15 16l2.2-.8L18 13Z",AuditTrail:"M4 5h16M4 12h16M4 19h10",StaffRoles:"M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M8.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM19 8v6m3-3h-6",ItemSetup:"M12 5v14m-7-7h14",Settings:"M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm7.4-3.5a7 7 0 0 0-.1-1l2-1.6-2-3.4-2.4 1a8 8 0 0 0-1.7-1L15 3.5h-4L10.6 6a8 8 0 0 0-1.7 1L6.5 6 4.5 9.4l2 1.6a7 7 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8 8 0 0 0 1.7 1l.4 2.5h4l.4-2.5a8 8 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6c.1-.3.1-.7.1-1Z",Bell:"M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Zm-8 13h4",Chevron:"M9 18l6-6-6-6",Menu:"M4 7h16M4 12h16M4 17h16",Logout:"M10 17l5-5-5-5m5 5H3m12-9h5v18h-5",Fullscreen:"M8 3H3v5m13-5h5v5M8 21H3v-5m13 5h5v-5"};
+const localDateTimeInput=(date=new Date())=>{const shifted=new Date(date.getTime()-date.getTimezoneOffset()*60000);return shifted.toISOString().slice(0,16)};
+const iconPaths:Record<string,string>={Sell:"M3 5h18M5 5l1.5 15h11L19 5M9 9v7m6-7v7",Dashboard:"M4 13h6V4H4v9Zm10 7h6V11h-6v9ZM4 20h6v-3H4v3Zm10-13h6V4h-6v3Z",Bills:"M6 3h12v18l-3-2-3 2-3-2-3 2V3Zm3 5h6m-6 4h6m-6 4h4",Inventory:"M4 7l8-4 8 4-8 4-8-4Zm0 0v10l8 4 8-4V7M12 11v10",Customers:"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm8-1a3 3 0 0 0 0-6m5 17v-2a4 4 0 0 0-3-3.87",Expense:"M12 2v20m5-16H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",Production:"M14.7 6.3a4 4 0 0 0-5-5L12 3.6 3.6 12l-2.3-.7a4 4 0 0 0 5 5L14.7 8l2.3.7a4 4 0 0 0 5-5L19.6 6l-8.3 8.3",Reports:"M4 20V10m6 10V4m6 16v-7m4 7H2",SmartInsights:"M12 3l1.4 4.1L17.5 8.5l-4.1 1.4L12 14l-1.4-4.1-4.1-1.4 4.1-1.4L12 3Zm6 10 .8 2.2L21 16l-2.2.8L18 19l-.8-2.2L15 16l2.2-.8L18 13Z",AuditTrail:"M4 5h16M4 12h16M4 19h10",StaffRoles:"M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M8.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM19 8v6m3-3h-6",ItemSetup:"M12 5v14m-7-7h14",BulkDataOperations:"M4 4h16M4 10h16M4 16h16M8 6h.01M8 12h.01M8 18h.01",Settings:"M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm7.4-3.5a7 7 0 0 0-.1-1l2-1.6-2-3.4-2.4 1a8 8 0 0 0-1.7-1L15 3.5h-4L10.6 6a8 8 0 0 0-1.7 1L6.5 6 4.5 9.4l2 1.6a7 7 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8 8 0 0 0 1.7 1l.4 2.5h4l.4-2.5a8 8 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6c.1-.3.1-.7.1-1Z",Bell:"M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Zm-8 13h4",Chevron:"M9 18l6-6-6-6",Menu:"M4 7h16M4 12h16M4 17h16",Logout:"M10 17l5-5-5-5m5 5H3m12-9h5v18h-5",Fullscreen:"M8 3H3v5m13-5h5v5M8 21H3v-5m13 5h5v-5"};
 function Icon({name,size=18}:{name:string;size?:number}){const key=name.replaceAll(" ","").replace("Expenses","Expense");const path=key==="Accounting"?"M4 19h16M6 16V8m6 8V4m6 12v-6":iconPaths[key]||iconPaths.ItemSetup;return <svg className="ui-icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={path}/></svg>}
 export default function App() {
   const products =
@@ -32,6 +33,7 @@ export default function App() {
     [view, setView] = useState("Sell"),
     [cart, setCart] = useState<CartLine[]>([]),
     [amountPaidNow, setAmountPaidNow] = useState(""),
+    [saleOccurredAt,setSaleOccurredAt]=useState(()=>localDateTimeInput()),
     [expectedDeliveryAt, setExpectedDeliveryAt] = useState(""),
     [assignedStaffId, setAssignedStaffId] = useState(""),
     [query, setQuery] = useState(""),
@@ -156,25 +158,28 @@ export default function App() {
         .map((x) => (x.id === id ? { ...x, quantity: Math.max(0,Math.min(readyStock(products.find(p=>p.id===id)||x),x.quantity + d)) } : x))
         .filter((x) => x.quantity > 0),
     );
-  const billPayload=()=>({deviceTransactionId:activeBill?.deviceTransactionId||draftTransactionId,customerId:selectedCustomer?.id,staffId:user.id,discount:0,notes:"POS order",expectedDeliveryAt:expectedDeliveryAt?new Date(`${expectedDeliveryAt}T12:00:00`).toISOString():undefined,assignedStaffId:assignedStaffId||undefined,deviceId:localStorage.getItem("device_id")??"windows-pos-01",items:cart.map(x=>({productId:x.id,quantity:x.quantity,unitPrice:x.sellingPrice,discount:0}))});
+  const billPayload=()=>({deviceTransactionId:activeBill?.deviceTransactionId||draftTransactionId,customerId:selectedCustomer?.id,staffId:user.id,discount:0,notes:"POS order",occurredAt:new Date(saleOccurredAt).toISOString(),expectedDeliveryAt:expectedDeliveryAt?new Date(`${expectedDeliveryAt}T12:00:00`).toISOString():undefined,assignedStaffId:assignedStaffId||undefined,deviceId:localStorage.getItem("device_id")??"windows-pos-01",items:cart.map(x=>({productId:x.id,quantity:x.quantity,unitPrice:x.sellingPrice,discount:0}))});
+  function saleDateValid(){const date=new Date(saleOccurredAt);if(!saleOccurredAt||Number.isNaN(date.getTime())){setMessage("Enter a valid sale date and time");return false}if(date.getTime()>Date.now()+5*60*1000){setMessage("Sale date and time cannot be in the future");return false}return true}
   async function ensureHeld(openPrint=false){
     if(!cart.length)return;
+    if(!saleDateValid())return;
     const unavailable=cart.find(line=>line.quantity>readyStock(products.find(p=>p.id===line.id)||line));
     if(unavailable){const reason=`${unavailable.name} has fewer confirmed units than this order needs. Check pending stock updates in Inventory.`;setOrderFailure(reason);setMessage(reason);return;}
     try{
       const saved=activeBill?await updateBill(activeBill.id,{...billPayload(),reason:"Updated from active POS order",expectedRevision:activeBill.revision}):await holdBill(billPayload());setActiveBill(saved);setOrderFailure("");dispatchEvent(new Event("dukora:attention"));
-      const unpaid=buildSaleReceipt({id:String(saved.receiptNumber||saved.deviceTransactionId),dailyOrderNumber:saved.dailyOrderNumber,walkInNumber:saved.walkInNumber,customerName:selectedCustomer?.name||"Walk-in customer",cashierName:user.name,method:"Unpaid",status:"UNPAID",credit:true,items:cart.filter(x=>x.itemType!=="AddOn").map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
+      const unpaid=buildSaleReceipt({id:String(saved.receiptNumber||saved.deviceTransactionId),dailyOrderNumber:saved.dailyOrderNumber,walkInNumber:saved.walkInNumber,customerName:selectedCustomer?.name||"Walk-in customer",cashierName:user.name,method:"Unpaid",status:"UNPAID",credit:true,items:cart.filter(x=>x.itemType!=="AddOn").map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total,occurredAt:new Date(saleOccurredAt)});
       if(openPrint){setReceiptKind("Unpaid");setReceipt(`${unpaid}\nREVISION: ${saved.revision||1}`)}
       setMessage(`Bill #${saved.receiptNumber} is held and awaiting payment or credit${openPrint?" · confirm Print Unpaid Bill":""}`);return saved;
     }catch(error){const reason=error instanceof Error?`Could not hold bill: ${error.message}`:"Could not hold bill on the shared server";setOrderFailure(reason);setMessage(reason);}
   }
-  function clearForNextOrder(saved?:any){if(saved)setLastHeldBill(saved);setCart([]);setSelectedCustomer(undefined);setActiveBill(undefined);setAmountPaidNow("");setExpectedDeliveryAt("");setAssignedStaffId("");setDraftTransactionId(crypto.randomUUID());setOrderFailure("");setQuery("");setCategory("All")}
+  function clearForNextOrder(saved?:any){if(saved)setLastHeldBill(saved);setCart([]);setSelectedCustomer(undefined);setActiveBill(undefined);setAmountPaidNow("");setSaleOccurredAt(localDateTimeInput());setExpectedDeliveryAt("");setAssignedStaffId("");setDraftTransactionId(crypto.randomUUID());setOrderFailure("");setQuery("");setCategory("All")}
   function startNextOrder(saved:any){clearForNextOrder(saved);setMessage(`Unpaid bill #${saved.receiptNumber} was printed and held. New entries now create a separate bill.`);dispatchEvent(new Event("dukora:attention"));bootstrap().catch(()=>0)}
   async function openRecoverableBill(){try{const match=activeBill||(await getBills("All")).find((x:any)=>x.deviceTransactionId===draftTransactionId);if(!match){setMessage("No saved held bill was found for this order. Retry it or start a new order.");return}setActiveBill(match);localStorage.setItem("bill_focus",match.id);setView("Bills");setOrderFailure("")}catch(error){setMessage(error instanceof Error?error.message:"Could not verify the held bill")}}
   async function forceNewOrder(){let saved=activeBill;try{saved=saved||(await getBills("All")).find((x:any)=>x.deviceTransactionId===draftTransactionId)}catch{}clearForNextOrder(saved);setMessage(saved?`Bill #${saved.receiptNumber} remains held under Bills. A clean new order is ready.`:"The failed draft was detached. A clean new order is ready; verify Bills when the server reconnects.");dispatchEvent(new Event("dukora:attention"))}
-  async function reloadHeldOrder(){if(!activeBill)return;try{const match=(await getBills("All")).find((x:any)=>x.id===activeBill.id);if(!match||match.status!=="Held"){setMessage("This bill is no longer held. Open Bills to review its current status.");return}const restored=match.items.map((line:any)=>{const product=visibleProducts.find(x=>x.id===line.productId);return product?{...product,quantity:Number(line.quantity),sellingPrice:Number(line.unitPrice)}:null}).filter(Boolean) as CartLine[];if(restored.length!==match.items.length){setMessage("This held bill contains an unavailable item and cannot be restarted on Sell.");return}setActiveBill(match);setDraftTransactionId(match.deviceTransactionId);setCart(restored);setSelectedCustomer(customers.find(x=>x.id===match.customerId));setExpectedDeliveryAt(match.expectedDeliveryAt?String(match.expectedDeliveryAt).slice(0,10):"");setAssignedStaffId(match.assignedStaffId||"");setOrderFailure("");setMessage(`Bill #${match.receiptNumber} reloaded at revision ${match.revision}`)}catch(error){const reason=error instanceof Error?error.message:"Could not reload the held bill";setOrderFailure(reason);setMessage(reason)}}
+  async function reloadHeldOrder(){if(!activeBill)return;try{const match=(await getBills("All")).find((x:any)=>x.id===activeBill.id);if(!match||match.status!=="Held"){setMessage("This bill is no longer held. Open Bills to review its current status.");return}const restored=match.items.map((line:any)=>{const product=visibleProducts.find(x=>x.id===line.productId);return product?{...product,quantity:Number(line.quantity),sellingPrice:Number(line.unitPrice)}:null}).filter(Boolean) as CartLine[];if(restored.length!==match.items.length){setMessage("This held bill contains an unavailable item and cannot be restarted on Sell.");return}setActiveBill(match);setDraftTransactionId(match.deviceTransactionId);setCart(restored);setSelectedCustomer(customers.find(x=>x.id===match.customerId));setSaleOccurredAt(localDateTimeInput(new Date(match.occurredAt)));setExpectedDeliveryAt(match.expectedDeliveryAt?String(match.expectedDeliveryAt).slice(0,10):"");setAssignedStaffId(match.assignedStaffId||"");setOrderFailure("");setMessage(`Bill #${match.receiptNumber} reloaded at revision ${match.revision}`)}catch(error){const reason=error instanceof Error?error.message:"Could not reload the held bill";setOrderFailure(reason);setMessage(reason)}}
   async function checkout(method: string) {
     if (!cart.length) return;
+    if(!saleDateValid())return;
     if (!activeBill) {
       setMessage("Print or hold the unpaid bill before posting payment or credit");
       return;
@@ -192,7 +197,7 @@ export default function App() {
       const held=await updateBill(activeBill.id,{...billPayload(),reason:"Final POS revision before posting",expectedRevision:activeBill.revision});
       const dueAt=(credit||partial)?new Date(Date.now()+7*86400000).toISOString():undefined;
       const posted=await postBill(held.id,{status:credit?"Credit":partial?"PartiallyPaid":"Paid",method,amountPaid:paidNow,dueAt,notes:credit?"Credit order at POS":partial?"Deposit order at POS":"Paid at POS",deviceId:localStorage.getItem("device_id")??"windows-pos-01"});
-      const receiptText=buildSaleReceipt({id:String(posted.receiptNumber||id),dailyOrderNumber:posted.dailyOrderNumber,walkInNumber:posted.walkInNumber,customerName,cashierName:user.name,method,status:credit?"CREDIT":partial?"PARTIAL":"PAID",credit:credit||partial,paid:paidNow,items:cart.filter(x=>x.itemType!=="AddOn").map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
+      const receiptText=buildSaleReceipt({id:String(posted.receiptNumber||id),dailyOrderNumber:posted.dailyOrderNumber,walkInNumber:posted.walkInNumber,customerName,cashierName:user.name,method,status:credit?"CREDIT":partial?"PARTIAL":"PAID",credit:credit||partial,paid:paidNow,items:cart.filter(x=>x.itemType!=="AddOn").map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total,occurredAt:new Date(saleOccurredAt)});
       const receiptConfig=cachedReceiptSettings();setReceiptKind(credit?"Credit":partial?"Order":"Paid");setReceipt(receiptText);if((!credit&&receiptConfig.autoPrintPaidSale)||(credit&&receiptConfig.creditSalePrintMode==="Automatic"))for(let copy=0;copy<receiptConfig.copies;copy++)await printReceiptText(receiptText);
       clearForNextOrder();setMessage(credit?"Credit order posted and added to Orders":partial?"Deposit recorded and order added to Orders":"Sale, payment and stock posted together");dispatchEvent(new Event("dukora:attention"));bootstrap().catch(()=>0);return;
     }catch(error){const reason=error instanceof Error?error.message:"Sale could not be posted";setOrderFailure(reason);setMessage(reason);if(navigator.onLine||activeBill)return;}
@@ -202,7 +207,7 @@ export default function App() {
       staffId: user.id,
       status: credit ? "Credit" : partial ? "PartiallyPaid" : "Paid",
       discount: 0,
-      occurredAt: new Date().toISOString(),
+      occurredAt: new Date(saleOccurredAt).toISOString(),
       deviceId: localStorage.getItem("device_id") ?? "windows-pos-01",
       isDemo:Boolean(user.isDemo),
       items: cart.map((x) => ({
@@ -217,7 +222,7 @@ export default function App() {
       total,
       synced: false,
     });
-    const receiptText=buildSaleReceipt({id,customerName,cashierName:user.name,method,status:credit?"CREDIT":partial?"PARTIAL":"PAID",credit:credit||partial,paid:paidNow,items:cart.filter(x=>x.itemType!=="AddOn").map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total});
+    const receiptText=buildSaleReceipt({id,customerName,cashierName:user.name,method,status:credit?"CREDIT":partial?"PARTIAL":"PAID",credit:credit||partial,paid:paidNow,items:cart.filter(x=>x.itemType!=="AddOn").map(x=>({name:x.name,quantity:x.quantity,unitPrice:x.sellingPrice})),total,occurredAt:new Date(saleOccurredAt)});
     const receiptConfig=cachedReceiptSettings();
     setReceiptKind(credit?"Credit":partial?"Order":"Paid");setReceipt(receiptText);
     if((!credit&&receiptConfig.autoPrintPaidSale)||(credit&&receiptConfig.creditSalePrintMode==="Automatic"))for(let copy=0;copy<receiptConfig.copies;copy++)await printReceiptText(receiptText);
@@ -227,7 +232,7 @@ export default function App() {
   }
   const primaryViews=["Sell","Dashboard","Bills","Orders","Inventory"];
   const institutionModules=enabledModules(organizationProfile.enabledModules||(organizationProfile as any).EnabledModules),industry=profileFor(organizationProfile.industryProfile||(organizationProfile as any).IndustryProfile);
-  const menuGroups={Operations:["Expense",...(institutionModules.has("accounting")?["Accounting"]:[]),...(institutionModules.has("production")?["Production"]:[]),...(institutionModules.has("inventory")?["Purchasing","Stocktake"]:[]),...(institutionModules.has("reports")?["Reports"]:[]),"Audit trail",...(user?.role==="Owner"||user?.role==="Manager"?["System logs"]:[])],"Data & Setup":["Customers","Staff & Roles","Item Setup"]};
+  const menuGroups={Operations:["Expense",...(institutionModules.has("accounting")?["Accounting"]:[]),...(institutionModules.has("production")?["Production"]:[]),...(institutionModules.has("inventory")?["Purchasing","Stocktake"]:[]),...(institutionModules.has("reports")?["Reports"]:[]),"Audit trail",...(user?.role==="Owner"||user?.role==="Manager"?["Bulk data operations","System logs"]:[])],"Data & Setup":["Customers","Staff & Roles","Item Setup"]};
   const alertKeys:Record<string,string>={Bills:"Bills",Inventory:"Inventory",Customers:"Customers",Expenses:"Expenses",Expense:"Expenses","Audit trail":"AuditTrail",Settings:"Settings"};
   const today = new Intl.DateTimeFormat("en-GB", {
     weekday: "long",
@@ -438,6 +443,7 @@ export default function App() {
                 <button>＋ Add</button>
               </div>
               <div className="order-payment-fields">
+                <label>Sale date & time <input type="datetime-local" max={localDateTimeInput()} value={saleOccurredAt} onChange={e=>setSaleOccurredAt(e.target.value)} /></label>
                 <label>Paid now <input type="number" min="0" max={total} step="0.01" placeholder={String(total)} value={amountPaidNow} onChange={e=>setAmountPaidNow(e.target.value)} /></label>
                 <label>Expected delivery <input type="date" value={expectedDeliveryAt} onChange={e=>setExpectedDeliveryAt(e.target.value)} /></label>
                 <label>Fulfillment owner <select value={assignedStaffId} onChange={e=>setAssignedStaffId(e.target.value)}><option value="">Unassigned</option>{staff.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>

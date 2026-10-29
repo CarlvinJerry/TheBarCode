@@ -14,6 +14,12 @@ public static class HistoricalSalesImporter
             throw new HistoricalImportException("Import between 1 and 5,000 historical sale rows.");
         if (request.Rows.Select(x => x.RowNumber).Distinct().Count() != request.Rows.Count)
             throw new HistoricalImportException("Historical CSV row numbers must be unique.");
+        if (request.Rows.Any(x => x.Date > DateOnly.FromDateTime(DateTime.Now)))
+            throw new HistoricalImportException("Historical sale dates cannot be in the future.");
+        var saleDates = request.Rows.Select(x => x.Date).ToList();
+        var lockedPeriods = await db.AccountingPeriods.AsNoTracking().Where(x => x.IsDemo == job.IsDemo && x.Locked).Select(x => new { x.Start, x.End }).ToListAsync(ct);
+        if (lockedPeriods.Any(period => saleDates.Any(date => date >= period.Start && date <= period.End)))
+            throw new HistoricalImportException("One or more sales fall in a locked accounting period. Ask an Owner to review the period before importing.");
 
         // A job may be restarted after a process shutdown between commit and the
         // final status write. Stable transaction IDs make that restart harmless.
@@ -57,7 +63,7 @@ public static class HistoricalSalesImporter
                 DeviceTransactionId = $"{prefix}{row.RowNumber}", ReceiptNumber = nextReceipt++,
                 StaffId = job.StaffId, Status = "Paid", IsDemo = job.IsDemo,
                 OccurredAt = row.Date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
-                PostedAt = row.Date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+                PostedAt = DateTimeOffset.UtcNow,
                 Notes = "Historical import"
             };
             sale.Items.Add(new SaleItem { ProductId = product.Id, ProductName = product.Name,

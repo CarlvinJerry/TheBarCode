@@ -27,8 +27,12 @@ public record BranchRequest(Guid? Id,string Name,string Code,string? Address,str
 public record TerminalRequest(Guid? Id,Guid BranchId,string Name,string DeviceKey,bool Active);
 public record ReceiptConfigurationRequest(int PaperWidthMm,bool ShowBusinessDetails,bool ShowCustomer,bool ShowCashier,bool ShowTax,bool ShowCustomerBalance,bool ShowPoweredBy,bool AutoPrintPaidSale,string CreditSalePrintMode,string PaymentReceiptPrintMode,int Copies,string Footer,string ReceiptPrefix,string InvoicePrefix,string PaymentPrefix);
 public record BillLineRequest(Guid ProductId,decimal Quantity,decimal UnitPrice,decimal Discount);
-public record HoldBillRequest(string DeviceTransactionId,Guid? CustomerId,Guid StaffId,decimal Discount,string? Notes,string? DeviceId,List<BillLineRequest> Items,DateTimeOffset? ExpectedDeliveryAt=null,Guid? AssignedStaffId=null);
-public record UpdateBillRequest(Guid? CustomerId,decimal Discount,string? Notes,string Reason,string? DeviceId,int ExpectedRevision,List<BillLineRequest> Items,DateTimeOffset? ExpectedDeliveryAt=null,Guid? AssignedStaffId=null);
+public record HoldBillRequest(string DeviceTransactionId,Guid? CustomerId,Guid StaffId,decimal Discount,string? Notes,string? DeviceId,List<BillLineRequest> Items,DateTimeOffset? ExpectedDeliveryAt=null,Guid? AssignedStaffId=null,DateTimeOffset? OccurredAt=null);
+public record UpdateBillRequest(Guid? CustomerId,decimal Discount,string? Notes,string Reason,string? DeviceId,int ExpectedRevision,List<BillLineRequest> Items,DateTimeOffset? ExpectedDeliveryAt=null,Guid? AssignedStaffId=null,DateTimeOffset? OccurredAt=null);
+public record BulkCustomerImportRequest(string? DeviceId,List<BulkCustomerRow> Rows);
+public record BulkCustomerRow(Guid? Id,string Name,string? Phone,decimal CreditLimit,string? Notes,bool Active=true);
+public record BulkExpenseImportRequest(string? DeviceId,List<BulkExpenseRow> Rows);
+public record BulkExpenseRow(Guid? Id,DateOnly Date,string Category,string Description,decimal Amount,string? Payee,string? Reference,DateOnly? DueDate,decimal TaxAmount,string? Notes,string Type="Operating",bool Recurring=false);
 public record ResolveBillApprovalRequest(bool Approve,string Reason,string? DeviceId);
 public record PostBillRequest(string Status,string Method,decimal AmountPaid,DateTimeOffset? DueAt,string? Notes,string? DeviceId);
 public record BillPaymentRequest(string Method,decimal Amount,string? Reference,string? DeviceId);
