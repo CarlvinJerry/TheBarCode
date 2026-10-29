@@ -45,6 +45,8 @@ public static class InsightsEndpoints
         var allSales=financialSales.Where(x=>x.Status!="Refunded").ToList();
         var sales=allSales.Where(x=>x.OccurredAt>=start&&x.OccurredAt<end).ToList();
         var expenses = await db.Expenses.AsNoTracking().Where(x =>x.IsDemo==demo&&x.Active&&x.Status=="Approved"&&x.Date >= from && x.Date <= to).ToListAsync();
+        var operatingExpenses=expenses.Where(x=>!x.Type.Equals("InventoryPurchase",StringComparison.OrdinalIgnoreCase)).ToList();
+        var inventoryPurchases=expenses.Where(x=>x.Type.Equals("InventoryPurchase",StringComparison.OrdinalIgnoreCase)).Sum(x=>x.Amount);
         var products = await db.Products.AsNoTracking().Where(x => x.Active&&x.IsDemo==demo).ToListAsync();
         var productCosts = products.ToDictionary(x => x.Id, x => x.CostPrice);
         var velocityStart=DateTimeOffset.UtcNow.AddDays(-30);var recentSales=allSales.Where(x=>(x.PostedAt??x.OccurredAt)>=velocityStart).ToList();var recentLines=recentSales.SelectMany(x=>x.Items).GroupBy(x=>x.ProductId).ToDictionary(x=>x.Key,x=>x.Sum(line=>line.Quantity)/30m);
@@ -81,13 +83,16 @@ public static class InsightsEndpoints
         var daily = sales.GroupBy(x => DateOnly.FromDateTime(x.OccurredAt.UtcDateTime)).Select(g => new DailyMetric(g.Key, g.Sum(x => x.Total), g.Sum(x => x.Total - x.Items.Sum(i => i.UnitCost * i.Quantity)))).OrderBy(x => x.Date).ToList();
         var top = sales.SelectMany(x => x.Items).GroupBy(x => new { x.ProductId, x.ProductName }).Select(g => new TopSeller(g.Key.ProductId, g.Key.ProductName, g.Sum(x => x.Quantity), g.Sum(x => x.Quantity * x.UnitPrice - x.Discount), g.Sum(x => (x.UnitPrice - x.UnitCost) * x.Quantity - x.Discount))).OrderByDescending(x => x.Revenue).Take(10).ToList();
         var categories = products.GroupBy(x => x.Category).Select(g => new CategoryStock(g.Key, g.Sum(x => x.Stock * x.CostPrice), g.Sum(x => x.Stock), g.Count())).OrderByDescending(x => x.Value).ToList();
-        var expenseCategories = expenses.GroupBy(x => x.Category).Select(g => new NamedAmount(g.Key, g.Sum(x => x.Amount))).OrderByDescending(x => x.Amount).ToList();
+        var expenseCategories = operatingExpenses.GroupBy(x => x.Category).Select(g => new NamedAmount(g.Key, g.Sum(x => x.Amount))).OrderByDescending(x => x.Amount).ToList();
         var paymentMix = rangePayments.GroupBy(x => x.Method).Select(g => new NamedAmount(g.Key, g.Sum(x => x.Amount))).OrderByDescending(x => x.Amount).ToList();
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var stockRisks=products.Select(x=>{var dailyUse=recentLines.GetValueOrDefault(x.Id);var days=dailyUse>0?x.Stock/dailyUse:(decimal?)null;var projected=x.Stock<=x.MinStock*1.5m||(days is not null&&days<=7);return new StockRisk(x.Id,x.Name,x.Category,x.Stock,x.MinStock,x.CostPrice,x.SellingPrice,dailyUse,days,projected,x.Stock<=x.MinStock);}).Where(x=>x.ProjectedLow).OrderBy(x=>x.DaysRemaining??decimal.MaxValue).ThenBy(x=>x.Stock).ToList();
-        return new OperationalSnapshot(from, to, revenue, cost, revenue - cost, expenses.Sum(x => x.Amount), sales.Count, Math.Max(0, customerRevenue - paid), stockRisks.Count, products.Count(x => x.Stock <= 0), products.Sum(x => x.Stock * x.CostPrice), sales.Where(x => DateOnly.FromDateTime(x.OccurredAt.UtcDateTime) == today).Sum(x => x.Total), daily, top, categories, expenseCategories, paymentMix, stockRisks, activity.Select(x => new ActivityItem(x.Actor, x.Action, x.EntityType, x.Details, x.DeviceId, x.OccurredAt)).ToList(), expenses.OrderByDescending(x => x.Date).Take(100).Select(x => new ExpenseItem(x.Id, x.Date, x.Description, x.Category, x.Amount, x.PaidAmount, x.Method)).ToList()){
+        var dailyExpenses=operatingExpenses.GroupBy(x=>x.Date).Select(g=>new DailyExpense(g.Key,g.Sum(x=>x.Amount),g.Sum(x=>x.PaidAmount))).OrderBy(x=>x.Date).ToList();
+        var dailyStockFlow=periodMovements.GroupBy(x=>DateOnly.FromDateTime(x.OccurredAt.UtcDateTime)).Select(g=>new DailyStockFlow(g.Key,g.Where(x=>x.QuantityChange>0).Sum(x=>x.QuantityChange),g.Where(x=>x.QuantityChange<0).Sum(x=>-x.QuantityChange))).OrderBy(x=>x.Date).ToList();
+        return new OperationalSnapshot(from, to, revenue, cost, revenue - cost, operatingExpenses.Sum(x => x.Amount), sales.Count, Math.Max(0, customerRevenue - paid), stockRisks.Count, products.Count(x => x.Stock <= 0), products.Sum(x => x.Stock * x.CostPrice), sales.Where(x => DateOnly.FromDateTime(x.OccurredAt.UtcDateTime) == today).Sum(x => x.Total), daily, top, categories, expenseCategories, paymentMix, stockRisks, activity.Select(x => new ActivityItem(x.Actor, x.Action, x.EntityType, x.Details, x.DeviceId, x.OccurredAt)).ToList(), expenses.OrderByDescending(x => x.Date).Take(100).Select(x => new ExpenseItem(x.Id, x.Date, x.Description, x.Category, x.Amount, x.PaidAmount, x.Method)).ToList()){
             SalesCollected=salesCollected,CashCollected=cashCollected,CollectionRate=collectionRate,CreditRisks=creditRisks,
-            StockInflow=stockInflow,StockOutflow=stockOutflow,StockInflowValue=stockInflowValue,StockOutflowValue=stockOutflowValue,StockFlowByType=stockFlowByType
+            StockInflow=stockInflow,StockOutflow=stockOutflow,StockInflowValue=stockInflowValue,StockOutflowValue=stockOutflowValue,StockFlowByType=stockFlowByType,
+            InventoryPurchases=inventoryPurchases,DailyExpenses=dailyExpenses,DailyStockFlow=dailyStockFlow
         };
     }
 }
@@ -150,10 +155,15 @@ public record OperationalSnapshot(DateOnly From, DateOnly To, decimal Revenue, d
     public decimal StockOutflow { get; init; }
     public decimal StockInflowValue { get; init; }
     public decimal StockOutflowValue { get; init; }
+    public decimal InventoryPurchases { get; init; }
+    public List<DailyExpense> DailyExpenses { get; init; } = [];
+    public List<DailyStockFlow> DailyStockFlow { get; init; } = [];
     public List<StockFlowType> StockFlowByType { get; init; } = [];
-    public object ForAi(bool includeUserNames=false) => new { From, To, Revenue, Cost, GrossProfit, Expenses, SalesCount, SalesCollected, CashCollected, CollectionRate, CustomerDebt, CreditLimitBreaches=CreditRisks.Select(x=>new{x.Debt,x.Limit,x.UtilizationPercent}), LowStockCount, OutOfStockCount, StockValue, StockInflow, StockOutflow, StockInflowValue, StockOutflowValue, StockFlowByType, Daily, TopSellers, StockByCategory, ExpenseByCategory, PaymentMix,StaffActivity=includeUserNames?Activity.Select(x=>new{x.Actor,x.Action,x.EntityType,x.OccurredAt}):null };
+    public object ForAi(bool includeUserNames=false) => new { From, To, Revenue, Cost, GrossProfit, Expenses, InventoryPurchases, SalesCount, SalesCollected, CashCollected, CollectionRate, CustomerDebt, CreditLimitBreaches=CreditRisks.Select(x=>new{x.Debt,x.Limit,x.UtilizationPercent}), LowStockCount, OutOfStockCount, StockValue, StockInflow, StockOutflow, StockInflowValue, StockOutflowValue, StockFlowByType, Daily, DailyExpenses, DailyStockFlow, TopSellers, StockByCategory, ExpenseByCategory, PaymentMix,StaffActivity=includeUserNames?Activity.Select(x=>new{x.Actor,x.Action,x.EntityType,x.OccurredAt}):null };
 }
 public record DailyMetric(DateOnly Date, decimal Revenue, decimal Profit);
+public record DailyExpense(DateOnly Date, decimal Amount, decimal PaidAmount);
+public record DailyStockFlow(DateOnly Date, decimal Inflow, decimal Outflow);
 public record TopSeller(Guid ProductId, string Name, decimal Quantity, decimal Revenue, decimal Profit);
 public record CategoryStock(string Name, decimal Value, decimal Quantity, int Items);
 public record NamedAmount(string Name, decimal Amount);
